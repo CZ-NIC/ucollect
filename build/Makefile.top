@@ -1,0 +1,35 @@
+all:
+
+MAKEFLAGS = -rR # Disable built-in rules. Speeds things up and there's less garbage in debug output.
+TARGETS = # To be filled in by included makefiles
+# Build compiler flags
+ifdef RELEASE
+	CFLAGS += -O2
+else
+	CFLAGS += -ggdb3 -O0 -DDEBUG
+endif
+CFLAGS_ALL = $(CFLAGS) --std=c99 -pedantic -Wall -w -DSRCDIR=$(s) -DOUTPUT_DIR=$(o)
+
+# Magic to track dependencies on header files. They are stored in the .d files
+# by the compiler, then we load them on the next run and use them.
+DEP_FILES := $(shell if test -d $(o)/.deps ; then find $(o)/.deps -name '*.d' ; fi | sort)
+include $(DEP_FILES)
+
+# Function to register a binary to TARGETS and generate the rules to build it.
+# It shall be called as:
+#
+# binary_name_MODULES := main other_file third_file
+# $(eval $(call REGISTER_BIN,binary_name,src/path/to/directory))
+define REGISTER_BIN
+TARGETS += $(o)/bin/$(1)
+$(o)/bin/$(1): $$(patsubst %,$(o)/.objs/$(2)/%.o,$$($(1)_MODULES))
+endef
+
+# Generic rules to compile and link
+$(o)/.objs/%.o: $(s)/%.c
+	mkdir -p $(dir $@ $(patsubst .objs%.o,.deps%.d,$@))
+	$(CC) $(CFLAGS_ALL) -c $< -o $@ -MD -MF $(patsubst .objs%.o,.deps%.d,$@)
+
+$(o)/bin/%:
+	mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS_ALL) $^ -o $@

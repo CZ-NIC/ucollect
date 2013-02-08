@@ -1,0 +1,7 @@
+# Top-level targets to be called by user
+all: $(TARGETS)
+
+clean:
+	rm -rf bin .objs .deps
+
+.PHONY: all clean
