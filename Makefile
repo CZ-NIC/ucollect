@@ -3,5 +3,6 @@
 O := .
 S := .
 ASCIIDOC := asciidoc
+PAGE_SIZE := $(shell getconf PAGE_SIZE)
 
 include $(S)/Makefile.dir

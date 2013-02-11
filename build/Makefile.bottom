@@ -1,7 +1,9 @@
 
 # Generate lists of targets and other things
 $(eval $(foreach BINARY,$(BINARIES),$(call REGISTER_BIN,$(BINARY))))
+ifndef NO_DOC
 $(eval $(foreach DOC,$(DOCS),$(call REGISTER_DOC,$(DOC))))
+endif
 
 # Top-level targets to be called by user
 all: $(TARGETS)

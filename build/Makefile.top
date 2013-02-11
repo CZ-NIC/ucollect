@@ -12,11 +12,13 @@ else
 	CFLAGS += -ggdb3 -O0 -DDEBUG
 endif
 ifeq ($(TARGET),mips)
-	CFLAGS += -static
-	LDFLAGS += -static
 	CC = mips-softfloat-linux-uclibc-gcc
 endif
-CFLAGS_ALL += $(CFLAGS) --std=c99 -pedantic -Wall -w -DSRCDIR=$(S) -DOUTPUT_DIR=$(O)
+ifdef STATIC
+	CFLAGS += -static -DSTATIC
+	LDFLAGS += -static
+endif
+CFLAGS_ALL += $(CFLAGS) --std=c99 -pedantic -Wall -w -DOUTPUT_DIRECTORY=$(O) -DSOURCE_DIRECTORY=$(S) -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(O)
 LDFLAGS_ALL += $(LDFLAGS)
 
 # Magic to track dependencies on header files. They are stored in the .d files
