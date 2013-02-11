@@ -1,3 +1,6 @@
 .objs/
 .deps/
 bin/
+build/buildsystem.html
+docs/
+src/ucollect/ucollect
