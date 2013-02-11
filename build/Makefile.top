@@ -1,6 +1,10 @@
 all:
 
-TARGETS = # To be filled in by included makefiles
+# To be filled in by included makefiles
+TARGETS =
+BINARIES =
+DOCS =
+
 # Build compiler flags
 ifdef RELEASE
 	CFLAGS += -O2
@@ -12,12 +16,12 @@ ifeq ($(TARGET),mips)
 	LDFLAGS += -static
 	CC = mips-softfloat-linux-uclibc-gcc
 endif
-CFLAGS_ALL += $(CFLAGS) --std=c99 -pedantic -Wall -w -DSRCDIR=$(s) -DOUTPUT_DIR=$(o)
+CFLAGS_ALL += $(CFLAGS) --std=c99 -pedantic -Wall -w -DSRCDIR=$(S) -DOUTPUT_DIR=$(O)
 LDFLAGS_ALL += $(LDFLAGS)
 
 # Magic to track dependencies on header files. They are stored in the .d files
 # by the compiler, then we load them on the next run and use them.
-DEP_FILES := $(shell if test -d $(o)/.deps ; then find $(o)/.deps -name '*.d' ; fi | sort)
+DEP_FILES := $(shell if test -d $(O)/.deps ; then find $(O)/.deps -name '*.d' ; fi | sort)
 include $(DEP_FILES)
 
 # Function to register a binary to TARGETS and generate the rules to build it.
@@ -26,15 +30,32 @@ include $(DEP_FILES)
 # binary_name_MODULES := main other_file third_file
 # $(eval $(call REGISTER_BIN,binary_name,src/path/to/directory))
 define REGISTER_BIN
-TARGETS += $(o)/bin/$(1)
-$(o)/bin/$(1): $$(patsubst %,$(o)/.objs/$(2)/%.o,$$($(1)_MODULES))
+TARGETS += $(O)/$(1)
+$(O)/bin/$$(notdir $(1)): $$(patsubst %,$(O)/.objs/$$(dir $(1))/%.o,$$($$(notdir $(1))_MODULES))
+$(O)/$(1): CFLAGS_ALL += $$($$(notdir $(1))_CFLAGS)
+$(O)/$(1): LDFLAGS_ALL += $$($$(notdir $(1))_LDFLAGS)
+$(O)/$(1): $(O)/bin/$$(notdir $(1))
+	mkdir -p $$(dir $(O)/$(1))
+	ln -sf $$(abspath $$<) $$@
+endef
+
+define REGISTER_DOC
+TARGETS += $(O)/$(1).html
+$(O)/docs/$$(notdir $(1)).html: $(S)/$$(addsuffix .txt,$(1))
+$(O)/$(1).html: $(O)/docs/$$(notdir $(1)).html
+	mkdir -p $$(dir $(O)/$(1))
+	ln -sf $$(abspath $$<) $$@
 endef
 
 # Generic rules to compile and link
-$(o)/.objs/%.o: $(s)/%.c
+$(O)/.objs/%.o: $(S)/%.c
 	mkdir -p $(dir $@ $(patsubst .objs%.o,.deps%.d,$@))
 	$(CC) $(CFLAGS_ALL) -c $< -o $@ -MD -MF $(patsubst .objs%.o,.deps%.d,$@)
 
-$(o)/bin/%:
+$(O)/bin/%:
 	mkdir -p $(dir $@)
 	$(CC) $(LDFLAGS_ALL) $^ -o $@
+
+$(O)/docs/%:
+	mkdir -p $(dir $@)
+	$(ASCIIDOC) -o $@ $<

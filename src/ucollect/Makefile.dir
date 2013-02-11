@@ -1,4 +1,4 @@
+BINARIES += src/ucollect/ucollect
+
 ucollect_MODULES := \
 	main
-
-$(eval $(call REGISTER_BIN,ucollect,src/ucollect))

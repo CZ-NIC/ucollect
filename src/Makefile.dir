@@ -1,1 +1,1 @@
-include $(s)/src/ucollect/Makefile.dir
+include $(S)/src/ucollect/Makefile.dir

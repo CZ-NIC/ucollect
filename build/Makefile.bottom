@@ -1,7 +1,12 @@
+
+# Generate lists of targets and other things
+$(eval $(foreach BINARY,$(BINARIES),$(call REGISTER_BIN,$(BINARY))))
+$(eval $(foreach DOC,$(DOCS),$(call REGISTER_DOC,$(DOC))))
+
 # Top-level targets to be called by user
 all: $(TARGETS)
 
 clean:
-	rm -rf bin .objs .deps
+	rm -rf bin .objs .deps $(TARGETS)
 
 .PHONY: all clean
