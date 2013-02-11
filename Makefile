@@ -5,6 +5,7 @@
 O := $(RELATIVE).
 S := $(RELATIVE).
 ASCIIDOC := asciidoc
+AR := ar
 PAGE_SIZE := $(shell getconf PAGE_SIZE)
 
 include $(S)/Makefile.dir

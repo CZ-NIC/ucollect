@@ -2,3 +2,4 @@ BINARIES += src/ucollect/ucollect
 
 ucollect_MODULES := \
 	main
+ucollect_LOCAL_LIBS := ucollect_core

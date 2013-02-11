@@ -1,6 +1,7 @@
 
 # Generate lists of targets and other things
 $(eval $(foreach BINARY,$(BINARIES),$(call REGISTER_BIN,$(BINARY))))
+$(eval $(foreach LIB,$(LIBRARIES),$(call REGISTER_LIB,$(LIB))))
 ifndef NO_DOC
 $(eval $(foreach DOC,$(DOCS),$(call REGISTER_DOC,$(DOC))))
 endif
@@ -9,6 +10,6 @@ endif
 all: $(TARGETS)
 
 clean:
-	rm -rf $(O)/bin $(O)/docs $(O)/.objs $(O)/.deps $(TARGETS)
+	rm -rf $(O)/bin $(O)/lib $(O)/docs $(O)/.objs $(O)/.deps $(TARGETS)
 
 .PHONY: all clean

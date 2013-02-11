@@ -18,13 +18,24 @@ ifdef STATIC
 	CFLAGS += -static -DSTATIC
 	LDFLAGS += -static
 endif
-CFLAGS_ALL += $(CFLAGS) --std=c99 -pedantic -Wall -w -DOUTPUT_DIRECTORY=$(O) -DSOURCE_DIRECTORY=$(S) -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(O)
+CFLAGS_ALL += $(CFLAGS) --std=c99 -pedantic -Wall -w -DOUTPUT_DIRECTORY=$(abspath $(O)) -DSOURCE_DIRECTORY=$(abspath $(S)) -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(abspath $(O))
 LDFLAGS_ALL += $(LDFLAGS)
 
 # Magic to track dependencies on header files. They are stored in the .d files
 # by the compiler, then we load them on the next run and use them.
 DEP_FILES := $(shell if test -d $(O)/.deps ; then find $(O)/.deps -name '*.d' ; fi | sort)
 include $(DEP_FILES)
+
+define COMMON_REGISTER
+$(1): CFLAGS_ALL += $$($(2)_CFLAGS)
+$(1): LDFLAGS_ALL += $$($(2)_LDFLAGS)
+ifdef STATIC
+TODO: Static linking
+else
+$(1): LINK_LIBRARIES += -L$(O)/lib -Wl,-R$(abspath $(O)/lib) $$(addprefix -l,$$($(2)_LOCAL_LIBS) $$($(2)_SYSTEM_LIBS))
+$(1): $$(patsubst %,$(O)/lib/lib%.so,$$($(2)_LOCAL_LIBS))
+endif
+endef
 
 # Function to register a binary to TARGETS and generate the rules to build it.
 # It shall be called as:
@@ -36,13 +47,36 @@ ifneq (,$(findstring ^$(RESTRICT),^$(1)))
 TARGETS += $(O)/$(1)
 endif
 $(O)/bin/$$(notdir $(1)): $$(patsubst %,$(O)/.objs/$$(dir $(1))/%.o,$$($$(notdir $(1))_MODULES))
-$(O)/$(1): CFLAGS_ALL += $$($$(notdir $(1))_CFLAGS)
-$(O)/$(1): LDFLAGS_ALL += $$($$(notdir $(1))_LDFLAGS)
+$(call COMMON_REGISTER,$(O)/bin/$$(notdir $(1)),$$(notdir $(1)))
 $(O)/$(1): $(O)/bin/$$(notdir $(1))
 	mkdir -p $$(dir $(O)/$(1))
 	ln -sf $$(abspath $$<) $$@
 endef
 
+ifdef STATIC
+LIB_SUFFIX :=.a
+else
+LIB_SUFFIX :=.so
+endif
+
+# Similar, for libraries
+define REGISTER_LIB
+ifneq (,$(findstring ^$(RESTRICT),^$(1)))
+TARGETS += $(O)/$(1)$(LIB_SUFFIX)
+endif
+$(O)/lib/$$(notdir $(1)).a: $$(patsubst %,$(O)/.objs/$$(dir $(1))/%.o,$$($$(notdir $(1))_MODULES))
+$(O)/lib/$$(notdir $(1)).so: $$(patsubst %,$(O)/.objs/$$(dir $(1))/%.o,$$($$(notdir $(1))_MODULES))
+$(call COMMON_REGISTER,$(O)/lib/$$(notdir $(1)).a,$$(notdir $(1)))
+$(call COMMON_REGISTER,$(O)/lib/$$(notdir $(1)).so,$$(notdir $(1)))
+$(O)/$(1).a: $(O)/lib/$$(notdir $(1)).a
+	mkdir -p $$(dir $(O)/$(1))
+	ln -sf $$(abspath $$<) $$@
+$(O)/$(1).so: $(O)/lib/$$(notdir $(1)).so
+	mkdir -p $$(dir $(O)/$(1))
+	ln -sf $$(abspath $$<) $$@
+endef
+
+# Similar, for documentation
 define REGISTER_DOC
 ifneq (,$(findstring ^$(RESTRICT),^$(1)))
 TARGETS += $(O)/$(1).html
@@ -60,7 +94,16 @@ $(O)/.objs/%.o: $(S)/%.c
 
 $(O)/bin/%:
 	mkdir -p $(dir $@)
-	$(CC) $(LDFLAGS_ALL) $^ -o $@
+	$(CC) $(LDFLAGS_ALL) $(LINK_LIBRARIES) $(filter %.o,$^) -o $@
+
+$(O)/lib/%.a:
+	mkdir -p $(dir $@)
+	$(AR) -rc $@ $(filter %.o,$^)
+
+$(O)/lib/%.so: CFLAGS_ALL += -fPIC
+$(O)/lib/%.so:
+	mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS_ALL) -shared -o $@ $(filter %.o,$^)
 
 $(O)/docs/%:
 	mkdir -p $(dir $@)

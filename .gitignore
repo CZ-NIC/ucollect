@@ -4,3 +4,5 @@ bin/
 build/buildsystem.html
 docs/
 src/ucollect/ucollect
+lib/
+src/core/libucollect_core.*
