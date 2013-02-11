@@ -12,8 +12,8 @@ ifeq ($(TARGET),mips)
 	LDFLAGS += -static
 	CC = mips-softfloat-linux-uclibc-gcc
 endif
-CFLAGS_ALL = $(CFLAGS) --std=c99 -pedantic -Wall -w -DSRCDIR=$(s) -DOUTPUT_DIR=$(o)
-LDFLAGS_ALL = $(LDFLAGS)
+CFLAGS_ALL += $(CFLAGS) --std=c99 -pedantic -Wall -w -DSRCDIR=$(s) -DOUTPUT_DIR=$(o)
+LDFLAGS_ALL += $(LDFLAGS)
 
 # Magic to track dependencies on header files. They are stored in the .d files
 # by the compiler, then we load them on the next run and use them.
