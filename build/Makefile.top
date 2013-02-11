@@ -18,7 +18,7 @@ ifdef STATIC
 	CFLAGS += -static -DSTATIC
 	LDFLAGS += -static
 endif
-CFLAGS_ALL += $(CFLAGS) --std=c99 -pedantic -Wall -w -DOUTPUT_DIRECTORY=$(abspath $(O)) -DSOURCE_DIRECTORY=$(abspath $(S)) -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(abspath $(O))
+CFLAGS_ALL += $(CFLAGS) --std=gnu99 -pedantic -Wall -w -DOUTPUT_DIRECTORY=$(abspath $(O)) -DSOURCE_DIRECTORY=$(abspath $(S)) -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(abspath $(O))
 LDFLAGS_ALL += $(LDFLAGS)
 
 # Magic to track dependencies on header files. They are stored in the .d files
@@ -26,7 +26,15 @@ LDFLAGS_ALL += $(LDFLAGS)
 DEP_FILES := $(shell if test -d $(O)/.deps ; then find $(O)/.deps -name '*.d' ; fi | sort)
 include $(DEP_FILES)
 
+# Stuff to generate dependencies and link commands from the target_SOMETHING variables.
+ifdef STATIC
+LIB_SUFFIX :=.a
+else
+LIB_SUFFIX :=.so
+endif
+
 define COMMON_REGISTER
+$(1): $$(patsubst %,$(O)/.objs/$(3)%.o,$$($(2)_MODULES))
 $(1): CFLAGS_ALL += $$($(2)_CFLAGS)
 $(1): LDFLAGS_ALL += $$($(2)_LDFLAGS)
 ifdef STATIC
@@ -46,28 +54,19 @@ define REGISTER_BIN
 ifneq (,$(findstring ^$(RESTRICT),^$(1)))
 TARGETS += $(O)/$(1)
 endif
-$(O)/bin/$$(notdir $(1)): $$(patsubst %,$(O)/.objs/$$(dir $(1))/%.o,$$($$(notdir $(1))_MODULES))
-$(call COMMON_REGISTER,$(O)/bin/$$(notdir $(1)),$$(notdir $(1)))
+$(call COMMON_REGISTER,$(O)/bin/$$(notdir $(1)),$$(notdir $(1)),$$(dir $(1)))
 $(O)/$(1): $(O)/bin/$$(notdir $(1))
 	mkdir -p $$(dir $(O)/$(1))
 	ln -sf $$(abspath $$<) $$@
 endef
-
-ifdef STATIC
-LIB_SUFFIX :=.a
-else
-LIB_SUFFIX :=.so
-endif
 
 # Similar, for libraries
 define REGISTER_LIB
 ifneq (,$(findstring ^$(RESTRICT),^$(1)))
 TARGETS += $(O)/$(1)$(LIB_SUFFIX)
 endif
-$(O)/lib/$$(notdir $(1)).a: $$(patsubst %,$(O)/.objs/$$(dir $(1))/%.o,$$($$(notdir $(1))_MODULES))
-$(O)/lib/$$(notdir $(1)).so: $$(patsubst %,$(O)/.objs/$$(dir $(1))/%.o,$$($$(notdir $(1))_MODULES))
-$(call COMMON_REGISTER,$(O)/lib/$$(notdir $(1)).a,$$(notdir $(1)))
-$(call COMMON_REGISTER,$(O)/lib/$$(notdir $(1)).so,$$(notdir $(1)))
+$(call COMMON_REGISTER,$(O)/lib/$$(notdir $(1)).a,$$(notdir $(1)),$$(dir $(1)))
+$(call COMMON_REGISTER,$(O)/lib/$$(notdir $(1)).so,$$(notdir $(1)),$$(dir $(1)))
 $(O)/$(1).a: $(O)/lib/$$(notdir $(1)).a
 	mkdir -p $$(dir $(O)/$(1))
 	ln -sf $$(abspath $$<) $$@
@@ -89,8 +88,9 @@ endef
 
 # Generic rules to compile and link
 $(O)/.objs/%.o: $(S)/%.c
-	mkdir -p $(dir $@ $(patsubst .objs%.o,.deps%.d,$@))
-	$(CC) $(CFLAGS_ALL) -c $< -o $@ -MD -MF $(patsubst .objs%.o,.deps%.d,$@)
+	mkdir -p $(dir $@ $(subst .objs/,.deps/,$@))
+	$(CC) $(CFLAGS_ALL) -c $< -o $@ -MD -MF $(patsubst %.o,%.pre,$(subst .objs/,.deps/,$@))
+	$(S)/build/normalize_dep_file.pl $(O) $(patsubst %.o,%.pre,$(subst .objs/,.deps/,$@)) >$(patsubst %.o,%.d,$(subst .objs/,.deps/,$@))
 
 $(O)/bin/%:
 	mkdir -p $(dir $@)
