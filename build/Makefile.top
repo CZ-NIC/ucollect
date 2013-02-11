@@ -1,6 +1,5 @@
 all:
 
-MAKEFLAGS = -rR # Disable built-in rules. Speeds things up and there's less garbage in debug output.
 TARGETS = # To be filled in by included makefiles
 # Build compiler flags
 ifdef RELEASE
