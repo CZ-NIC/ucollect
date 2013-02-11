@@ -218,9 +218,4 @@ Missing bits
   binaries (so correct paths are embedded in them) with output files
   being set to `PREFIX/{bin/lib}`. The `PREFIX` would be new variable.
   But the plug-ins might want to go somewhere else.
-* Generating libraries (similar to binaries), linking libraries.
-* Add support for compiling shared libraries. Maybe generate both
-  static and dynamic? (objekty s -fPIC).
-* Create the wrappers.
-* Create the RESTRICT thing, to select targets.
-* Provide -R to add library paths.
+* Linking statically.
