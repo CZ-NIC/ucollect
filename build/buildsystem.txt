@@ -177,13 +177,13 @@ The system allows for building in a separate directory from the
 sources. It can be used when the source is on read-only filesystem or
 when there should be multiple builds with different options.
 
-The `o` variable specifies the directory where results will be
+The `O` variable specifies the directory where results will be
 created. The `s` where the sources reside.
 
 The easiest way to create a new build directory is to copy the
 top-level `Makefile` to the place where the build should happen. Then,
-the `s` variable there should be adjusted to point to the sources
-directory. Optionally, other options can be tweaked there. The `o`
+the `S` variable there should be adjusted to point to the sources
+directory. Optionally, other options can be tweaked there. The `O`
 variable can be left intact.
 
 Defines passed to the compiler
@@ -219,11 +219,8 @@ Missing bits
   being set to `PREFIX/{bin/lib}`. The `PREFIX` would be new variable.
   But the plug-ins might want to go somewhere else.
 * Generating libraries (similar to binaries), linking libraries.
-* Support for `STATIC`.
 * Add support for compiling shared libraries. Maybe generate both
   static and dynamic? (objekty s -fPIC).
-* Fix the variable names.
 * Create the wrappers.
 * Create the RESTRICT thing, to select targets.
 * Provide -R to add library paths.
-* The page size (getconf PAGE_SIZE).
