@@ -32,7 +32,9 @@ include $(DEP_FILES)
 # binary_name_MODULES := main other_file third_file
 # $(eval $(call REGISTER_BIN,binary_name,src/path/to/directory))
 define REGISTER_BIN
+ifneq (,$(findstring ^$(RESTRICT),^$(1)))
 TARGETS += $(O)/$(1)
+endif
 $(O)/bin/$$(notdir $(1)): $$(patsubst %,$(O)/.objs/$$(dir $(1))/%.o,$$($$(notdir $(1))_MODULES))
 $(O)/$(1): CFLAGS_ALL += $$($$(notdir $(1))_CFLAGS)
 $(O)/$(1): LDFLAGS_ALL += $$($$(notdir $(1))_LDFLAGS)
@@ -42,7 +44,9 @@ $(O)/$(1): $(O)/bin/$$(notdir $(1))
 endef
 
 define REGISTER_DOC
+ifneq (,$(findstring ^$(RESTRICT),^$(1)))
 TARGETS += $(O)/$(1).html
+endif
 $(O)/docs/$$(notdir $(1)).html: $(S)/$$(addsuffix .txt,$(1))
 $(O)/$(1).html: $(O)/docs/$$(notdir $(1)).html
 	mkdir -p $$(dir $(O)/$(1))

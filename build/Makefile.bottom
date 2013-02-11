@@ -9,6 +9,6 @@ endif
 all: $(TARGETS)
 
 clean:
-	rm -rf bin .objs .deps $(TARGETS)
+	rm -rf $(O)/bin $(O)/docs $(O)/.objs $(O)/.deps $(TARGETS)
 
 .PHONY: all clean
