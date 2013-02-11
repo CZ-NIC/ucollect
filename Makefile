@@ -3,4 +3,4 @@
 o := .
 s := .
 
-include $(o)/Makefile.sub
+include $(s)/Makefile.dir

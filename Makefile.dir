@@ -2,6 +2,8 @@ include $(s)/build/Makefile.top
 
 # List of all makefiles in direct subdirectories. If a new subdirectory is
 # made, it goes here.
-include $(s)/src/Makefile.sub
+include $(s)/src/Makefile.dir
+# This one for documentation for the build system
+include $(s)/src/Makefile.dir
 
 include $(s)/build/Makefile.bottom
