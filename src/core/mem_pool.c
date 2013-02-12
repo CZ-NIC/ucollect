@@ -33,7 +33,7 @@ static struct pool_page *page_get(size_t size, const char *name) {
 	if (result == MAP_FAILED)
 		die("Couldn't get page of %zu bytes for pool %s (%s)", size, name, strerror(errno));
 	result->next = NULL;
-	result->size = size - sizeof(struct pool_page);
+	result->size = size;
 	return result;
 }
 
@@ -84,7 +84,7 @@ struct mem_pool *mem_pool_create(const char *name) {
 
 	// Allocate the pool control structure from the page
 	unsigned char *pos = page->data;
-	size_t available = page->size;
+	size_t available = page->size - sizeof *page;
 	struct mem_pool *pool = page_alloc(&pos, &available, sizeof(struct mem_pool) + name_len);
 
 	// Initialize the values.
@@ -127,7 +127,7 @@ void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
 		page->next = pool->first->next;
 		pool->first->next = page;
 		// Allocate.
-		size_t available = page->size;
+		size_t available = page->size - sizeof *page;
 		unsigned char *pos = page->data;
 		result = page_alloc(&pos, &available, size);
 		assert(result); // We asked for page large enough, must not fail.
@@ -145,5 +145,12 @@ void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
 }
 
 void mem_pool_reset(struct mem_pool *pool) {
-	// TODO: Not implemented
+	// Release all the pages except the first one (may be NULL).
+	page_walk_and_delete(pool->first->next, pool->name);
+	// Reset the pool position
+	pool->pos = pool->first->data;
+	pool->available = pool->first->size - sizeof *pool->first;
+	// Allocate the pool (again) from the page.
+	struct mem_pool *the_pool = page_alloc(&pool->pos, &pool->available, sizeof *pool + 1 + strlen(pool->name));
+	assert(pool == the_pool); // It should be the same pool.
 }
