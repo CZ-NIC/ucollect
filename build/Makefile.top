@@ -18,7 +18,7 @@ ifdef STATIC
 	CFLAGS += -static -DSTATIC
 	LDFLAGS += -static
 endif
-CFLAGS_ALL += $(CFLAGS) --std=gnu99 -pedantic -Wall -w -DOUTPUT_DIRECTORY=$(abspath $(O)) -DSOURCE_DIRECTORY=$(abspath $(S)) -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(abspath $(O))
+CFLAGS_ALL += $(CFLAGS) --std=gnu99 -pedantic -Wall -Wextra -DOUTPUT_DIRECTORY=$(abspath $(O)) -DSOURCE_DIRECTORY=$(abspath $(S)) -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(abspath $(O))
 LDFLAGS_ALL += $(LDFLAGS)
 
 # Magic to track dependencies on header files. They are stored in the .d files
