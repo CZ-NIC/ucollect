@@ -44,8 +44,10 @@ static void page_return(struct pool_page *page) {
 
 static const size_t align_for = sizeof(unsigned char *);
 
-// Allocate some memory from the given position of given size. Updates pos and available.
-// Returns the pointer or NULL if there is not enough memory.
+/*
+ * Allocate some memory from the given position of given size. Updates pos and available.
+ * Returns the pointer or NULL if there is not enough memory.
+ */
 static void *page_alloc(unsigned char **pos, size_t *available, size_t size) {
 	if (*available < size)
 		return NULL;
