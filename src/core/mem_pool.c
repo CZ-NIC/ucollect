@@ -24,7 +24,7 @@ struct mem_pool {
 	size_t available;
 };
 
-// Get a page of given total size.
+// Get a page of given total size. Data size will be smaller.
 static struct pool_page *page_get(size_t size) {
 	// TODO: Some page caching
 	struct pool_page *result = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS, -1, 0);
@@ -107,9 +107,35 @@ void mem_pool_destroy(struct mem_pool *pool) {
 
 void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
 	void *result = page_alloc(&pool->pos, &pool->available, size);
-	if (!result) {
-		// There's not enough space in this page, get another one.
-		assert(0); // TODO: Not implemented yet
+	if (!result) { // There's not enough space in this page, get another one.
+		/*
+		 * Round the size to the nearest bigger full page. This is here because
+		 * the request can be larger than a single page.
+		 */
+		size_t page_size = (size + sizeof(struct pool_page) + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
+		/*
+		 * Get the page and put it into the pool. Keep the first page first,
+		 * it is special as it contains the pool itself, so we want to have
+		 * it at hand. Otherwise, the order does not matter, it is only
+		 * for clean up.
+		 */
+		struct pool_page *page = page_get(page_size);
+		page->next = pool->first->next;
+		pool->first->next = page;
+		// Allocate.
+		size_t available = page->size;
+		unsigned char *pos = page->data;
+		result = page_alloc(&pos, &available, size);
+		assert(result); // We asked for page large enough, must not fail.
+		/*
+		 * Update the internal data in the pool. It may have happened this
+		 * was a large allocation close to page size and the rest of the
+		 * previous page is bigger. So we check.
+		 */
+		if (available > pool->available) {
+			pool->available = available;
+			pool->pos = pos;
+		}
 	}
 	return result;
 }
