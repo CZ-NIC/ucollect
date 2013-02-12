@@ -69,10 +69,10 @@ static void *page_alloc(unsigned char **pos, size_t *available, size_t size) {
 }
 
 static void page_walk_and_delete(struct pool_page *page, const char *name) {
-	while (page) {
-		struct pool_page *next_page = page->next;
+	// As the name is in the first page, do it from the end, using recursion.
+	if (page) {
+		page_walk_and_delete(page->next, name);
 		page_return(page, name);
-		page = next_page;
 	}
 }
 
