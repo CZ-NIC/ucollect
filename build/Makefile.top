@@ -18,7 +18,14 @@ ifdef STATIC
 	CFLAGS += -static -DSTATIC
 	LDFLAGS += -static
 endif
-CFLAGS_ALL += $(CFLAGS) --std=gnu99 -pedantic -Wall -w -DOUTPUT_DIRECTORY=$(abspath $(O)) -DSOURCE_DIRECTORY=$(abspath $(S)) -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(abspath $(O))
+ifdef VERBOSE
+	Q=
+	M=@\#
+else
+	Q=@
+	M=@echo " "
+endif
+CFLAGS_ALL += $(CFLAGS) --std=gnu99 -pedantic -Wall -Wextra -DOUTPUT_DIRECTORY=$(abspath $(O)) -DSOURCE_DIRECTORY=$(abspath $(S)) -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(abspath $(O))
 LDFLAGS_ALL += $(LDFLAGS)
 
 # Magic to track dependencies on header files. They are stored in the .d files
@@ -56,8 +63,9 @@ TARGETS += $(O)/$(1)
 endif
 $(call COMMON_REGISTER,$(O)/bin/$$(notdir $(1)),$$(notdir $(1)),$$(dir $(1)))
 $(O)/$(1): $(O)/bin/$$(notdir $(1))
-	mkdir -p $$(dir $(O)/$(1))
-	ln -sf $$(abspath $$<) $$@
+	$(M) LN $$@
+	$(Q)mkdir -p $$(dir $(O)/$(1))
+	$(Q)ln -sf $$(abspath $$<) $$@
 endef
 
 # Similar, for libraries
@@ -68,11 +76,13 @@ endif
 $(call COMMON_REGISTER,$(O)/lib/$$(notdir $(1)).a,$$(notdir $(1)),$$(dir $(1)))
 $(call COMMON_REGISTER,$(O)/lib/$$(notdir $(1)).so,$$(notdir $(1)),$$(dir $(1)))
 $(O)/$(1).a: $(O)/lib/$$(notdir $(1)).a
-	mkdir -p $$(dir $(O)/$(1))
-	ln -sf $$(abspath $$<) $$@
+	$(M) LN $$@
+	$(Q)mkdir -p $$(dir $(O)/$(1))
+	$(Q)ln -sf $$(abspath $$<) $$@
 $(O)/$(1).so: $(O)/lib/$$(notdir $(1)).so
-	mkdir -p $$(dir $(O)/$(1))
-	ln -sf $$(abspath $$<) $$@
+	$(M) LN $$@
+	$(Q)mkdir -p $$(dir $(O)/$(1))
+	$(Q)ln -sf $$(abspath $$<) $$@
 endef
 
 # Similar, for documentation
@@ -82,29 +92,35 @@ TARGETS += $(O)/$(1).html
 endif
 $(O)/docs/$$(notdir $(1)).html: $(S)/$$(addsuffix .txt,$(1))
 $(O)/$(1).html: $(O)/docs/$$(notdir $(1)).html
-	mkdir -p $$(dir $(O)/$(1))
-	ln -sf $$(abspath $$<) $$@
+	$(M) LN $$@
+	$(Q)mkdir -p $$(dir $(O)/$(1))
+	$(Q)ln -sf $$(abspath $$<) $$@
 endef
 
 # Generic rules to compile and link
 $(O)/.objs/%.o: $(S)/%.c
-	mkdir -p $(dir $@ $(subst .objs/,.deps/,$@))
-	$(CC) $(CFLAGS_ALL) -c $< -o $@ -MD -MF $(patsubst %.o,%.pre,$(subst .objs/,.deps/,$@))
-	$(S)/build/normalize_dep_file.pl $(O) $(patsubst %.o,%.pre,$(subst .objs/,.deps/,$@)) >$(patsubst %.o,%.d,$(subst .objs/,.deps/,$@))
+	$(M) CC $@
+	$(Q)mkdir -p $(dir $@ $(subst .objs/,.deps/,$@))
+	$(Q)$(CC) $(CFLAGS_ALL) -c $< -o $@ -MD -MF $(patsubst %.o,%.pre,$(subst .objs/,.deps/,$@))
+	$(Q)$(S)/build/normalize_dep_file.pl $(O) $(patsubst %.o,%.pre,$(subst .objs/,.deps/,$@)) >$(patsubst %.o,%.d,$(subst .objs/,.deps/,$@))
 
 $(O)/bin/%:
-	mkdir -p $(dir $@)
-	$(CC) $(LDFLAGS_ALL) $(LINK_LIBRARIES) $(filter %.o,$^) -o $@
+	$(M) LD $@
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) $(LDFLAGS_ALL) $(LINK_LIBRARIES) $(filter %.o,$^) -o $@
 
 $(O)/lib/%.a:
-	mkdir -p $(dir $@)
-	$(AR) -rc $@ $(filter %.o,$^)
+	$(M) AR $@
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(AR) -rc $@ $(filter %.o,$^)
 
 $(O)/lib/%.so: CFLAGS_ALL += -fPIC
 $(O)/lib/%.so:
-	mkdir -p $(dir $@)
-	$(CC) $(LDFLAGS_ALL) -shared -o $@ $(filter %.o,$^)
+	$(M) LD $@
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) $(LDFLAGS_ALL) -shared -o $@ $(filter %.o,$^)
 
 $(O)/docs/%:
-	mkdir -p $(dir $@)
-	$(ASCIIDOC) -o $@ $<
+	$(M) DOC-HTML $@
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(ASCIIDOC) -o $@ $<

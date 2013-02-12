@@ -169,6 +169,9 @@ TARGET::
   change the compiler used and flags. Currently, the value of `mips`
   is supported. It also sets the `STATIC` variable, so the generated
   output is easier to just copy to the target machine.
+VERBOSE::
+  By default, the system prints a short summary (`CC file.o`). If this
+  is set to something, it outputs the whole compilation command.
 
 Separate build directory
 ------------------------
