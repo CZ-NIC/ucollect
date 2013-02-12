@@ -22,24 +22,26 @@ struct mem_pool {
 	unsigned char *pos;
 	// How many bytes there are for allocations.
 	size_t available;
+	// The name of this memory pool (for debug and errors).
+	char name[];
 };
 
 // Get a page of given total size. Data size will be smaller.
-static struct pool_page *page_get(size_t size) {
+static struct pool_page *page_get(size_t size, const char *name) {
 	// TODO: Some page caching
 	struct pool_page *result = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS, -1, 0);
 	if (result == MAP_FAILED)
-		die("Couldn't get page of %zu bytes (%s)", size, strerror(errno));
+		die("Couldn't get page of %zu bytes for pool %s (%s)", size, name, strerror(errno));
 	result->next = NULL;
 	result->size = size - sizeof(struct pool_page);
 	return result;
 }
 
 // Release a given page (previously allocated by page_get).
-static void page_return(struct pool_page *page) {
+static void page_return(struct pool_page *page, const char *name) {
 	// TODO: Cache the page?
 	if (munmap(page, page->size) != 0)
-		die("Couldn't return page %p of %zu bytes (%s)", (void *) page, page->size, strerror(errno));
+		die("Couldn't return page %p of %zu bytes from pool %s (%s)", (void *) page, page->size, name, strerror(errno));
 }
 
 static const size_t align_for = sizeof(unsigned char *);
@@ -66,23 +68,24 @@ static void *page_alloc(unsigned char **pos, size_t *available, size_t size) {
 	return result;
 }
 
-static void page_walk_and_delete(struct pool_page *page) {
+static void page_walk_and_delete(struct pool_page *page, const char *name) {
 	while (page) {
 		struct pool_page *next_page = page->next;
-		page_return(page);
+		page_return(page, name);
 		page = next_page;
 	}
 }
 
-struct mem_pool *mem_pool_create() {
+struct mem_pool *mem_pool_create(const char *name) {
+	size_t name_len = 1 + strlen(name);
 	// Get the first page for the pool
-	assert(PAGE_SIZE > sizeof(struct pool_page) + sizeof(struct mem_pool));
-	struct pool_page *page = page_get(PAGE_SIZE);
+	assert(PAGE_SIZE > sizeof(struct pool_page) + sizeof(struct mem_pool) + name_len);
+	struct pool_page *page = page_get(PAGE_SIZE, name);
 
 	// Allocate the pool control structure from the page
 	unsigned char *pos = page->data;
 	size_t available = page->size;
-	struct mem_pool *pool = page_alloc(&pos, &available, sizeof(struct mem_pool));
+	struct mem_pool *pool = page_alloc(&pos, &available, sizeof(struct mem_pool) + name_len);
 
 	// Initialize the values.
 	assert(pool); // Should not fail here, the page should be large enough and empty.
@@ -91,6 +94,7 @@ struct mem_pool *mem_pool_create() {
 		.pos = pos,
 		.available = available
 	};
+	strcpy(pool->name, name); // OK to use strcpy, we allocated enough extra space.
 
 	return pool;
 }
@@ -102,7 +106,7 @@ void mem_pool_destroy(struct mem_pool *pool) {
 	 *
 	 * Start from the first one, to delete all.
 	 */
-	page_walk_and_delete(pool->first);
+	page_walk_and_delete(pool->first, pool->name);
 }
 
 void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
@@ -119,7 +123,7 @@ void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
 		 * it at hand. Otherwise, the order does not matter, it is only
 		 * for clean up.
 		 */
-		struct pool_page *page = page_get(page_size);
+		struct pool_page *page = page_get(page_size, pool->name);
 		page->next = pool->first->next;
 		pool->first->next = page;
 		// Allocate.
