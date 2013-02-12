@@ -39,7 +39,7 @@ static struct pool_page *page_get(size_t size) {
 static void page_return(struct pool_page *page) {
 	// TODO: Cache the page?
 	if (munmap(page, page->size) != 0)
-		die("Couldn't return page %p of %zu bytes (%s)", page, page->size, strerror(errno));
+		die("Couldn't return page %p of %zu bytes (%s)", (void *) page, page->size, strerror(errno));
 }
 
 static const size_t align_for = sizeof(unsigned char *);
@@ -66,7 +66,15 @@ static void *page_alloc(unsigned char **pos, size_t *available, size_t size) {
 	return result;
 }
 
-struct mem_pool *pool_create() {
+static void page_walk_and_delete(struct pool_page *page) {
+	while (page) {
+		struct pool_page *next_page = page->next;
+		page_return(page);
+		page = next_page;
+	}
+}
+
+struct mem_pool *mem_pool_create() {
 	// Get the first page for the pool
 	assert(PAGE_SIZE > sizeof(struct pool_page) + sizeof(struct mem_pool));
 	struct pool_page *page = page_get(PAGE_SIZE);
@@ -85,4 +93,27 @@ struct mem_pool *pool_create() {
 	};
 
 	return pool;
+}
+
+void mem_pool_destroy(struct mem_pool *pool) {
+	/*
+	 * Walk the pages and release each of them. The pool itself is in one of them,
+	 * so there's no need to explicitly delete it.
+	 *
+	 * Start from the first one, to delete all.
+	 */
+	page_walk_and_delete(pool->first);
+}
+
+void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
+	void *result = page_alloc(&pool->pos, &pool->available, size);
+	if (!result) {
+		// There's not enough space in this page, get another one.
+		assert(0); // TODO: Not implemented yet
+	}
+	return result;
+}
+
+void mem_pool_reset(struct mem_pool *pool) {
+	// TODO: Not implemented
 }
