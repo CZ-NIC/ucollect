@@ -29,9 +29,9 @@ struct mem_pool {
 // Get a page of given total size. Data size will be smaller.
 static struct pool_page *page_get(size_t size, const char *name) {
 	// TODO: Some page caching
-	struct pool_page *result = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS, -1, 0);
+	struct pool_page *result = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (result == MAP_FAILED)
-		die("Couldn't get page of %zu bytes for pool %s (%s)", size, name, strerror(errno));
+		die("Couldn't get page of %zu bytes for pool '%s' (%s)\n", size, name, strerror(errno));
 	result->next = NULL;
 	result->size = size;
 	return result;
@@ -41,7 +41,7 @@ static struct pool_page *page_get(size_t size, const char *name) {
 static void page_return(struct pool_page *page, const char *name) {
 	// TODO: Cache the page?
 	if (munmap(page, page->size) != 0)
-		die("Couldn't return page %p of %zu bytes from pool %s (%s)", (void *) page, page->size, name, strerror(errno));
+		die("Couldn't return page %p of %zu bytes from pool '%s' (%s)\n", (void *) page, page->size, name, strerror(errno));
 }
 
 static const size_t align_for = sizeof(unsigned char *);
