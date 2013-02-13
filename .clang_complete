@@ -1,1 +1,3 @@
 -DPAGE_SIZE=4096
+-x=c
+-std=gnu99
