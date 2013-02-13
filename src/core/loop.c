@@ -1,11 +1,11 @@
 #include "loop.h"
 #include "mem_pool.h"
 
-#include <stdbool.h>
+#include <signal.h> // for sig_atomic_t
 
 struct loop {
 	struct mem_pool *permanent_pool;
-	bool stopped;
+	sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 };
 
 struct loop *loop_create() {
@@ -13,13 +13,13 @@ struct loop *loop_create() {
 	struct loop *result = mem_pool_alloc(pool, sizeof *result);
 	*result = (struct loop) {
 		.permanent_pool = pool,
-		.stopped = false
+		.stopped = 0
 	};
 	return result;
 }
 
-void loop_stop(struct loop *loop) {
-	loop->stopped = true;
+void loop_break(struct loop *loop) {
+	loop->stopped = 1;
 }
 
 void loop_run(struct loop *loop) {
