@@ -11,6 +11,7 @@ struct pcap_interface {
 	const char *name;
 	pcap_t *pcap;
 	int fd;
+	size_t offset;
 };
 
 struct loop {
@@ -51,6 +52,16 @@ void loop_destroy(struct loop *loop) {
 	// This mempool must be destroyed last, as the loop is allocated from it
 	mem_pool_destroy(loop->permanent_pool);
 }
+
+// How much data should be skipped on each type of pcap. Borrowed from the DNS traffic analyser project.
+static const size_t ip_offset_table[] =
+{
+	[DLT_LOOP] = 4,
+	[DLT_NULL] = 4,    /* BSD LoopBack       */
+	[DLT_EN10MB] = 14, /* EthernetII, I hope */
+	[DLT_RAW] = 0,     /* RAW IP             */
+	[DLT_PFLOG] = 28,  /* BSD pflog          */
+};
 
 bool loop_add_pcap(struct loop *loop, const char *interface) {
 	ulog(LOG_INFO, "Initializing PCAP on %s\n", interface);
@@ -101,10 +112,12 @@ bool loop_add_pcap(struct loop *loop, const char *interface) {
 	struct pcap_interface *interfaces = mem_pool_alloc(loop->permanent_pool, (loop->pcap_interface_count + 1) * sizeof *interfaces);
 	// Copy the old interfaces
 	memcpy(interfaces, loop->pcap_interfaces, loop->pcap_interface_count * sizeof *interfaces);
+	assert(pcap_datalink(pcap) <= DLT_PFLOG);
 	interfaces[loop->pcap_interface_count ++] = (struct pcap_interface) {
 		.name = mem_pool_strdup(loop->permanent_pool, interface),
 		.pcap = pcap,
-		.fd = fd
+		.fd = fd,
+		.offset = ip_offset_table[pcap_datalink(pcap)]
 	};
 	loop->pcap_interfaces = interfaces;
 	return true;
