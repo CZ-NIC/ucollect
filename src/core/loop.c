@@ -41,8 +41,18 @@ struct loop {
 	sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 };
 
+// Handle one packet.
+static void packet_handler(struct pcap_interface *interface, const struct pcap_pkthdr *header, const unsigned char *data) {
+	(void) data;
+	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s\n", header->caplen - interface->offset, interface->name);
+}
+
 static void pcap_read(struct pcap_interface *interface) {
-	ulog(LOG_DEBUG, "Read on interface %s\n", interface->name);
+	ulog(LOG_DEBUG_VERBOSE, "Read on interface %s\n", interface->name);
+	int result = pcap_dispatch(interface->pcap, -1, (pcap_handler) packet_handler, (unsigned char *) interface);
+	if (result == -1)
+		die("Error reading packets from PCAP on %s (%s)\n", interface->name, pcap_geterr(interface->pcap));
+	ulog(LOG_DEBUG_VERBOSE, "Handled %d packets on %s\n", result, interface->name);
 }
 
 static void epoll_register_pcap(struct loop *loop, size_t index, int op) {
@@ -128,8 +138,6 @@ static const size_t ip_offset_table[] =
 	[DLT_RAW] = 0,     /* RAW IP             */
 	[DLT_PFLOG] = 28,  /* BSD pflog          */
 };
-
-
 
 bool loop_add_pcap(struct loop *loop, const char *interface) {
 	ulog(LOG_INFO, "Initializing PCAP on %s\n", interface);
