@@ -145,7 +145,6 @@ bool loop_add_pcap(struct loop *loop, const char *interface) {
 			pcap_close(pcap);
 			return false;
 	}
-	// TODO: Handle the errors here. There's a list of warnings and list in the man page.
 	// Set it non-blocking. We'll keep switching between pcaps of interfaces and other events.
 	if (pcap_setnonblock(pcap, 1, errbuf) == -1) {
 		ulog(LOG_ERROR, "Can't set PCAP on %s non-blocking (%s)\n", interface, errbuf);
@@ -162,7 +161,6 @@ bool loop_add_pcap(struct loop *loop, const char *interface) {
 	}
 
 	// Put the PCAP into the event loop.
-	// TODO: Register with epoll.
 	/*
 	 * FIXME: This throws away (and leaks) the old array for the interfaces every time.
 	 * This is not currently a problem, because we use single interface only and
