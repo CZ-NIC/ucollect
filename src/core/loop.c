@@ -11,11 +11,18 @@
 #include <pcap/pcap.h>
 #include <sys/epoll.h>
 
+struct epoll_handler {
+	void (*handler)(void *);
+};
+
 struct pcap_interface {
 	/*
 	 * This will be always set to pcap_read. Trick to make the epollhandling
 	 * simpler ‒ we put this struct directly as the user data to epoll and the
 	 * generic handler calls the handler found, no matter what type it is.
+	 *
+	 * This item must be first in the data structure. It'll be then casted to
+	 * the epoll_handler, which contains a function pointer as the first element.
 	 */
 	void (*handler)(struct pcap_interface *);
 	// Link back to the loop owning this pcap. For epoll handler.
@@ -74,7 +81,27 @@ void loop_break(struct loop *loop) {
 void loop_run(struct loop *loop) {
 	ulog(LOG_INFO, "Running the main loop\n");
 	while (!loop->stopped) {
-		// TODO
+		struct epoll_event event;
+		// TODO: Implement timeouts.
+		// TODO: Support for reconfigure signal (epoll_pwait then).
+		int ready = epoll_wait(loop->epoll_fd, &event, 1, -1);
+		if (ready == -1) {
+			if (errno == EINTR) {
+				ulog(LOG_WARN, "epoll_wait on %d interrupted, retry\n", loop->epoll_fd);
+				continue;
+			}
+			die("epoll_wait on %d failed: %s\n", loop->epoll_fd, strerror(errno));
+		} else if (ready == 0) {
+			// This is strange. We wait for 1 event idefinitelly and get 0
+			ulog(LOG_WARN, "epoll_wait on %d returned 0 events\n", loop->epoll_fd);
+		} else {
+			/*
+			 * We have the event. Now, the data has the pointer to the handler
+			 * as the first element. Therefore, we can cast it to the handler.
+			 */
+			struct epoll_handler *handler = event.data.ptr;
+			handler->handler(event.data.ptr);
+		}
 	}
 }
 
