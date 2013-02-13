@@ -85,6 +85,25 @@ bool loop_add_pcap(struct loop *loop, const char *interface) {
 
 	// Activate it
 	result = pcap_activate(pcap);
+	switch (result) {
+		// We need to manually distinguish what are errors, what warnings, etc.
+		case 0: // All OK
+			break;
+		case PCAP_WARNING_PROMISC_NOTSUP:
+		case PCAP_WARNING_TSTAMP_TYPE_NOTSUP:
+		case PCAP_WARNING:
+			// These are just warnings. Display them, but continue.
+			ulog(LOG_WARN, "PCAP on %s: %s\n", interface, pcap_geterr(pcap));
+			break;
+		default:
+			/*
+			 * Everything is an error. Even if it wasn't an error, we don't
+			 * know it explicitly, so consider it error.
+			 */
+			ulog(LOG_ERROR, "PCAP on %s: %s, closing\n", interface, pcap_geterr(pcap));
+			pcap_close(pcap);
+			return false;
+	}
 	// TODO: Handle the errors here. There's a list of warnings and list in the man page.
 	// Set it non-blocking. We'll keep switching between pcaps of interfaces and other events.
 	if (pcap_setnonblock(pcap, 1, errbuf) == -1) {
