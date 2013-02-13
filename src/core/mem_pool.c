@@ -28,6 +28,7 @@ struct mem_pool {
 
 // Get a page of given total size. Data size will be smaller.
 static struct pool_page *page_get(size_t size, const char *name) {
+	ulog(LOG_DEBUG, "Getting page %zu large for pool '%s'\n", size, name);
 	// TODO: Some page caching
 	struct pool_page *result = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (result == MAP_FAILED)
@@ -39,6 +40,7 @@ static struct pool_page *page_get(size_t size, const char *name) {
 
 // Release a given page (previously allocated by page_get).
 static void page_return(struct pool_page *page, const char *name) {
+	ulog(LOG_DEBUG, "Releasing page %zu large from pool '%s'\n", page->size, name);
 	// TODO: Cache the page?
 	if (munmap(page, page->size) != 0)
 		die("Couldn't return page %p of %zu bytes from pool '%s' (%s)\n", (void *) page, page->size, name, strerror(errno));
@@ -77,6 +79,7 @@ static void page_walk_and_delete(struct pool_page *page, const char *name) {
 }
 
 struct mem_pool *mem_pool_create(const char *name) {
+	ulog(LOG_DEBUG, "Creating memory pool '%s'\n", name);
 	size_t name_len = 1 + strlen(name);
 	// Get the first page for the pool
 	assert(PAGE_SIZE > sizeof(struct pool_page) + sizeof(struct mem_pool) + name_len);
@@ -100,6 +103,7 @@ struct mem_pool *mem_pool_create(const char *name) {
 }
 
 void mem_pool_destroy(struct mem_pool *pool) {
+	ulog(LOG_DEBUG, "Destroying memory pool '%s'\n", pool->name);
 	/*
 	 * Walk the pages and release each of them. The pool itself is in one of them,
 	 * so there's no need to explicitly delete it.

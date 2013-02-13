@@ -1,5 +1,6 @@
 #include "loop.h"
 #include "mem_pool.h"
+#include "util.h"
 
 #include <signal.h> // for sig_atomic_t
 
@@ -9,6 +10,7 @@ struct loop {
 };
 
 struct loop *loop_create() {
+	ulog(LOG_DEBUG, "Creating a main loop\n");
 	struct mem_pool *pool = mem_pool_create("Global permanent pool");
 	struct loop *result = mem_pool_alloc(pool, sizeof *result);
 	*result = (struct loop) {
@@ -23,12 +25,14 @@ void loop_break(struct loop *loop) {
 }
 
 void loop_run(struct loop *loop) {
+	ulog(LOG_DEBUG, "Running the main loop\n");
 	while (!loop->stopped) {
 		// TODO
 	}
 }
 
 void loop_destroy(struct loop *loop) {
+	ulog(LOG_DEBUG, "Releasing the main loop\n");
 	// This mempool must be destroyed last, as the loop is allocated from it
 	mem_pool_destroy(loop->permanent_pool);
 }

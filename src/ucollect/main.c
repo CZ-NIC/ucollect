@@ -4,7 +4,6 @@
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
-#include <stdio.h>
 
 // The loop is global, so we can use it from the signal handler.
 static struct loop *loop;
@@ -49,7 +48,6 @@ int main(int argc, const char* argv[]) {
 
 	// Run until a stop signal comes.
 	loop_run(loop);
-	printf("Stopped\n");
 	// TODO: Release all the plugins here.
 	loop_destroy(loop);
 	return 0;
