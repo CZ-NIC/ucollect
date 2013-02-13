@@ -21,9 +21,14 @@ static const int stop_signals[] = {
 	SIGTERM
 };
 
+static void cleanup() {
+	// TODO: Release all the plugins here.
+	loop_destroy(loop);
+}
+
 int main(int argc, const char* argv[]) {
-	(void) argc;
-	(void) argv;
+	if (argc != 2)
+		die("usage: %s <interface name>\n", argv[0]);
 
 	// Create the loop.
 	loop = loop_create();
@@ -44,11 +49,16 @@ int main(int argc, const char* argv[]) {
 			die("Could not set signal handler for signal %d (%s)\n", stop_signals[i], strerror(errno));
 	}
 
+	if (!loop_add_pcap(loop, argv[1])) {
+		cleanup();
+		return 1;
+	}
+
 	// TODO: Load all the plugins here.
 
 	// Run until a stop signal comes.
 	loop_run(loop);
-	// TODO: Release all the plugins here.
-	loop_destroy(loop);
+
+	cleanup();
 	return 0;
 }
