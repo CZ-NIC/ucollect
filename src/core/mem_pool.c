@@ -158,3 +158,10 @@ void mem_pool_reset(struct mem_pool *pool) {
 	struct mem_pool *the_pool = page_alloc(&pool->pos, &pool->available, sizeof *pool + 1 + strlen(pool->name));
 	assert(pool == the_pool); // It should be the same pool.
 }
+
+char *mem_pool_strdup(struct mem_pool *pool, const char *string) {
+	size_t length = strlen(string);
+	char *result = mem_pool_alloc(pool, length + 1);
+	strcpy(result, string);
+	return result;
+}

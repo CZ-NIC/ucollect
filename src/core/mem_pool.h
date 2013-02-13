@@ -16,4 +16,7 @@ void *mem_pool_alloc(struct mem_pool *pool, size_t size) __attribute__((malloc))
 // Free all memory allocated from this memory pool. The pool can be used to get more allocations.
 void mem_pool_reset(struct mem_pool *pool) __attribute__((nonnull));
 
+// Some convenience functions
+char *mem_pool_strdup(struct mem_pool *pool, const char *string) __attribute__((malloc)) __attribute__((nonnull));
+
 #endif
