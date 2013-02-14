@@ -3,6 +3,7 @@
 #include "util.h"
 #include "context.h"
 #include "plugin.h"
+#include "packet.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -92,22 +93,15 @@ struct loop {
 	sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 };
 
-// TODO: Place this publicly, so the plugin can in.
-struct packet_info {
-	size_t length;
-	const unsigned char *data;
-	const char *interface;
-	// TODO: Define the rest (addresses, protocols, etc).
-};
-
 // Handle one packet.
 static void packet_handler(struct pcap_interface *interface, const struct pcap_pkthdr *header, const unsigned char *data) {
 	struct packet_info info = {
 		.length = header->caplen - interface->offset,
-		.data = data,
+		.data = data + interface->offset,
 		.interface = interface->name
 	};
 	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s\n", info.length, interface->name);
+	parse_packet(&info);
 	for (size_t i = 0; i < interface->loop->plugin_count; i ++)
 		plugin_packet(&interface->loop->plugins[i], &info);
 }
