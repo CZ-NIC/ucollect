@@ -11,6 +11,12 @@
 #include <pcap/pcap.h>
 #include <sys/epoll.h>
 
+// TODO: Should these be configurable? Runtime or compile time?
+#define MAX_EVENTS 10
+#define MAX_PACKETS 100
+#define PCAP_TIMEOUT 1000
+#define PCAP_BUFFER 655360
+
 struct epoll_handler {
 	void (*handler)(void *);
 };
@@ -49,7 +55,7 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 
 static void pcap_read(struct pcap_interface *interface) {
 	ulog(LOG_DEBUG_VERBOSE, "Read on interface %s\n", interface->name);
-	int result = pcap_dispatch(interface->pcap, -1, (pcap_handler) packet_handler, (unsigned char *) interface);
+	int result = pcap_dispatch(interface->pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) interface);
 	if (result == -1)
 		die("Error reading packets from PCAP on %s (%s)\n", interface->name, pcap_geterr(interface->pcap));
 	ulog(LOG_DEBUG_VERBOSE, "Handled %d packets on %s\n", result, interface->name);
@@ -91,10 +97,10 @@ void loop_break(struct loop *loop) {
 void loop_run(struct loop *loop) {
 	ulog(LOG_INFO, "Running the main loop\n");
 	while (!loop->stopped) {
-		struct epoll_event event;
+		struct epoll_event events[MAX_EVENTS];
 		// TODO: Implement timeouts.
 		// TODO: Support for reconfigure signal (epoll_pwait then).
-		int ready = epoll_wait(loop->epoll_fd, &event, 1, -1);
+		int ready = epoll_wait(loop->epoll_fd, events, MAX_EVENTS, -1);
 		if (ready == -1) {
 			if (errno == EINTR) {
 				ulog(LOG_WARN, "epoll_wait on %d interrupted, retry\n", loop->epoll_fd);
@@ -105,12 +111,14 @@ void loop_run(struct loop *loop) {
 			// This is strange. We wait for 1 event idefinitelly and get 0
 			ulog(LOG_WARN, "epoll_wait on %d returned 0 events\n", loop->epoll_fd);
 		} else {
-			/*
-			 * We have the event. Now, the data has the pointer to the handler
-			 * as the first element. Therefore, we can cast it to the handler.
-			 */
-			struct epoll_handler *handler = event.data.ptr;
-			handler->handler(event.data.ptr);
+			for (size_t i = 0; i < (size_t) ready; i ++) {
+				/*
+				 * We have the event. Now, the data has the pointer to the handler
+				 * as the first element. Therefore, we can cast it to the handler.
+				 */
+				struct epoll_handler *handler = events[i].data.ptr;
+				handler->handler(events[i].data.ptr);
+			}
 		}
 	}
 }
@@ -149,12 +157,11 @@ bool loop_add_pcap(struct loop *loop, const char *interface) {
 		return false;
 	}
 	// Set parameters.
-	// TODO: Should these be configurable (run-time or compile-time?)
 	int result = pcap_set_promisc(pcap, 1);
 	assert(result == 0); // Can error only on code errors
-	result = pcap_set_timeout(pcap, 1000); // One second
+	result = pcap_set_timeout(pcap, PCAP_TIMEOUT); // One second
 	assert(result == 0);
-	pcap_set_buffer_size(pcap, 655360);
+	pcap_set_buffer_size(pcap, PCAP_BUFFER);
 	assert(result == 0);
 
 	// TODO: Some filters?
