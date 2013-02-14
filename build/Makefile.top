@@ -41,6 +41,7 @@ LIB_SUFFIX :=.so
 endif
 
 define COMMON_REGISTER
+
 $(1): $$(patsubst %,$(O)/.objs/$(3)%.o,$$($(2)_MODULES))
 $(1): CFLAGS_ALL += $$($(2)_CFLAGS)
 $(1): LDFLAGS_ALL += $$($(2)_LDFLAGS)
@@ -50,6 +51,7 @@ else
 $(1): LINK_LIBRARIES += -L$(O)/lib -Wl,-R$(abspath $(O)/lib) $$(addprefix -l,$$($(2)_LOCAL_LIBS) $$($(2)_SYSTEM_LIBS))
 $(1): $$(patsubst %,$(O)/lib/lib%.so,$$($(2)_LOCAL_LIBS))
 endif
+
 endef
 
 # Function to register a binary to TARGETS and generate the rules to build it.
@@ -58,6 +60,7 @@ endef
 # binary_name_MODULES := main other_file third_file
 # $(eval $(call REGISTER_BIN,binary_name,src/path/to/directory))
 define REGISTER_BIN
+
 ifneq (,$(findstring ^$(RESTRICT),^$(1)))
 TARGETS += $(O)/$(1)
 endif
@@ -66,10 +69,12 @@ $(O)/$(1): $(O)/bin/$$(notdir $(1))
 	$(M) LN $$@
 	$(Q)mkdir -p $$(dir $(O)/$(1))
 	$(Q)ln -sf $$(abspath $$<) $$@
+
 endef
 
 # Similar, for libraries
 define REGISTER_LIB
+
 ifneq (,$(findstring ^$(RESTRICT),^$(1)))
 TARGETS += $(O)/$(1)$(LIB_SUFFIX)
 endif
@@ -83,10 +88,12 @@ $(O)/$(1).so: $(O)/lib/$$(notdir $(1)).so
 	$(M) LN $$@
 	$(Q)mkdir -p $$(dir $(O)/$(1))
 	$(Q)ln -sf $$(abspath $$<) $$@
+
 endef
 
 # Similar, for documentation
 define REGISTER_DOC
+
 ifneq (,$(findstring ^$(RESTRICT),^$(1)))
 TARGETS += $(O)/$(1).html
 endif
@@ -95,6 +102,7 @@ $(O)/$(1).html: $(O)/docs/$$(notdir $(1)).html
 	$(M) LN $$@
 	$(Q)mkdir -p $$(dir $(O)/$(1))
 	$(Q)ln -sf $$(abspath $$<) $$@
+
 endef
 
 # Generic rules to compile and link
