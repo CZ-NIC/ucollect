@@ -1,4 +1,4 @@
-RESTRICT := src/ucollect
+RESTRICT := src/plugins
 RELATIVE := ../../
 
 include $(RELATIVE)/Makefile

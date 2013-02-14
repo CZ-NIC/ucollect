@@ -1,4 +1,4 @@
 RESTRICT := src
 RELATIVE := ../
 
-include ../Makefile
+include $(RELATIVE)/Makefile

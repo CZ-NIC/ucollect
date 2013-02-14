@@ -6,3 +6,4 @@ docs/
 src/ucollect/ucollect
 lib/
 src/core/libucollect_core.*
+src/plugins/count/libplugin_count.*
