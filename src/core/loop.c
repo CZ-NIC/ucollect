@@ -67,8 +67,20 @@ static void plugin_##NAME(struct plugin_holder *plugin) { \
 	current_context = NULL; \
 }
 
+// The same, with parameter
+#define GEN_CALL_WRAPPER_PARAM(NAME, TYPE) \
+static void plugin_##NAME(struct plugin_holder *plugin, TYPE PARAM) { \
+	if (!plugin->plugin.NAME##_callback) \
+		return; \
+	current_context = &plugin->context; \
+	plugin->plugin.NAME##_callback(&plugin->context, PARAM); \
+	mem_pool_reset(plugin->context.temp_pool); \
+	current_context = NULL; \
+}
+
 GEN_CALL_WRAPPER(init)
 GEN_CALL_WRAPPER(finish)
+GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
 
 struct loop {
 	struct mem_pool *permanent_pool, *temp_pool;
@@ -80,10 +92,24 @@ struct loop {
 	sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 };
 
+// TODO: Place this publicly, so the plugin can in.
+struct packet_info {
+	size_t length;
+	const unsigned char *data;
+	const char *interface;
+	// TODO: Define the rest (addresses, protocols, etc).
+};
+
 // Handle one packet.
 static void packet_handler(struct pcap_interface *interface, const struct pcap_pkthdr *header, const unsigned char *data) {
-	(void) data;
-	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s\n", header->caplen - interface->offset, interface->name);
+	struct packet_info info = {
+		.length = header->caplen - interface->offset,
+		.data = data,
+		.interface = interface->name
+	};
+	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s\n", info.length, interface->name);
+	for (size_t i = 0; i < interface->loop->plugin_count; i ++)
+		plugin_packet(&interface->loop->plugins[i], &info);
 }
 
 static void pcap_read(struct pcap_interface *interface) {
@@ -286,7 +312,8 @@ void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
 	*new = (struct plugin_holder) {
 		.context = {
 			.permanent_pool = mem_pool_create(plugin->name),
-			.temp_pool = loop->temp_pool
+			.temp_pool = loop->temp_pool,
+			.loop = loop
 		},
 		.plugin = *plugin
 	};

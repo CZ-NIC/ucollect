@@ -6,7 +6,7 @@
 struct context;
 struct packet_info;
 
-typedef void (*packet_callback_t)(struct context *context, size_t packet_length, const unsigned char *data, const struct packet_info *info);
+typedef void (*packet_callback_t)(struct context *context, const struct packet_info *info);
 
 struct plugin {
 	const char *name;
