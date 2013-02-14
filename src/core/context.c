@@ -1,3 +1,3 @@
 #include "context.h"
 
-struct context;
+struct context *current_context;

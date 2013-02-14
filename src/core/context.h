@@ -4,8 +4,8 @@
 struct mem_pool;
 
 struct context {
-	struct mem_pool *permanent_storage;
-	struct mem_pool *temp_storage;
+	struct mem_pool *permanent_pool;
+	struct mem_pool *temp_pool;
 	void *user_data;
 };
 

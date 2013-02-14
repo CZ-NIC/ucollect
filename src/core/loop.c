@@ -1,6 +1,8 @@
 #include "loop.h"
 #include "mem_pool.h"
 #include "util.h"
+#include "context.h"
+#include "plugin.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -16,6 +18,30 @@
 #define MAX_PACKETS 100
 #define PCAP_TIMEOUT 1000
 #define PCAP_BUFFER 655360
+
+/*
+ * Call a callback. Give it the context and, optionally, other parameters.
+ *
+ * Set the current_context around the running of the function.
+ *
+ * In future, some error handling (SEGV, ABRT, etc) will be handled here
+ * somehow.
+ *
+ * The temporary pool of context is reset after the call.
+ *
+ * The function might be NULL, in which case nothing is called.
+ *
+ * FIXME: The ##__VA_ARGS__ is gcc extension it seems. We should do something
+ * about it.
+ */
+#define CALL(FUNCTION, CONTEXT, ...) do { \
+	if (FUNCTION) { \
+		current_context = (CONTEXT); \
+		(FUNCTION)((CONTEXT), ##__VA_ARGS__); \
+		mem_pool_reset((CONTEXT)->temp_pool); \
+		current_context = NULL; \
+	} \
+} while (0)
 
 struct epoll_handler {
 	void (*handler)(void *);
@@ -39,10 +65,21 @@ struct pcap_interface {
 	size_t offset;
 };
 
+struct plugin_holder {
+	/*
+	 * This one is first, so we can cast the current_context back in case
+	 * of error handling.
+	 */
+	struct context context;
+	struct plugin plugin;
+};
+
 struct loop {
-	struct mem_pool *permanent_pool;
+	struct mem_pool *permanent_pool, *temp_pool;
 	struct pcap_interface *pcap_interfaces;
 	size_t pcap_interface_count;
+	struct plugin_holder *plugins;
+	size_t plugin_count;
 	int epoll_fd;
 	sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 };
@@ -132,6 +169,12 @@ void loop_destroy(struct loop *loop) {
 	for (size_t i = 0; i < loop->pcap_interface_count; i ++) {
 		ulog(LOG_INFO, "Closing PCAP on %s\n", loop->pcap_interfaces[i].name);
 		pcap_close(loop->pcap_interfaces[i].pcap);
+	}
+	// Remove all the plugins.
+	for (size_t i = 0; i < loop->plugin_count; i ++) {
+		ulog(LOG_INFO, "Removing plugin %s\n", loop->plugins[i].plugin.name);
+		CALL(loop->plugins[i].plugin.finish_callback, &loop->plugins[i].context);
+		mem_pool_destroy(loop->plugins[i].context.permanent_pool);
 	}
 	// This mempool must be destroyed last, as the loop is allocated from it
 	mem_pool_destroy(loop->permanent_pool);
@@ -226,4 +269,32 @@ bool loop_add_pcap(struct loop *loop, const char *interface) {
 	loop->pcap_interfaces = interfaces;
 	epoll_register_pcap(loop, loop->pcap_interface_count - 1, EPOLL_CTL_ADD);
 	return true;
+}
+
+void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
+	ulog(LOG_INFO, "Installing plugin %s\n", plugin->name);
+	// Store the plugin structure.
+	/*
+	 * Currently, we throw away the old array and leak little bit. This is OK for now,
+	 * as we'll register just few plugins on start-up. However, once we have the ability
+	 * to reconfigure at run-time and we support removing and adding the plugins again,
+	 * we need to solve it somehow.
+	 */
+	struct plugin_holder *plugins = mem_pool_alloc(loop->permanent_pool, (loop->plugin_count + 1) * sizeof *plugins);
+	memcpy(plugins, loop->plugins, loop->plugin_count * sizeof *plugins);
+	struct plugin_holder *new = loop->plugins + loop->plugin_count ++;
+	/*
+	 * Each plugin gets its own permanent pool (since we'd delete that one with the plugin),
+	 * but we can reuse the temporary pool.
+	 */
+	*new = (struct plugin_holder) {
+		.context = {
+			.permanent_pool = mem_pool_create(plugin->name),
+			.temp_pool = loop->temp_pool
+		},
+		.plugin = *plugin
+	};
+	// Copy the name (it may be temporary), from the plugin's own pool
+	new->plugin.name = mem_pool_strdup(new->context.permanent_pool, plugin->name);
+	CALL(new->plugin.init_callback, &new->context);
 }
