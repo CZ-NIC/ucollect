@@ -19,30 +19,6 @@
 #define PCAP_TIMEOUT 1000
 #define PCAP_BUFFER 655360
 
-/*
- * Call a callback. Give it the context and, optionally, other parameters.
- *
- * Set the current_context around the running of the function.
- *
- * In future, some error handling (SEGV, ABRT, etc) will be handled here
- * somehow.
- *
- * The temporary pool of context is reset after the call.
- *
- * The function might be NULL, in which case nothing is called.
- *
- * FIXME: The ##__VA_ARGS__ is gcc extension it seems. We should do something
- * about it.
- */
-#define CALL(FUNCTION, CONTEXT, ...) do { \
-	if (FUNCTION) { \
-		current_context = (CONTEXT); \
-		(FUNCTION)((CONTEXT), ##__VA_ARGS__); \
-		mem_pool_reset((CONTEXT)->temp_pool); \
-		current_context = NULL; \
-	} \
-} while (0)
-
 struct epoll_handler {
 	void (*handler)(void *);
 };
@@ -73,6 +49,26 @@ struct plugin_holder {
 	struct context context;
 	struct plugin plugin;
 };
+
+/*
+ * Generate a wrapper around a plugin callback that:
+ *  * Checks it the callback is not NULL (if it is, nothing is called)
+ *  * Sets the current context to the one of the plugin (for error handling)
+ *  * Calls the callback
+ *  * Restores no context and resets the temporary pool
+ */
+#define GEN_CALL_WRAPPER(NAME) \
+static void plugin_##NAME(struct plugin_holder *plugin) { \
+	if (!plugin->plugin.NAME##_callback) \
+		return; \
+	current_context = &plugin->context; \
+	plugin->plugin.NAME##_callback(&plugin->context); \
+	mem_pool_reset(plugin->context.temp_pool); \
+	current_context = NULL; \
+}
+
+GEN_CALL_WRAPPER(init)
+GEN_CALL_WRAPPER(finish)
 
 struct loop {
 	struct mem_pool *permanent_pool, *temp_pool;
@@ -173,7 +169,7 @@ void loop_destroy(struct loop *loop) {
 	// Remove all the plugins.
 	for (size_t i = 0; i < loop->plugin_count; i ++) {
 		ulog(LOG_INFO, "Removing plugin %s\n", loop->plugins[i].plugin.name);
-		CALL(loop->plugins[i].plugin.finish_callback, &loop->plugins[i].context);
+		plugin_finish(&loop->plugins[i]);
 		mem_pool_destroy(loop->plugins[i].context.permanent_pool);
 	}
 	// This mempool must be destroyed last, as the loop is allocated from it
@@ -296,5 +292,5 @@ void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
 	};
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(new->context.permanent_pool, plugin->name);
-	CALL(new->plugin.init_callback, &new->context);
+	plugin_init(new);
 }
