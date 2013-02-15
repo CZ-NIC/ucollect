@@ -1,5 +1,9 @@
 #include "../core/loop.h"
 #include "../core/util.h"
+#include "../core/plugin.h"
+
+// FIXME: This is hardcoded for now, remove once we have a plugin loader
+#include "../plugins/count/count.h"
 
 #include <signal.h>
 #include <string.h>
@@ -55,6 +59,9 @@ int main(int argc, const char* argv[]) {
 	}
 
 	// TODO: Load all the plugins here.
+
+	// FIXME: This is hardcoded just for now.
+	loop_add_plugin(loop, plugin_info());
 
 	// Run until a stop signal comes.
 	loop_run(loop);
