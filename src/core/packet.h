@@ -25,7 +25,12 @@ struct packet_info {
 	const unsigned char *data;
 	// Textual name of the interface it was captured on
 	const char *interface;
-	// Length of headers (IP+TCP (or equivalent) together). Can be used to find application data.
+	/*
+	 * Length of headers (IP+TCP (or equivalent) together).
+	 * Can be used to find application data.
+	 *
+	 * This is 0 in case ip_protocol != 4 && 6 or app_protocol != 'T' && 'U'.
+	 */
 	size_t hdr_length;
 	/*
 	 * Source and destination address. Raw data (addr_len bytes each).
@@ -47,6 +52,8 @@ struct packet_info {
 	 *
 	 * This is set only with ip_protocol == 4 || 6, otherwise it is
 	 * zero.
+	 *
+	 * Beware that we may add more known protocols in future.
 	 */
 	char app_protocol;
 	// Length of one address field. 0 in case ip_protocol != 4 && 6
