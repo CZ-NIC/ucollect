@@ -10,6 +10,7 @@ struct loop;
  * plain type casting, as the compiler does some minimal checks about type safety
  * inside the same plugin.
  */
+struct user_data;
 
 struct context {
 	struct mem_pool *permanent_pool;
