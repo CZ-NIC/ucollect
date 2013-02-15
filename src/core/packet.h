@@ -25,14 +25,16 @@ struct packet_info {
 	const unsigned char *data;
 	// Textual name of the interface it was captured on
 	const char *interface;
+	// Length of headers (IP+TCP (or equivalent) together). Can be used to find application data.
+	size_t hdr_length;
 	/*
 	 * Source and destination address. Raw data (addr_len bytes each).
-	 * Is set only with ip_protocol == 4 || 6, otherwise it is undefined.
+	 * Is set only with ip_protocol == 4 || 6, otherwise it is NULL.
 	 */
 	const unsigned char *addresses[END_COUNT];
 	/*
 	 * Source and destination ports. Converted to the host byte order.
-	 * Filled in only in case the app_protocol is T or U.
+	 * Filled in only in case the app_protocol is T or U. Otherwise, it is 0.
 	 */
 	uint16_t ports[END_COUNT];
 	// As in iphdr, 6 for IPv6, 4 for IPv4. Others may be present.
@@ -44,7 +46,7 @@ struct packet_info {
 	 * - ?: Other, not recognized protocol.
 	 *
 	 * This is set only with ip_protocol == 4 || 6, otherwise it is
-	 * undefined.
+	 * zero.
 	 */
 	char app_protocol;
 	// Length of one address field. 0 in case ip_protocol != 4 && 6
@@ -58,5 +60,21 @@ struct packet_info {
  * set, it fills the addresses, protocols, etc.
  */
 void parse_packet(struct packet_info *packet);
+
+/*
+ * Which endpoint is the remote one for the given direction?
+ *
+ * This returns END_COUNT in case the direction is not DIR_IN or DIR_OUT.
+ */
+static inline enum endpoint remote_endpoint(enum direction direction) {
+	switch (direction) {
+		case DIR_IN:
+			return END_SRC;
+		case DIR_OUT:
+			return END_DST;
+		default:
+			return END_COUNT;
+	}
+}
 
 #endif
