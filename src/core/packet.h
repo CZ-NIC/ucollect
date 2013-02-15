@@ -61,4 +61,20 @@ struct packet_info {
  */
 void parse_packet(struct packet_info *packet);
 
+/*
+ * Which endpoint is the remote one for the given direction?
+ *
+ * This returns END_COUNT in case the direction is not DIR_IN or DIR_OUT.
+ */
+static inline enum endpoint remote_endpoint(enum direction direction) {
+	switch (direction) {
+		case DIR_IN:
+			return END_SRC;
+		case DIR_OUT:
+			return END_DST;
+		default:
+			return END_COUNT;
+	}
+}
+
 #endif
