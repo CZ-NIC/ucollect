@@ -138,6 +138,7 @@ struct loop *loop_create() {
 	struct loop *result = mem_pool_alloc(pool, sizeof *result);
 	*result = (struct loop) {
 		.permanent_pool = pool,
+		.temp_pool = mem_pool_create("Global temporary pool"),
 		.epoll_fd = epoll_fd
 	};
 	return result;
@@ -192,6 +193,7 @@ void loop_destroy(struct loop *loop) {
 		plugin_finish(&loop->plugins[i]);
 		mem_pool_destroy(loop->plugins[i].context.permanent_pool);
 	}
+	mem_pool_destroy(loop->temp_pool);
 	// This mempool must be destroyed last, as the loop is allocated from it
 	mem_pool_destroy(loop->permanent_pool);
 }
