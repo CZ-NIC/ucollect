@@ -300,6 +300,7 @@ void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
 	 */
 	struct plugin_holder *plugins = mem_pool_alloc(loop->permanent_pool, (loop->plugin_count + 1) * sizeof *plugins);
 	memcpy(plugins, loop->plugins, loop->plugin_count * sizeof *plugins);
+	loop->plugins = plugins;
 	struct plugin_holder *new = loop->plugins + loop->plugin_count ++;
 	/*
 	 * Each plugin gets its own permanent pool (since we'd delete that one with the plugin),
