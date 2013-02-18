@@ -1,4 +1,5 @@
 #include "packet.h"
+#include "mem_pool.h"
 
 // These are for the IP header structs.
 #include <netinet/ip.h>
@@ -30,7 +31,8 @@ struct tcp_ports {
 	uint8_t offset;
 };
 
-static void parse_internal(struct packet_info *packet) {
+static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
+	packet->app_protocol_raw = 0xff;
 	/*
 	 * Try to put the packet into the form for an IP packet. We're lucky, the version field
 	 * is on the same place for v6 as for v4, so it works.
@@ -42,7 +44,6 @@ static void parse_internal(struct packet_info *packet) {
 		return;
 	}
 	packet->ip_protocol = iphdr->version;
-	unsigned char protocol = 0; // 0 is assigned to something, but we don't care and think of it as unassigned
 	switch (packet->ip_protocol) {
 		case 4:
 			// Don't copy the addresses, just point inside the packet.
@@ -50,7 +51,7 @@ static void parse_internal(struct packet_info *packet) {
 			packet->addresses[END_DST] = &iphdr->daddr;
 			// Temporary length, for further parsing (IP only).
 			packet->hdr_length = HEADER_SIZE_UNIT * iphdr->ihl;
-			protocol = iphdr->protocol;
+			packet->app_protocol_raw = iphdr->protocol;
 			break;
 		case 6: {
 			// It's an IPv6 packet, put it into a v6 form instead.
@@ -67,7 +68,7 @@ static void parse_internal(struct packet_info *packet) {
 			 * header length is fixed.
 			 */
 			packet->hdr_length = sizeof *ip6;
-			protocol = ip6->ip6_ctlun.ip6_un1.ip6_un1_nxt;
+			packet->app_protocol_raw = ip6->ip6_ctlun.ip6_un1.ip6_un1_nxt;
 			break;
 		}
 		default: // Something else. Don't try to find TCP/UDP.
@@ -79,16 +80,32 @@ static void parse_internal(struct packet_info *packet) {
 	 * The start of the next header. Might be tcp, or something else (we abuse the structure
 	 * for UDP too).
 	 *
+	 * In case it isn't UDP nor TCP, we don't use the structure, so it doesn't matter it points
+	 * to something that makes no sense.
+	 *
 	 * As C doesn't allow adding an integer to a void pointer, we cast to pointer to unsigned char.
-	 * But then we need to cast to the target pointer, since it isn't auto-convertible without
-	 * warning.
 	 */
-	const struct tcp_ports *tcp_ports = (const struct tcp_ports *) (((const uint8_t *) packet->data) + packet->hdr_length);
+	const void *below_ip = (((const uint8_t *) packet->data) + packet->hdr_length);
+	const struct tcp_ports *tcp_ports = below_ip;
 	size_t length_rest = packet->length - packet->hdr_length;
 	// Default protocol is unknown.
 	packet->app_protocol = '?';
-	switch (protocol) {
+	switch (packet->app_protocol_raw) {
 		// Just hardcode the numbers here for our use.
+		case 1: // ICMP
+			packet->app_protocol = 'i';
+			return; // Not parsing further.
+		case 4:  // Encapsulation of IPv4
+		case 41: // And v6
+			packet->app_protocol = packet->app_protocol_raw == 4 ? '4' : 6;
+			// Create a new structure for the packet and parse recursively
+			struct packet_info *next = mem_pool_alloc(pool, sizeof *packet->next);
+			packet->next = next;
+			next->data = below_ip;
+			next->length = length_rest;
+			next->interface = packet->interface;
+			parse_packet(next, pool);
+			return; // And we're done (no ports here)
 		case 6: // TCP
 			if (length_rest < sizeof *tcp_ports)
 				/*
@@ -101,7 +118,6 @@ static void parse_internal(struct packet_info *packet) {
 				 */
 				return;
 			packet->app_protocol = 'T';
-			// FIXME: This doesn't seem to work :-(.
 			packet->hdr_length += HEADER_SIZE_UNIT * ((tcp_ports->offset & OFFSET_MASK) >> OFFSET_SHIFT);
 			break;
 		case 17: // UDP
@@ -111,6 +127,9 @@ static void parse_internal(struct packet_info *packet) {
 				return;
 			packet->hdr_length += UDP_LENGTH;
 			break;
+		case 58: // IPv6 ICMP
+			packet->app_protocol = 'I';
+			return; // Not parsing further
 		default:
 			// Something unknown. Keep the '?'
 			return;
@@ -130,14 +149,18 @@ static void postprocess(struct packet_info *packet) {
 		// We don't even know the direction if we don't have the addresses
 		packet->direction = DIR_UNKNOWN;
 	}
-	bool proto_known = (packet->app_protocol == 'T' || packet->app_protocol == 'U');
-	if (!proto_known) {
+	bool has_ports = (packet->app_protocol == 'T' || packet->app_protocol == 'U');
+	if (!has_ports) {
 		memset(&packet->ports, 0, sizeof packet->ports);
 		packet->hdr_length = 0;
 	}
+	bool is_encapsulation = (packet->app_protocol == '4' || packet->app_protocol == '6');
+	if (!is_encapsulation) {
+		packet->next = NULL;
+	}
 }
 
-void parse_packet(struct packet_info *packet) {
-	parse_internal(packet);
+void parse_packet(struct packet_info *packet, struct mem_pool *pool) {
+	parse_internal(packet, pool);
 	postprocess(packet);
 }

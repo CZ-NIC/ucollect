@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Some forward declarations
+struct mem_pool;
+
 // One endpoint of communication.
 enum endpoint {
 	END_SRC,  // The source endpoint
@@ -20,6 +23,8 @@ enum direction {
 };
 
 struct packet_info {
+	// The parsed embedded packet, in case of app_protocol == '4' || '6'
+	const struct packet_info *next;
 	// Length and raw data of the packet (starts with IP header or similar on the same level)
 	size_t length;
 	const void *data;
@@ -46,9 +51,13 @@ struct packet_info {
 	unsigned char ip_protocol;
 	/*
 	 * The application-facing protocol. Currently, these are recognized:
-	 * - T: TCP
-	 * - U: UDP
-	 * - ?: Other, not recognized protocol.
+	 * - 'T': TCP
+	 * - 'U': UDP
+	 * - 'i': ICMP
+	 * - 'I': ICMPv6
+	 * - '4': Encapsulated IPv4 packet
+	 * - '6': Encapsulated IPv6 packet
+	 * - '?': Other, not recognized protocol.
 	 *
 	 * This is set only with ip_protocol == 4 || 6, otherwise it is
 	 * zero.
@@ -56,6 +65,13 @@ struct packet_info {
 	 * Beware that we may add more known protocols in future.
 	 */
 	char app_protocol;
+	/*
+	 * The raw byte specifying what protocol is used below IP. The app_proto
+	 * is more friendly.
+	 *
+	 * In case the ip_protocol is not 4 nor 6, it 255 (which is "Reserved").
+	 */
+	uint8_t app_protocol_raw;
 	// Length of one address field. 0 in case ip_protocol != 4 && 6
 	unsigned char addr_len;
 	// Direction of the packet.
@@ -66,7 +82,7 @@ struct packet_info {
  * Parse the stuff in the passed packet. It expects length and data are already
  * set, it fills the addresses, protocols, etc.
  */
-void parse_packet(struct packet_info *packet);
+void parse_packet(struct packet_info *packet, struct mem_pool *pool) __attribute__((nonnull));
 
 /*
  * Which endpoint is the remote one for the given direction?
