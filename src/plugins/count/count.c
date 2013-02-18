@@ -15,6 +15,11 @@ struct user_data {
 
 static void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
+	if (info->next) {
+		// It's wrapper around some other real packet. We're not interested in the envelope.
+		packet_handle(context, info->next);
+		return;
+	}
 	d->count ++;
 	d->size += info->length - info->hdr_length;
 	switch (info->direction) {
