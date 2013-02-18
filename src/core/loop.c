@@ -84,12 +84,27 @@ GEN_CALL_WRAPPER(finish)
 GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
 
 struct loop {
-	struct mem_pool *permanent_pool, *temp_pool;
+	/*
+	 * The pools used for allocating memory.
+	 *
+	 * The permanent_pool is not reset/released for the whole lifetime of the loop.
+	 *
+	 * The batch_pool is reset after each loop iteration (which may be several handled
+	 * events). You may not assume it'll stay valid between different events.
+	 *
+	 * The temp_pool is reset after each callback is finished, serving as a scratchpad
+	 * for the callbacks.
+	 */
+	struct mem_pool *permanent_pool, *batch_pool, *temp_pool;
+	// The PCAP interfaces to capture on.
 	struct pcap_interface *pcap_interfaces;
 	size_t pcap_interface_count;
+	// The plugins that handle the packets
 	struct plugin_holder *plugins;
 	size_t plugin_count;
+	// The epoll
 	int epoll_fd;
+	// Turnes to 1 when we are stopped.
 	sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 };
 
@@ -101,7 +116,7 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 		.interface = interface->name
 	};
 	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s\n", info.length, interface->name);
-	parse_packet(&info);
+	parse_packet(&info, interface->loop->batch_pool);
 	for (size_t i = 0; i < interface->loop->plugin_count; i ++)
 		plugin_packet(&interface->loop->plugins[i], &info);
 }
@@ -138,6 +153,7 @@ struct loop *loop_create() {
 	struct loop *result = mem_pool_alloc(pool, sizeof *result);
 	*result = (struct loop) {
 		.permanent_pool = pool,
+		.batch_pool = mem_pool_create("Global batch pool"),
 		.temp_pool = mem_pool_create("Global temporary pool"),
 		.epoll_fd = epoll_fd
 	};
@@ -173,6 +189,7 @@ void loop_run(struct loop *loop) {
 				struct epoll_handler *handler = events[i].data.ptr;
 				handler->handler(events[i].data.ptr);
 			}
+			mem_pool_reset(loop->batch_pool);
 		}
 	}
 }
@@ -194,6 +211,7 @@ void loop_destroy(struct loop *loop) {
 		mem_pool_destroy(loop->plugins[i].context.permanent_pool);
 	}
 	mem_pool_destroy(loop->temp_pool);
+	mem_pool_destroy(loop->batch_pool);
 	// This mempool must be destroyed last, as the loop is allocated from it
 	mem_pool_destroy(loop->permanent_pool);
 }
