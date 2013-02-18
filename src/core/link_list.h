@@ -49,7 +49,7 @@
 
 // Functions
 #ifdef LIST_WANT_APPEND_POOL
-LIST_NODE *LIST_NAME(append_pool)(LIST_BASE *list, struct mem_pool *pool) {
+static LIST_NODE *LIST_NAME(append_pool)(LIST_BASE *list, struct mem_pool *pool) {
 	LIST_NODE *new = mem_pool_alloc(pool, sizeof *new);
 	new->LIST_NEXT = NULL;
 	list->LIST_TAIL->LIST_NEXT = new;
