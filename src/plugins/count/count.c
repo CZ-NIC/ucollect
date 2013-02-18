@@ -8,7 +8,7 @@ struct user_data {
 	size_t count;
 	size_t count_v6, count_v4;
 	size_t count_in, count_out;
-	size_t count_tcp, count_udp;
+	size_t count_tcp, count_udp, count_icmp;
 	size_t low_port_count;
 	size_t size_in, size_out, size;
 };
@@ -43,6 +43,9 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 		case 'U':
 			d->count_udp ++;
 			break;
+		case 'i':
+		case 'I':
+			d->count_icmp ++;
 	}
 	enum endpoint remote = remote_endpoint(info->direction);
 	if (remote != END_COUNT && info->ports[remote] <= 1024 && info->ports[remote] != 0)
@@ -59,8 +62,9 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 "OUT:			%7zu\n"
 "TCP:			%7zu\n"
 "UDP:			%7zu\n"
+"ICMP:			%7zu\n"
 "On low port:		%7zu\n"
-		, d->size, d->size_in, d->size_out, d->count, d->count_v6, d->count_v4, d->count_in, d->count_out, d->count_tcp, d->count_udp, d->low_port_count);
+		, d->size, d->size_in, d->size_out, d->count, d->count_v6, d->count_v4, d->count_in, d->count_out, d->count_tcp, d->count_udp, d->count_icmp, d->low_port_count);
 }
 
 static void initialize(struct context *context) {
