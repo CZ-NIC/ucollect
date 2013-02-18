@@ -46,6 +46,10 @@ static const uint8_t partial_bytes[] = {
 };
 
 static bool parse_mask(const char *txt, struct address *destination) {
+	if (!txt) {
+		// No mask. Fill with 1, as the whole address must match.
+		memset(destination->mask, 0xff, destination->length);
+	}
 	char *err;
 	long bits = strtol(txt, &err, 10);
 	if (err && *err) {
