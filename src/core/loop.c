@@ -118,7 +118,7 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 		.interface = interface->name
 	};
 	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s\n", info.length, interface->name);
-	parse_packet(&info, interface->loop->batch_pool);
+	parse_packet(&info, interface->local_addresses, interface->loop->batch_pool);
 	for (size_t i = 0; i < interface->loop->plugin_count; i ++)
 		plugin_packet(&interface->loop->plugins[i], &info);
 }

@@ -1,5 +1,6 @@
 #include "packet.h"
 #include "mem_pool.h"
+#include "address.h"
 
 // These are for the IP header structs.
 #include <netinet/ip.h>
@@ -31,7 +32,7 @@ struct tcp_ports {
 	uint8_t offset;
 };
 
-static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
+static void parse_internal(struct packet_info *packet, const struct address_list *local_addresses, struct mem_pool *pool) {
 	packet->app_protocol_raw = 0xff;
 	/*
 	 * Try to put the packet into the form for an IP packet. We're lucky, the version field
@@ -49,6 +50,7 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 			// Don't copy the addresses, just point inside the packet.
 			packet->addresses[END_SRC] = &iphdr->saddr;
 			packet->addresses[END_DST] = &iphdr->daddr;
+			packet->addr_len = 4;
 			// Temporary length, for further parsing (IP only).
 			packet->hdr_length = HEADER_SIZE_UNIT * iphdr->ihl;
 			packet->app_protocol_raw = iphdr->protocol;
@@ -63,6 +65,7 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 			}
 			packet->addresses[END_SRC] = &ip6->ip6_src.s6_addr;
 			packet->addresses[END_DST] = &ip6->ip6_dst.s6_addr;
+			packet->addr_len = 16;
 			/*
 			 * Temporary length, for further processing. Unlike IPv4, the
 			 * header length is fixed.
@@ -74,8 +77,17 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 		default: // Something else. Don't try to find TCP/UDP.
 			return;
 	}
-	// TODO: Guess the direction by the addresses.
-	packet->direction = DIR_UNKNOWN;
+
+	// Do direction guessing
+	bool internal[END_COUNT];
+	for (size_t i = 0; i < END_COUNT; i ++)
+		internal[i] = addr_in_net_list(packet->addresses[i], packet->addr_len, local_addresses);
+	if (internal[END_SRC] && !internal[END_DST])
+		packet->direction = DIR_OUT;
+	else if (!internal[END_SRC] && internal[END_DST])
+		packet->direction = DIR_IN;
+	else
+		packet->direction = DIR_UNKNOWN;
 	/*
 	 * The start of the next header. Might be tcp, or something else (we abuse the structure
 	 * for UDP too).
@@ -104,7 +116,7 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 			next->data = below_ip;
 			next->length = length_rest;
 			next->interface = packet->interface;
-			parse_packet(next, pool);
+			parse_packet(next, local_addresses, pool);
 			return; // And we're done (no ports here)
 		case 6: // TCP
 			if (length_rest < sizeof *tcp_ports)
@@ -160,7 +172,7 @@ static void postprocess(struct packet_info *packet) {
 	}
 }
 
-void parse_packet(struct packet_info *packet, struct mem_pool *pool) {
-	parse_internal(packet, pool);
+void parse_packet(struct packet_info *packet, const struct address_list *local_addresses, struct mem_pool *pool) {
+	parse_internal(packet, local_addresses, pool);
 	postprocess(packet);
 }

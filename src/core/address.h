@@ -1,8 +1,9 @@
-#ifndef UCOLLECT_ADDRESS_LIST_H
-#define UCOLLECT_ADDRESS_LIST_H
+#ifndef UCOLLECT_ADDRESS_H
+#define UCOLLECT_ADDRESS_H
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 struct mem_pool;
 struct address_list;
@@ -36,8 +37,8 @@ void address_list_add(struct address_list *list, const struct address *address) 
 bool address_list_add_parsed(struct address_list *list, const char *address, bool allow_net) __attribute__((nonnull));
 
 // Is address inside net (address with mask)
-bool addr_in_net(const struct address *address, const struct address *net) __attribute__((nonnull)) __attribute__((const));
+bool addr_in_net(const uint8_t *address, size_t addr_len, const struct address *net) __attribute__((nonnull)) __attribute__((const));
 // Or in one of many nets?
-bool addr_in_net_list(const struct address *address, const struct address_list *list) __attribute__((nonnull)) __attribute__((const));
+bool addr_in_net_list(const uint8_t *address, size_t addr_len, const struct address_list *list) __attribute__((nonnull)) __attribute__((const));
 
 #endif
