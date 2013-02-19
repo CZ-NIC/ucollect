@@ -4,6 +4,7 @@
 #include "context.h"
 #include "plugin.h"
 #include "packet.h"
+#include "address.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -38,6 +39,7 @@ struct pcap_interface {
 	struct loop *loop;
 	const char *name;
 	pcap_t *pcap;
+	struct address_list *local_addresses;
 	int fd;
 	size_t offset;
 };
@@ -299,12 +301,18 @@ bool loop_add_pcap(struct loop *loop, const char *interface) {
 		.loop = loop,
 		.name = mem_pool_strdup(loop->permanent_pool, interface),
 		.pcap = pcap,
+		.local_addresses = address_list_create(loop->permanent_pool),
 		.fd = fd,
 		.offset = ip_offset_table[pcap_datalink(pcap)]
 	};
 	loop->pcap_interfaces = interfaces;
 	epoll_register_pcap(loop, loop->pcap_interface_count - 1, EPOLL_CTL_ADD);
 	return true;
+}
+
+bool loop_pcap_add_address(struct loop *loop, const char *address) {
+	assert(loop->pcap_interface_count);
+	return address_list_add_parsed(loop->pcap_interfaces[loop->pcap_interface_count - 1].local_addresses, address, true);
 }
 
 void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
