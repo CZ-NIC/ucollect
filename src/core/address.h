@@ -33,7 +33,7 @@ struct address_list *address_list_create(struct mem_pool *pool) __attribute__((n
 // Add an address to the list. Takes a copy.
 void address_list_add(struct address_list *list, const struct address *address) __attribute__((nonnull));
 // Add another address to a list, parsed from a textual representation. Wrapper from above functions.
-bool adress_list_add_parsed(struct address_list *list, const char *address, bool allow_net) __attribute__((nonnull));
+bool address_list_add_parsed(struct address_list *list, const char *address, bool allow_net) __attribute__((nonnull));
 
 // Is address inside net (address with mask)
 bool addr_in_net(const struct address *address, const struct address *net) __attribute__((nonnull)) __attribute__((const));

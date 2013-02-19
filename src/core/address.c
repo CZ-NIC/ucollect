@@ -49,6 +49,7 @@ static bool parse_mask(const char *txt, struct address *destination) {
 	if (!txt) {
 		// No mask. Fill with 1, as the whole address must match.
 		memset(destination->mask, 0xff, destination->length);
+		return true;
 	}
 	char *err;
 	long bits = strtol(txt, &err, 10);
@@ -76,8 +77,8 @@ static bool parse_mask(const char *txt, struct address *destination) {
 		size_t fill_pos = bits / 8;
 		// Leading full-1 bytes
 		memset(destination->mask, 0xff, fill_pos);
-		if (fill_pos % 8) { // There's a partially filled byte
-			destination->mask[fill_pos] = partial_bytes[fill_pos % 8];
+		if (bits % 8) { // There's a partially filled byte
+			destination->mask[fill_pos] = partial_bytes[bits % 8];
 			fill_pos ++;
 		}
 		// Trailing full-0 bytes
@@ -100,7 +101,7 @@ bool parse_address(const char *txt, struct address *destination, bool allow_net)
 		mask = txt_cp + 1 + offset; // After the slash there's the mask
 	}
 	struct addrinfo *addrinfo;
-	int result = getaddrinfo(txt, NULL, &(struct addrinfo) { .ai_flags = AI_NUMERICHOST }, &addrinfo);
+	int result = getaddrinfo(txt, NULL, &(struct addrinfo) { .ai_flags = AI_NUMERICHOST, .ai_socktype = SOCK_DGRAM }, &addrinfo);
 	if (result != 0) {
 		ulog(LOG_ERROR, "Failed to parse %s as address (%s)\n", txt, gai_strerror(result));
 	} else {
