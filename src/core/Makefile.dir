@@ -1,3 +1,3 @@
 LIBRARIES += src/core/libucollect_core
 
-libucollect_core_MODULES := mem_pool util loop context packet
+libucollect_core_MODULES := mem_pool util loop context packet address

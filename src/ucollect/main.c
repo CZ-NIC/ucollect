@@ -31,8 +31,8 @@ static void cleanup() {
 }
 
 int main(int argc, const char* argv[]) {
-	if (argc != 2)
-		die("usage: %s <interface name>\n", argv[0]);
+	if (argc < 2)
+		die("usage: %s <interface name> <local net address> <local net address> ...\n", argv[0]);
 
 	// Create the loop.
 	loop = loop_create();
@@ -53,10 +53,18 @@ int main(int argc, const char* argv[]) {
 			die("Could not set signal handler for signal %d (%s)\n", stop_signals[i], strerror(errno));
 	}
 
+	// Provide the interface name
 	if (!loop_add_pcap(loop, argv[1])) {
 		cleanup();
 		return 1;
 	}
+
+	// Provide the locat network ranges, so we can detect in and out packets
+	for (int i = 2; i < argc; i ++)
+		if (!loop_pcap_add_address(loop, argv[i])) {
+			cleanup();
+			return 1;
+		}
 
 	// TODO: Load all the plugins here.
 
