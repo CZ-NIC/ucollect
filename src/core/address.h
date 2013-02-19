@@ -35,4 +35,9 @@ void address_list_add(struct address_list *list, const struct address *address) 
 // Add another address to a list, parsed from a textual representation. Wrapper from above functions.
 bool adress_list_add_parsed(struct address_list *list, const char *address, bool allow_net) __attribute__((nonnull));
 
+// Is address inside net (address with mask)
+bool addr_in_net(const struct address *address, const struct address *net) __attribute__((nonnull)) __attribute__((const));
+// Or in one of many nets?
+bool addr_in_net_list(const struct address *address, const struct address_list *list) __attribute__((nonnull)) __attribute__((const));
+
 #endif

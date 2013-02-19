@@ -142,3 +142,27 @@ bool address_list_add_parsed(struct address_list *list, const char *address, boo
 	address_list_add(list, &address_bin);
 	return true;
 }
+
+bool addr_in_net(const struct address *address, const struct address *net) {
+	if (address->length != net->length)
+		/*
+		 * Different address family, they can't match
+		 * Note we don't consider IPv4-in-IPv6 address space mapped
+		 * addresses, as these are mostly an API hack. They should not
+		 * be seen on the wild net.
+		 */
+		return false;
+	assert(address->length <= MAX_ADDR_LEN);
+	uint8_t masked[MAX_ADDR_LEN];
+	// Relying on the compiler to group the bytes to chunks of size comfortable for CPU
+	for (size_t i = 0; i < address->length; i ++)
+		masked[i] = address->address[i] & net->mask[i];
+	return memcmp(masked, net->address, address->length) == 0;
+}
+
+bool addr_in_net_list(const struct address *address, const struct address_list *list) {
+	for (const struct address_node *net = list->head; net; net = net->next)
+		if (addr_in_net(address, &net->address))
+			return true;
+	return false;
+}
