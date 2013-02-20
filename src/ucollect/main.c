@@ -1,5 +1,6 @@
 #include "../core/loop.h"
 #include "../core/util.h"
+#include "../core/uplink.h"
 
 #include <signal.h>
 #include <string.h>
@@ -21,17 +22,24 @@ static const int stop_signals[] = {
 	SIGTERM
 };
 
+// Data used from the cleanup handler
+static struct uplink *uplink;
+
 static void cleanup() {
 	// TODO: Release all the plugins here.
 	loop_destroy(loop);
+	uplink_destroy(uplink);
 }
 
 int main(int argc, const char* argv[]) {
-	if (argc < 2)
-		die("usage: %s <interface name> <local net address> <local net address> ...\n", argv[0]);
+	if (argc < 4)
+		die("usage: %s <interface name> <server name> <server port> <local net address> <local net address> ...\n", argv[0]);
 
 	// Create the loop.
 	loop = loop_create();
+
+	// Connect upstream
+	uplink = uplink_create(loop, argv[2], argv[3]);
 
 	// Register all stop signals.
 	for (size_t i = 0; i < sizeof stop_signals / sizeof *stop_signals; i ++) {
@@ -56,7 +64,7 @@ int main(int argc, const char* argv[]) {
 	}
 
 	// Provide the locat network ranges, so we can detect in and out packets
-	for (int i = 2; i < argc; i ++)
+	for (int i = 4; i < argc; i ++)
 		if (!loop_pcap_add_address(loop, argv[i])) {
 			cleanup();
 			return 1;
