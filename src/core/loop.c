@@ -23,7 +23,27 @@
 
 struct epoll_handler {
 	void (*handler)(void *);
+#define PLUGIN_HOLDER_CANARY 0x7a92f998 // Just some random 4-byte number
+
+struct pool_node {
+	struct pool_node *next;
+	struct mem_pool *pool;
 };
+
+struct pool_list {
+	struct pool_node *head, *tail;
+};
+
+#define LIST_NODE struct pool_node
+#define LIST_BASE struct pool_list
+#define LIST_NAME(X) pool_##X
+#define LIST_WANT_APPEND_POOL
+#include "link_list.h"
+
+static void pool_list_destroy(const struct pool_list *list) {
+	for (struct pool_node *pool = list->head; pool; pool = pool->next)
+		mem_pool_destroy(pool->pool);
+}
 
 struct pcap_interface {
 	/*
@@ -47,10 +67,14 @@ struct pcap_interface {
 struct plugin_holder {
 	/*
 	 * This one is first, so we can cast the current_context back in case
-	 * of error handling.
+	 * of error handling or some other callback.
 	 */
 	struct context context;
+#ifdef DEBUG
+	uint32_t canary; // To be able to check it is really a plugin holder
+#endif
 	struct plugin plugin;
+	struct pool_list pool_list;
 };
 
 /*
@@ -98,6 +122,7 @@ struct loop {
 	 * for the callbacks.
 	 */
 	struct mem_pool *permanent_pool, *batch_pool, *temp_pool;
+	struct pool_list pool_list;
 	// The PCAP interfaces to capture on.
 	struct pcap_interface *pcap_interfaces;
 	size_t pcap_interface_count;
@@ -155,10 +180,10 @@ struct loop *loop_create() {
 	struct loop *result = mem_pool_alloc(pool, sizeof *result);
 	*result = (struct loop) {
 		.permanent_pool = pool,
-		.batch_pool = mem_pool_create("Global batch pool"),
-		.temp_pool = mem_pool_create("Global temporary pool"),
 		.epoll_fd = epoll_fd
 	};
+	result->batch_pool = loop_pool_create(result, NULL, "Global batch pool");
+	result->temp_pool = loop_pool_create(result, NULL, "Global temporary pool");
 	return result;
 }
 
@@ -210,10 +235,10 @@ void loop_destroy(struct loop *loop) {
 	for (size_t i = 0; i < loop->plugin_count; i ++) {
 		ulog(LOG_INFO, "Removing plugin %s\n", loop->plugins[i].plugin.name);
 		plugin_finish(&loop->plugins[i]);
+		pool_list_destroy(&loop->plugins[i].pool_list);
 		mem_pool_destroy(loop->plugins[i].context.permanent_pool);
 	}
-	mem_pool_destroy(loop->temp_pool);
-	mem_pool_destroy(loop->batch_pool);
+	pool_list_destroy(&loop->pool_list);
 	// This mempool must be destroyed last, as the loop is allocated from it
 	mem_pool_destroy(loop->permanent_pool);
 }
@@ -334,13 +359,40 @@ void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
 	 */
 	*new = (struct plugin_holder) {
 		.context = {
-			.permanent_pool = mem_pool_create(plugin->name),
 			.temp_pool = loop->temp_pool,
 			.loop = loop
 		},
+#ifdef DEBUG
+		.canary = PLUGIN_HOLDER_CANARY,
+#endif
 		.plugin = *plugin
 	};
+	new->context.permanent_pool = loop_pool_create(loop, &new->context, plugin->name);
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(new->context.permanent_pool, plugin->name);
 	plugin_init(new);
+}
+
+struct mem_pool *loop_pool_create(struct loop *loop, struct context *context, const char *name) {
+	struct pool_list *list = &loop->pool_list;
+	struct mem_pool *pool = loop->permanent_pool;
+	if (context) {
+		struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+		assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+		list = &holder->pool_list;
+		pool = context->permanent_pool;
+	}
+	struct mem_pool *new = mem_pool_create(name);
+	pool_append_pool(list, pool)->pool = new;
+	return new;
+}
+
+struct mem_pool *loop_permanent_pool(struct loop *loop) {
+	return loop->permanent_pool;
+}
+
+struct mem_pool *loop_temp_pool(struct loop *loop) {
+	return loop->temp_pool;
 }
