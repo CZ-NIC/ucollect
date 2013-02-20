@@ -21,8 +21,6 @@
 #define PCAP_TIMEOUT 1000
 #define PCAP_BUFFER 655360
 
-struct epoll_handler {
-	void (*handler)(void *);
 #define PLUGIN_HOLDER_CANARY 0x7a92f998 // Just some random 4-byte number
 
 struct pool_node {
@@ -54,7 +52,7 @@ struct pcap_interface {
 	 * This item must be first in the data structure. It'll be then casted to
 	 * the epoll_handler, which contains a function pointer as the first element.
 	 */
-	void (*handler)(struct pcap_interface *);
+	void (*handler)(struct pcap_interface *interface, uint32_t events);
 	// Link back to the loop owning this pcap. For epoll handler.
 	struct loop *loop;
 	const char *name;
@@ -148,7 +146,8 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 		plugin_packet(&interface->loop->plugins[i], &info);
 }
 
-static void pcap_read(struct pcap_interface *interface) {
+static void pcap_read(struct pcap_interface *interface, uint32_t unused) {
+	(void) unused;
 	ulog(LOG_DEBUG_VERBOSE, "Read on interface %s\n", interface->name);
 	int result = pcap_dispatch(interface->pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) interface);
 	if (result == -1)
@@ -214,7 +213,7 @@ void loop_run(struct loop *loop) {
 				 * as the first element. Therefore, we can cast it to the handler.
 				 */
 				struct epoll_handler *handler = events[i].data.ptr;
-				handler->handler(events[i].data.ptr);
+				handler->handler(events[i].data.ptr, events[i].events);
 			}
 			mem_pool_reset(loop->batch_pool);
 		}
@@ -371,6 +370,17 @@ void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(new->context.permanent_pool, plugin->name);
 	plugin_init(new);
+}
+
+void loop_register_fd(struct loop *loop, int fd, struct epoll_handler *handler) {
+	struct epoll_event event = {
+		.events = EPOLLIN | EPOLLRDHUP,
+		.data = {
+			.ptr = handler
+		}
+	};
+	if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_ADD, fd, &event) == -1)
+		die("Can't register fd %d to epoll fd %d (%s)\n", fd, loop->epoll_fd, strerror(errno));
 }
 
 struct mem_pool *loop_pool_create(struct loop *loop, struct context *context, const char *name) {
