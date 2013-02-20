@@ -2,6 +2,8 @@
 #define UCOLLECT_UPLINK_H
 
 #include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
 
 struct uplink;
 struct loop;
@@ -18,5 +20,18 @@ struct uplink *uplink_create(struct loop *loop, const char *remote_name, const c
  * is destroyed.
  */
 void uplink_destroy(struct uplink *uplink) __attribute__((nonnull));
+
+/*
+ * Send a single message to the server through the uplink connection.
+ *
+ * The message will have the given type and carry the provided data. The data may be
+ * NULL in case size is 0.
+ *
+ * Blocking, we expect to send small amounts of data, so the link should not get filled.
+ *
+ * Returns if the message was successfully sent or we reconnected during the attempt.
+ * On the reconnect, the message is dropped.
+ */
+bool uplink_send_message(struct uplink *uplink, char type, const void *data, size_t size) __attribute__((nonnull(1)));
 
 #endif

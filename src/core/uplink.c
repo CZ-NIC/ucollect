@@ -166,3 +166,40 @@ void uplink_destroy(struct uplink *uplink) {
 	// The memory pools get destroyed by the loop, we just close the socket, if any.
 	uplink_disconnect(uplink);
 }
+
+static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size) {
+	while (size > 0) {
+		// TODO: Do we want to play with the MSG_MORE?
+		ssize_t amount = send(uplink->fd, buffer, size, MSG_NOSIGNAL);
+		if (amount == -1) {
+			switch (errno) {
+				case EINTR:
+					// Just interrupt called during send. Retry.
+					ulog(LOG_WARN, "EINTR during send to %s:%s\n", uplink->remote_name, uplink->service);
+					continue;
+				case ECONNRESET:
+				case EPIPE:
+					// Lost connection. Reconnect.
+					uplink_disconnect(uplink);
+					uplink_connect(uplink);
+					return false;
+				default:
+					// Fatal errors
+					die("Error sending to %s:%s\n", uplink->remote_name, uplink->service);
+			}
+		} else {
+			buffer += amount;
+			size -= amount;
+		}
+	}
+	return true;
+}
+
+bool uplink_send_message(struct uplink *uplink, char type, const void *data, size_t size) {
+	// The +1 is for the type sent directly after the length
+	size_t head_len = sizeof(uint32_t) + 1;
+	uint8_t head_buffer[head_len];
+	*(uint32_t *) head_buffer = htonl(size + 1);
+	head_buffer[head_len - 1] = type;
+	return buffer_send(uplink, head_buffer, head_len) && buffer_send(uplink, data, size);
+}
