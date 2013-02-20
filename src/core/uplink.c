@@ -17,6 +17,9 @@ struct uplink {
 	struct loop *loop;
 	struct mem_pool *buffer_pool;
 	const char *remote_name, *service;
+	uint8_t *buffer, *buffer_pos;
+	size_t buffer_size, size_rest;
+	bool has_size;
 	int fd;
 };
 
@@ -61,6 +64,12 @@ static void uplink_connect(struct uplink *uplink) {
 	// TODO: Send hello
 }
 
+static void buffer_reset(struct uplink *uplink) {
+	uplink->buffer_size = uplink->size_rest = 0;
+	uplink->buffer = uplink->buffer_pos = NULL;
+	uplink->has_size = false;
+}
+
 static void uplink_disconnect(struct uplink *uplink) {
 	if (uplink->fd != -1) {
 		ulog(LOG_DEBUG, "Closing uplink connection %d to %s:%s\n", uplink->fd, uplink->remote_name, uplink->service);
@@ -68,13 +77,72 @@ static void uplink_disconnect(struct uplink *uplink) {
 		if (result != 0)
 			ulog(LOG_ERROR, "Couldn't close uplink connection to %s:%s, leaking file descriptor %d (%s)\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
 		uplink->fd = -1;
+		buffer_reset(uplink);
+		mem_pool_reset(uplink->buffer_pool);
 	} else
 		ulog(LOG_DEBUG, "Uplink connection to %s:%s not open\n", uplink->remote_name, uplink->service);
+}
+
+static void handle_buffer(struct uplink *uplink) {
+	if (uplink->has_size) {
+		// If we already have the size, it is the real message
+		ulog(LOG_DEBUG, "Uplink %s:%s received complete message of %zu bytes\n", uplink->remote_name, uplink->service, uplink->buffer_size);
+
+		// TODO: Examine the message
+
+		// Next time start a new message from scratch
+		buffer_reset(uplink);
+	} else {
+		// This is the size of the real message. Get the buffer for the message.
+		uplink->buffer_size = uplink->size_rest = ntohl(*(const uint32_t *) uplink->buffer);
+		uplink->buffer = uplink->buffer_pos = mem_pool_alloc(uplink->buffer_pool, uplink->buffer_size);
+		uplink->has_size = true;
+	}
 }
 
 static void uplink_read(struct uplink *uplink, uint32_t unused) {
 	(void) unused;
 	ulog(LOG_DEBUG, "Read on uplink %s:%s (%d)\n", uplink->remote_name, uplink->service, uplink->fd);
+	if (!uplink->buffer) {
+		// No buffer - prepare one for the size
+		uplink->buffer_size = uplink->size_rest = sizeof(uint32_t);
+		uplink->buffer = uplink->buffer_pos = mem_pool_alloc(uplink->buffer_pool, uplink->buffer_size);
+	}
+	// Read once. If there's more to read, the loop will call us again. We just don't want to process for too long.
+	ssize_t amount = recv(uplink->fd, uplink->buffer_pos, uplink->size_rest, MSG_DONTWAIT);
+	if (amount == -1) {
+		switch (errno) {
+			case EAGAIN:
+#if EAGAIN != EWOULDBLOCK
+			case EWOULDBLOCK:
+#endif
+			case EINTR:
+				/*
+				 * Non-fatal errors. EINTR can happen without problems.
+				 *
+				 * EAGAIN/EWOULDBLOCK should not, but it is said linux can create spurious
+				 * events on sockets sometime.
+				 */
+				ulog(LOG_WARN, "Non-fatal error reading from %s:%s (%d): %s\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
+				return; // We'll just retry next time
+			case ECONNRESET:
+				// This is similar to close
+				ulog(LOG_WARN, "Connection to %s:%s reset, reconnecting\n", uplink->remote_name, uplink->service);
+				goto CLOSED;
+			default: // Other errors are fatal, as we don't know the cause
+				die("Error reading from uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, strerror(errno));
+		}
+	} else if (amount == 0) { // 0 means socket closed
+		ulog(LOG_WARN, "Remote closed the uplink %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
+		CLOSED:
+		uplink_disconnect(uplink);
+		uplink_connect(uplink);
+	} else {
+		uplink->buffer_pos += amount;
+		uplink->size_rest -= amount;
+		if (uplink->size_rest == 0)
+			handle_buffer(uplink);
+	}
 }
 
 struct uplink *uplink_create(struct loop *loop, const char *remote_name, const char *service) {
