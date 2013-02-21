@@ -27,9 +27,9 @@ static struct uplink *uplink;
 
 static void cleanup() {
 	// TODO: Release all the plugins here.
-	loop_destroy(loop);
 	if (uplink)
 		uplink_destroy(uplink);
+	loop_destroy(loop);
 }
 
 int main(int argc, const char* argv[]) {
