@@ -52,9 +52,9 @@ def handle_command(sock):
 def send_request(sock):
 	# Hardcode the message. Ugly.
 	# Get data (and reset)
-	buf = struct.pack('!LcL5sc', 11, 'R', 5, 'count', 'D')
+	buf = struct.pack('!LcL5sc', 11, 'R', 5, 'Count', 'D')
 	# Get the statistics
-	buf += struct.pack('!LcL5sc', 11, 'R', 5, 'count', 'S')
+	buf += struct.pack('!LcL5sc', 11, 'R', 5, 'Count', 'S')
 	sock.sendall(buf)
 
 def handle_client(sock):
