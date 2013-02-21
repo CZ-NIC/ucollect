@@ -2,6 +2,7 @@
 #include "mem_pool.h"
 #include "loop.h"
 #include "util.h"
+#include "context.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -89,7 +90,7 @@ static void uplink_disconnect(struct uplink *uplink) {
 }
 
 const char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) {
-	const size_t len_size = sizeof(uint32_t);
+	size_t len_size = sizeof(uint32_t);
 	if (*length < len_size) {
 		return NULL;
 	}
@@ -119,9 +120,9 @@ static void handle_buffer(struct uplink *uplink) {
 					if (!loop_plugin_send_data(uplink->loop, plugin_name, uplink->buffer, uplink->buffer_size)) {
 						ulog(LOG_ERROR, "Plugin %s referenced by uplink does not exist\n", plugin_name);
 						// TODO: Create some function for formatting messages
-						const size_t pname_len = strlen(plugin_name);
+						size_t pname_len = strlen(plugin_name);
 						// 1 for 'P', 1 for '\0' at the end
-						const size_t msgsize = 1 + sizeof pname_len + pname_len;
+						size_t msgsize = 1 + sizeof pname_len + pname_len;
 						char buffer[msgsize];
 						// First goes error specifier - 'P'lugin name doesn't exist
 						buffer[0] = 'P';
@@ -255,4 +256,15 @@ bool uplink_send_message(struct uplink *uplink, char type, const void *data, siz
 	*(uint32_t *) head_buffer = htonl(size + 1);
 	head_buffer[head_len - 1] = type;
 	return buffer_send(uplink, head_buffer, head_len) && buffer_send(uplink, data, size);
+}
+
+bool uplink_plugin_send_message(struct context *context, const void *data, size_t size) {
+	const char *name = loop_plugin_get_name(context);
+	uint32_t name_length = strlen(name);
+	uint32_t length = sizeof name_length + name_length + size;
+	uint8_t buffer[length];
+	*(uint32_t *)buffer = htonl(name_length);
+	memcpy(buffer + sizeof name_length, name, name_length);
+	memcpy(buffer + sizeof name_length + name_length, data, size);
+	return uplink_send_message(context->uplink, 'R', buffer, size);
 }

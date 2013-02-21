@@ -437,3 +437,11 @@ bool loop_plugin_send_data(struct loop *loop, const char *name, const uint8_t *d
 		}
 	return false;
 }
+
+const char *loop_plugin_get_name(const struct context *context) {
+	const struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+	assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+	return holder->plugin.name;
+}
