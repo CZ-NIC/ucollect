@@ -103,9 +103,21 @@ static void plugin_##NAME(struct plugin_holder *plugin, TYPE PARAM) { \
 	current_context = NULL; \
 }
 
+// And with 2
+#define GEN_CALL_WRAPPER_PARAM_2(NAME, TYPE1, TYPE2) \
+static void plugin_##NAME(struct plugin_holder *plugin, TYPE1 PARAM1, TYPE2 PARAM2) { \
+	if (!plugin->plugin.NAME##_callback) \
+		return; \
+	current_context = &plugin->context; \
+	plugin->plugin.NAME##_callback(&plugin->context, PARAM1, PARAM2); \
+	mem_pool_reset(plugin->context.temp_pool); \
+	current_context = NULL; \
+}
+
 GEN_CALL_WRAPPER(init)
 GEN_CALL_WRAPPER(finish)
 GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
+GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
 
 struct loop {
 	/*
@@ -406,4 +418,13 @@ struct mem_pool *loop_permanent_pool(struct loop *loop) {
 
 struct mem_pool *loop_temp_pool(struct loop *loop) {
 	return loop->temp_pool;
+}
+
+bool loop_plugin_send_data(struct loop *loop, const char *name, const uint8_t *data, size_t length) {
+	for (size_t i = 0; i < loop->plugin_count; i ++)
+		if (strcmp(loop->plugins[i].plugin.name, name) == 0) {
+			plugin_uplink_data(&loop->plugins[i], data, length);
+			return true;
+		}
+	return false;
 }

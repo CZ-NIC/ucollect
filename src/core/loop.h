@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 struct loop;
 struct plugin;
@@ -37,5 +38,11 @@ struct mem_pool *loop_pool_create(struct loop *loop, struct context *current_con
 struct mem_pool *loop_permanent_pool(struct loop *loop) __attribute__((nonnull)) __attribute__((pure));
 // Get a temporary pool that may be freed any time the control returns to main loop
 struct mem_pool *loop_temp_pool(struct loop *loop) __attribute__((nonnull)) __attribute__((pure));
+
+/*
+ * Send some data from uplink to a plugin. Plugin is specified by name.
+ * Returns true if the plugin exists, false if not.
+ */
+bool loop_plugin_send_data(struct loop *loop, const char *plugin, const uint8_t *data, size_t length) __attribute__((nonnull));
 
 #endif
