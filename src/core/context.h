@@ -16,6 +16,7 @@ struct context {
 	struct mem_pool *permanent_pool;
 	struct mem_pool *temp_pool;
 	struct loop *loop;
+	struct uplink *uplink;
 	struct user_data *user_data;
 };
 

@@ -210,6 +210,7 @@ struct uplink *uplink_create(struct loop *loop, const char *remote_name, const c
 		.fd = -1
 	};
 	uplink_connect(result);
+	loop_uplink_set(loop, result);
 	return result;
 }
 

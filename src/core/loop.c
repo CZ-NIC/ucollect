@@ -139,6 +139,7 @@ struct loop {
 	// The plugins that handle the packets
 	struct plugin_holder *plugins;
 	size_t plugin_count;
+	struct uplink *uplink;
 	// The epoll
 	int epoll_fd;
 	// Turnes to 1 when we are stopped.
@@ -372,7 +373,8 @@ void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
 		.context = {
 			.temp_pool = loop->temp_pool,
 			.permanent_pool = mem_pool_create(plugin->name),
-			.loop = loop
+			.loop = loop,
+			.uplink = loop->uplink
 		},
 #ifdef DEBUG
 		.canary = PLUGIN_HOLDER_CANARY,
@@ -383,6 +385,13 @@ void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(new->context.permanent_pool, plugin->name);
 	plugin_init(new);
+}
+
+void loop_uplink_set(struct loop *loop, struct uplink *uplink) {
+	assert(!loop->uplink);
+	loop->uplink = uplink;
+	for (size_t i = 0; i < loop->plugin_count; i ++)
+		loop->plugins[i].context.uplink = loop->uplink;
 }
 
 void loop_register_fd(struct loop *loop, int fd, struct epoll_handler *handler) {
