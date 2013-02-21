@@ -7,6 +7,7 @@
 
 struct uplink;
 struct loop;
+struct mem_pool;
 
 /*
  * Create and connect an uplink. It is expected to be called only once on a given loop.
@@ -33,5 +34,10 @@ void uplink_destroy(struct uplink *uplink) __attribute__((nonnull));
  * On the reconnect, the message is dropped.
  */
 bool uplink_send_message(struct uplink *uplink, char type, const void *data, size_t size) __attribute__((nonnull(1)));
+
+// Some parsing functions
+
+// Get a string from buffer. Returns NULL if badly formatted. The buffer position is updated.
+const char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) __attribute__((nonnull));
 
 #endif

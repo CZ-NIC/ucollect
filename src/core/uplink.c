@@ -17,7 +17,8 @@ struct uplink {
 	struct loop *loop;
 	struct mem_pool *buffer_pool;
 	const char *remote_name, *service;
-	uint8_t *buffer, *buffer_pos;
+	const uint8_t *buffer;
+	uint8_t *buffer_pos;
 	size_t buffer_size, size_rest;
 	bool has_size;
 	int fd;
@@ -87,12 +88,59 @@ static void uplink_disconnect(struct uplink *uplink) {
 		ulog(LOG_DEBUG, "Uplink connection to %s:%s not open\n", uplink->remote_name, uplink->service);
 }
 
+const char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) {
+	const size_t len_size = sizeof(uint32_t);
+	if (*length < len_size) {
+		return NULL;
+	}
+	const uint32_t len = ntohl(*(const uint32_t *) *buffer);
+	if (*length < len + len_size) {
+		return NULL;
+	}
+	char *result = mem_pool_alloc(pool, len + 1);
+	memcpy(result, *buffer + len_size, len);
+	result[len] = '\0';
+	*length -= len_size + len;
+	*buffer += len_size + len;
+	return result;
+}
+
 static void handle_buffer(struct uplink *uplink) {
 	if (uplink->has_size) {
 		// If we already have the size, it is the real message
 		ulog(LOG_DEBUG, "Uplink %s:%s received complete message of %zu bytes\n", uplink->remote_name, uplink->service, uplink->buffer_size);
 
-		// TODO: Examine the message
+		if (uplink->buffer_size) {
+			char command = *uplink->buffer ++;
+			uplink->buffer_size --;
+			switch (command) {
+				case 'R': { // Route data to given plugin
+					const char *plugin_name = uplink_parse_string(uplink->buffer_pool, &uplink->buffer, &uplink->buffer_size);
+					if (!loop_plugin_send_data(uplink->loop, plugin_name, uplink->buffer, uplink->buffer_size)) {
+						ulog(LOG_ERROR, "Plugin %s referenced by uplink does not exist\n", plugin_name);
+						// TODO: Create some function for formatting messages
+						const size_t pname_len = strlen(plugin_name);
+						// 1 for 'P', 1 for '\0' at the end
+						const size_t msgsize = 1 + sizeof pname_len + pname_len;
+						char buffer[msgsize];
+						// First goes error specifier - 'P'lugin name doesn't exist
+						buffer[0] = 'P';
+						// Then one byte after, the length of the name
+						*(uint32_t *)(buffer + 1) = htonl(pname_len);
+						// And the string itself
+						memcpy(buffer + 1 + sizeof pname_len, plugin_name, pname_len);
+						// Send an error
+						uplink_send_message(uplink, 'E', buffer, msgsize);
+					}
+					break;
+				}
+				default:
+					ulog(LOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
+					break;
+			}
+		} else {
+			ulog(LOG_ERROR, "Received an empty message from %s:%s\n", uplink->remote_name, uplink->service);
+		}
 
 		// Next time start a new message from scratch
 		buffer_reset(uplink);
