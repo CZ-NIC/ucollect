@@ -359,6 +359,7 @@ void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
 	*new = (struct plugin_holder) {
 		.context = {
 			.temp_pool = loop->temp_pool,
+			.permanent_pool = mem_pool_create(plugin->name),
 			.loop = loop
 		},
 #ifdef DEBUG
@@ -366,7 +367,7 @@ void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
 #endif
 		.plugin = *plugin
 	};
-	new->context.permanent_pool = loop_pool_create(loop, &new->context, plugin->name);
+	pool_append_pool(&new->pool_list, new->context.permanent_pool)->pool = new->context.permanent_pool;
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(new->context.permanent_pool, plugin->name);
 	plugin_init(new);
