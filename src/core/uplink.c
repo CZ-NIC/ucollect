@@ -61,7 +61,11 @@ static void uplink_connect(struct uplink *uplink) {
 		// TODO: Some retry after a while instead of hard die
 		die("Failed to connect to any address and port for uplink %s:%s\n", uplink->remote_name, uplink->service);
 	loop_register_fd(uplink->loop, uplink->fd, (struct epoll_handler *) uplink);
-	// TODO: Send hello
+	/*
+	 * Send 'H'ello. For now, it is empty. In future, we expect to have program & protocol version,
+	 * list of plugins and possibly other things too.
+	 */
+	uplink_send_message(uplink, 'H', NULL, 0);
 }
 
 static void buffer_reset(struct uplink *uplink) {
