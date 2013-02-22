@@ -260,11 +260,12 @@ bool uplink_send_message(struct uplink *uplink, char type, const void *data, siz
 
 bool uplink_plugin_send_message(struct context *context, const void *data, size_t size) {
 	const char *name = loop_plugin_get_name(context);
+	ulog(LOG_DEBUG, "Sending message of size %zu from plugin %s\n", size, name);
 	uint32_t name_length = strlen(name);
 	uint32_t length = sizeof name_length + name_length + size;
 	uint8_t buffer[length];
 	*(uint32_t *)buffer = htonl(name_length);
 	memcpy(buffer + sizeof name_length, name, name_length);
 	memcpy(buffer + sizeof name_length + name_length, data, size);
-	return uplink_send_message(context->uplink, 'R', buffer, size);
+	return uplink_send_message(context->uplink, 'R', buffer, length);
 }

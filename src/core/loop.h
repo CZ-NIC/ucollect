@@ -23,7 +23,7 @@ bool loop_add_pcap(struct loop *loop, const char *interface) __attribute__((nonn
 // Add a local address for the last added pcap interface. Can be net address (eg. 192.168.0.0/16).
 bool loop_pcap_add_address(struct loop *loop, const char *address) __attribute__((nonnull));
 void loop_add_plugin(struct loop *loop, struct plugin *plugin) __attribute__((nonnull));
-const char *loop_plugin_get_name(const struct context *context) __attribute__((nonnull));
+const char *loop_plugin_get_name(const struct context *context) __attribute__((nonnull)) __attribute__((const));
 /*
  * Set the uplink used by this loop. This may be called at most once on
  * a given loop.
