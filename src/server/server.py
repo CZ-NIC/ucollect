@@ -39,6 +39,10 @@ def read_buf(sock, amount):
 		amount -= len(part)
 	return buf
 
+def getstr(buf):
+	(slen,) = struct.unpack('!L', buf[:4])
+	return (buf[4:slen + 4], buf[slen + 4:])
+
 def handle_command(sock):
 	lenbuf = read_buf(sock, 5)
 	(buflen, ctype) = struct.unpack('!Lc', lenbuf)
@@ -46,6 +50,18 @@ def handle_command(sock):
 	buf = read_buf(sock, buflen - 1)
 	if ctype == 'H':
 		print("Client sent 'Hello' with " + str(buflen - 1) + " bytes of data")
+	elif ctype == 'R':
+		(plugin, buf) = getstr(buf)
+		if plugin == b'Count':
+			count = len(buf) / 4
+			data = struct.unpack('!' + str(count) + 'L', buf)
+			print('===========================================================')
+			if len(data) == 12: # The 'D'ata answer
+				names = ('Count', 'IPv6', 'IPv4', 'In', 'Out', 'TCP', 'UDP', 'ICMP', 'LPort', 'SIn', 'SOut', 'Size')
+				for i in range(0, 12):
+					print(names[i] + ':\t\t' + str(data[i]))
+		else:
+			print("Unknown plugin " + str(plugin))
 	else:
 		print("Unknown command " + ctype + " with " + str(buflen - 1) + " bytes of data")
 

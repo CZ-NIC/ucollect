@@ -3,6 +3,9 @@
 #include "../../core/util.h"
 #include "../../core/mem_pool.h"
 #include "../../core/packet.h"
+#include "../../core/uplink.h"
+
+#include <arpa/inet.h>
 
 struct user_data {
 	size_t count;
@@ -80,11 +83,40 @@ static void initialize(struct context *context) {
 	};
 }
 
+static void communicate(struct context *context, const uint8_t *data, size_t length) {
+	// TODO: Error handling
+	if (length != 1)
+		return;
+	switch (*data) {
+		case 'D': {// Send and reset the data
+			struct user_data *d = context->user_data;
+			/*
+			 * Since the structure is just bunch of items of the same type,
+			 * we can look at it as an array. This allows us to convert
+			 * it in an easier way. It is a slight abuse, but it should
+			 * be legal according to the C standard (though it is probably
+			 * fragile) and this plugin is more like a proof of concept
+			 * anyway.
+			 */
+			size_t *items = (size_t *) d;
+			size_t item_count = sizeof *d / sizeof *items;
+			uint32_t message[item_count];
+			for (size_t i = 0; i < item_count; i ++) {
+				message[i] = htonl(items[i]);
+				items[i] = 0;
+			}
+			uplink_plugin_send_message(context, message, sizeof message);
+			break;
+		}
+	}
+}
+
 struct plugin *plugin_info() {
 	static struct plugin plugin = {
 		.name = "Count",
 		.packet_callback = packet_handle,
-		.init_callback = initialize
+		.init_callback = initialize,
+		.uplink_data_callback = communicate
 	};
 	return &plugin;
 }
