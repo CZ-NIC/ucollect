@@ -1,5 +1,6 @@
 #include "mem_pool.h"
 #include "util.h"
+#include "tunable.h"
 
 #include <assert.h>
 #include <string.h>
@@ -7,8 +8,6 @@
 #include <sys/mman.h>
 #include <stdarg.h>
 #include <stdio.h>
-
-#define PAGE_CACHE_SIZE 20
 
 struct pool_page {
 	// Next page in linked list (for freeing them on reset or destroy).

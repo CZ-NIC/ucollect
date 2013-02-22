@@ -5,6 +5,7 @@
 #include "plugin.h"
 #include "packet.h"
 #include "address.h"
+#include "tunable.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -16,10 +17,6 @@
 #include <sys/epoll.h>
 
 // TODO: Should these be configurable? Runtime or compile time?
-#define MAX_EVENTS 10
-#define MAX_PACKETS 100
-#define PCAP_TIMEOUT 100
-#define PCAP_BUFFER 3276800
 
 #define PLUGIN_HOLDER_CANARY 0x7a92f998 // Just some random 4-byte number
 
