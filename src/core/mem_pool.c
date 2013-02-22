@@ -8,6 +8,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#define PAGE_CACHE_SIZE 20
+
 struct pool_page {
 	// Next page in linked list (for freeing them on reset or destroy).
 	struct pool_page *next;
@@ -16,6 +18,13 @@ struct pool_page {
 	// This should be well aligned, because the previous is size_t.
 	unsigned char data[];
 };
+
+/*
+ * Cache few pages (of the unit size, not the bigger ones) so we don't keep allocating
+ * and returning them too often.
+ */
+static struct pool_page *page_cache[PAGE_CACHE_SIZE];
+static size_t page_cache_size;
 
 struct mem_pool {
 	// First page.
@@ -31,20 +40,27 @@ struct mem_pool {
 // Get a page of given total size. Data size will be smaller.
 static struct pool_page *page_get(size_t size, const char *name) {
 	ulog(LOG_DEBUG, "Getting page %zu large for pool '%s'\n", size, name);
-	// TODO: Some page caching
-	struct pool_page *result = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	if (result == MAP_FAILED)
-		die("Couldn't get page of %zu bytes for pool '%s' (%s)\n", size, name, strerror(errno));
+	struct pool_page *result;
+	if (size == PAGE_SIZE && page_cache_size)
+		// If it is a single, take it from the cache
+		result = page_cache[-- page_cache_size];
+	else {
+		result = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		if (result == MAP_FAILED)
+			die("Couldn't get page of %zu bytes for pool '%s' (%s)\n", size, name, strerror(errno));
+		result->size = size;
+	}
 	result->next = NULL;
-	result->size = size;
 	return result;
 }
 
 // Release a given page (previously allocated by page_get).
 static void page_return(struct pool_page *page, const char *name) {
 	ulog(LOG_DEBUG, "Releasing page %zu large from pool '%s'\n", page->size, name);
-	// TODO: Cache the page?
-	if (munmap(page, page->size) != 0)
+	if (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE)
+		// A single page can be put into the cache, if it is not already full
+		page_cache[page_cache_size ++] = page;
+	else if (munmap(page, page->size) != 0)
 		die("Couldn't return page %p of %zu bytes from pool '%s' (%s)\n", (void *) page, page->size, name, strerror(errno));
 }
 
