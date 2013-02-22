@@ -74,6 +74,7 @@ static void buffer_reset(struct uplink *uplink) {
 	uplink->buffer_size = uplink->size_rest = 0;
 	uplink->buffer = uplink->buffer_pos = NULL;
 	uplink->has_size = false;
+	mem_pool_reset(uplink->buffer_pool);
 }
 
 static void uplink_disconnect(struct uplink *uplink) {
@@ -84,7 +85,6 @@ static void uplink_disconnect(struct uplink *uplink) {
 			ulog(LOG_ERROR, "Couldn't close uplink connection to %s:%s, leaking file descriptor %d (%s)\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
 		uplink->fd = -1;
 		buffer_reset(uplink);
-		mem_pool_reset(uplink->buffer_pool);
 	} else
 		ulog(LOG_DEBUG, "Uplink connection to %s:%s not open\n", uplink->remote_name, uplink->service);
 }
