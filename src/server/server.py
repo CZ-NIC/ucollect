@@ -55,11 +55,16 @@ def handle_command(sock):
 		if plugin == b'Count':
 			count = len(buf) / 4
 			data = struct.unpack('!' + str(count) + 'L', buf)
-			print('===========================================================')
 			if len(data) == 12: # The 'D'ata answer
+				print('===========================================================')
 				names = ('Count', 'IPv6', 'IPv4', 'In', 'Out', 'TCP', 'UDP', 'ICMP', 'LPort', 'SIn', 'SOut', 'Size')
 				for i in range(0, 12):
 					print(names[i] + ':\t\t' + str(data[i]))
+			else:
+				print("There are " + str(data[0]) + " interfaces")
+				names = ('IF-Dropped', 'Captured', 'Dropped')
+				for i in range(1, len(data)):
+					print(names[i % 3] + ':\t\t' + str(data[i]))
 		else:
 			print("Unknown plugin " + str(plugin))
 	else:

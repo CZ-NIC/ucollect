@@ -20,6 +20,17 @@ void loop_break(struct loop *loop) __attribute__((nonnull));
 void loop_destroy(struct loop *loop) __attribute__((nonnull));
 
 bool loop_add_pcap(struct loop *loop, const char *interface) __attribute__((nonnull));
+/*
+ * Get statistics of the interfaces of the loop.
+ *
+ * It returns an array allocated from the temporary memory pool.
+ * First, there's number of interfaces. Then, each iterface has 3 items:
+ * (received, dropped, dropped by interface driver).
+ *
+ * In case the statistics for an interface fail, all the three items of it
+ * are set to maximum value.
+ */
+size_t *loop_pcap_stats(struct context *context) __attribute__((nonnull)) __attribute__((malloc));
 // Add a local address for the last added pcap interface. Can be net address (eg. 192.168.0.0/16).
 bool loop_pcap_add_address(struct loop *loop, const char *address) __attribute__((nonnull));
 void loop_add_plugin(struct loop *loop, struct plugin *plugin) __attribute__((nonnull));

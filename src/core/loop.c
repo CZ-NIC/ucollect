@@ -347,6 +347,24 @@ bool loop_add_pcap(struct loop *loop, const char *interface) {
 	return true;
 }
 
+size_t *loop_pcap_stats(struct context *context) {
+	struct loop *loop = context->loop;
+	size_t *result = mem_pool_alloc(context->temp_pool, (1 + 3 * loop->pcap_interface_count) * sizeof *result);
+	*result = loop->pcap_interface_count;
+	for (size_t i = 0; i < loop->pcap_interface_count; i ++) {
+		struct pcap_stat ps;
+		int error = pcap_stats(loop->pcap_interfaces[i].pcap, &ps);
+		if (error)
+			memset(result + 1 + 3 * i, 0xff, 3 * sizeof *result);
+		else {
+			result[1 + 3 * i] = ps.ps_recv;
+			result[2 + 3 * i] = ps.ps_drop;
+			result[3 + 3 * i] = ps.ps_ifdrop;
+		}
+	}
+	return result;
+}
+
 bool loop_pcap_add_address(struct loop *loop, const char *address) {
 	assert(loop->pcap_interface_count);
 	return address_list_add_parsed(loop->pcap_interfaces[loop->pcap_interface_count - 1].local_addresses, address, true);

@@ -4,6 +4,7 @@
 #include "../../core/mem_pool.h"
 #include "../../core/packet.h"
 #include "../../core/uplink.h"
+#include "../../core/loop.h"
 
 #include <arpa/inet.h>
 
@@ -105,6 +106,14 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 				message[i] = htonl(items[i]);
 				items[i] = 0;
 			}
+			uplink_plugin_send_message(context, message, sizeof message);
+			break;
+		}
+		case 'S': {
+			size_t *stats = loop_pcap_stats(context);
+			uint32_t message[1 + 3 * *stats];
+			for (size_t i = 0; i < 1 + 3 * *stats; i ++)
+				message[i] = htonl(stats[i]);
 			uplink_plugin_send_message(context, message, sizeof message);
 			break;
 		}
