@@ -43,6 +43,8 @@ def getstr(buf):
 	(slen,) = struct.unpack('!L', buf[:4])
 	return (buf[4:slen + 4], buf[slen + 4:])
 
+last = (None, 0, 0, 0)
+
 def handle_command(sock):
 	lenbuf = read_buf(sock, 5)
 	(buflen, ctype) = struct.unpack('!Lc', lenbuf)
@@ -59,12 +61,21 @@ def handle_command(sock):
 				print('===========================================================')
 				names = ('Count', 'IPv6', 'IPv4', 'In', 'Out', 'TCP', 'UDP', 'ICMP', 'LPort', 'SIn', 'SOut', 'Size')
 				for i in range(0, 12):
-					print(names[i] + ':\t\t' + str(data[i]))
+					print(names[i] + ':\t\t\t\t' + str(data[i]))
 			else:
 				print("There are " + str(data[0]) + " interfaces")
 				names = ('IF-Dropped', 'Captured', 'Dropped')
 				for i in range(1, len(data)):
-					print(names[i % 3] + ':\t\t' + str(data[i]))
+					print(names[i % 3] + ':\t\t\t' + str(data[i]))
+				global last
+				if last:
+					diffC = data[1] - last[1]
+					diffD = data[2] - last[2]
+					print("Captured from last time:\t" + str(diffC))
+					print("Dropped from last time:\t\t" + str(diffD))
+					if diffC > 0:
+						print("Drop ration:\t\t\t" + str(100 * diffD / diffC) + "%")
+				last = data
 		else:
 			print("Unknown plugin " + str(plugin))
 	else:
