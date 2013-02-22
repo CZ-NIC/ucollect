@@ -1,0 +1,88 @@
+The core of ucollect
+====================
+
+The core library provides several utilities for writing the plugins.
+It also defines the interface by which the plugins communicate.
+
+[WARNING]
+There are few rules you should follow when writing plugins.  They
+allow the ucollect to do fancy things, like removing broken plugins at
+run-time. So be sure to read the documentation before you jump on
+writing the plugins, there are some unusual things too.
+
+Memory management
+-----------------
+
+The usual manual memory management of C is tedious and error prone.
+Also, it doesn't allow separating plugins from each other.
+
+Here we use memory pools instead. Each piece of memory is allocated
+from a pool. But the memory pieces are not released individually. The
+only possible way to release memory is to reset the whole memory pool
+(or destroy it, which resets it implicitly). That'll free all the
+memory allocated from the pool.
+
+Each memory pool has a lifetime defined. There are pools that are
+never reset for the whole lifetime of a plugin, pools only for
+short-time allocations which are reset when the plugin returns control
+to the core and more pools can be created with custom lifetimes
+controlled by the plugins themselves. When you allocate memory, decide
+for how long you'll need it and pick the pool with shortest possible
+lifetime.
+
+The advantages of memory pools are several:
+
+ * They are faster.
+ * There's less memory overhead for bookkeeping.
+ * No need for calling free. You can actually return allocated memory
+   from function and not worry about it being released. It's much
+   harder to create a resource leak with them.
+ * All memory pools associated with a plugin are automatically
+   destroyed when the plugin is removed.
+
+Obviously, they have their drawbacks, like the fact you need to know
+how long you'll need the memory. But if you can use them, please do
+so, as it allows the system remove the plugin without its cooperation
+in case something bad happens (eg. `SEGFAULT` in the plugin). If you use
+malloc or similar, then this operation would leak.
+
+Plugin architecture
+-------------------
+
+A plugin is a shared library with pre-defined entry function. The
+function shall return a plugin description (`struct plugin`).
+
+This plugin description contains information about the plugin. The
+interesting part is there are several callbacks called at different
+times. Each plugin can be `NULL`, in which case nothing is called at the
+time it would be invoked.
+
+All callbacks have a common argument of type `struct context *`. This
+context contains useful information needed for life of a plugin --
+permanent and temporary memory pool, pointers to some core objects and
+a pointer for user data. The plugin is not expected to change anything
+inside the context except for the user data pointer, which it can use
+for whatever reasons it likes.
+
+There are several callbacks defined:
+
+init_callback:: It is called when the plugin is initialized. It is
+  expected the plugin will set the user data pointer in this
+  callback. Note that this may be called more than once from each
+  library, as a plugin can be initialized and then removed several
+  times during the execution of `ucollect`. Also, it is possible
+  several instances of the plugin would be created at once. Don't use
+  global variables, store everything to the user data pointer.
+finish_callback:: This one is called before the plugin is removed. As
+  the memory pools are destroyed automatically (even the ones a plugin
+  asks for in addition to the basic 2), this callback is usually
+  `NULL`.
+packet_callback:: It is called once for every packet captured by
+  ucollect. The packet is presented for inspection by the plugin as a
+  parameter. In addition to the raw data, several properties of the
+  packet are already computed and presented (like the addresses of
+  sender and recipient, direction of the packet, protocol used, ...)
+uplink_data_callback:: This is called whenever the control server
+  sends a message directed to the plugin. The data of the message is
+  provided as parameter, but the content is plugin-defined. It is up
+  to the plugin to provide answer, if any is required.
