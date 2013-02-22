@@ -147,6 +147,8 @@ LDFLAGS::
 This overrides whatever is set by the `TARGET` and `RELEASE`
 variables.
 
+MAX_LOG_LEVEL::
+  Maximum level of log messages that are output. Default is LOG_DEBUG.
 NO_DOC::
   Disables compilation of documentation.
 O::
@@ -211,6 +213,9 @@ SOURCE_DIRECTORY::
   Value of the `S` variable.
 STATIC::
   Defined if STATIC is turned on in build system.
+MAX_LOG_LEVEL::
+  Maximum level of log messages to be output. It has the value of
+  MAX_LOG_LEVEL variable in make.
 
 Missing bits
 ------------

@@ -17,6 +17,10 @@ void *mem_pool_alloc(struct mem_pool *pool, size_t size) __attribute__((malloc))
 void mem_pool_reset(struct mem_pool *pool) __attribute__((nonnull));
 
 // Some convenience functions
+
+// Copy a string to memory from the pool
 char *mem_pool_strdup(struct mem_pool *pool, const char *string) __attribute__((malloc)) __attribute__((nonnull));
+// Format a string by printf formatting to memory from the pool and return
+char *mem_pool_printf(struct mem_pool *pool, const char *format, ...) __attribute__((malloc)) __attribute__((nonnull(1, 2))) __attribute__((format(printf, 2, 3)));
 
 #endif

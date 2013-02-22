@@ -18,12 +18,30 @@
 // TODO: Should these be configurable? Runtime or compile time?
 #define MAX_EVENTS 10
 #define MAX_PACKETS 100
-#define PCAP_TIMEOUT 1000
-#define PCAP_BUFFER 655360
+#define PCAP_TIMEOUT 100
+#define PCAP_BUFFER 3276800
 
-struct epoll_handler {
-	void (*handler)(void *);
+#define PLUGIN_HOLDER_CANARY 0x7a92f998 // Just some random 4-byte number
+
+struct pool_node {
+	struct pool_node *next;
+	struct mem_pool *pool;
 };
+
+struct pool_list {
+	struct pool_node *head, *tail;
+};
+
+#define LIST_NODE struct pool_node
+#define LIST_BASE struct pool_list
+#define LIST_NAME(X) pool_##X
+#define LIST_WANT_APPEND_POOL
+#include "link_list.h"
+
+static void pool_list_destroy(const struct pool_list *list) {
+	for (struct pool_node *pool = list->head; pool; pool = pool->next)
+		mem_pool_destroy(pool->pool);
+}
 
 struct pcap_interface {
 	/*
@@ -34,7 +52,7 @@ struct pcap_interface {
 	 * This item must be first in the data structure. It'll be then casted to
 	 * the epoll_handler, which contains a function pointer as the first element.
 	 */
-	void (*handler)(struct pcap_interface *);
+	void (*handler)(struct pcap_interface *interface, uint32_t events);
 	// Link back to the loop owning this pcap. For epoll handler.
 	struct loop *loop;
 	const char *name;
@@ -47,10 +65,14 @@ struct pcap_interface {
 struct plugin_holder {
 	/*
 	 * This one is first, so we can cast the current_context back in case
-	 * of error handling.
+	 * of error handling or some other callback.
 	 */
 	struct context context;
+#ifdef DEBUG
+	uint32_t canary; // To be able to check it is really a plugin holder
+#endif
 	struct plugin plugin;
+	struct pool_list pool_list;
 };
 
 /*
@@ -81,9 +103,21 @@ static void plugin_##NAME(struct plugin_holder *plugin, TYPE PARAM) { \
 	current_context = NULL; \
 }
 
+// And with 2
+#define GEN_CALL_WRAPPER_PARAM_2(NAME, TYPE1, TYPE2) \
+static void plugin_##NAME(struct plugin_holder *plugin, TYPE1 PARAM1, TYPE2 PARAM2) { \
+	if (!plugin->plugin.NAME##_callback) \
+		return; \
+	current_context = &plugin->context; \
+	plugin->plugin.NAME##_callback(&plugin->context, PARAM1, PARAM2); \
+	mem_pool_reset(plugin->context.temp_pool); \
+	current_context = NULL; \
+}
+
 GEN_CALL_WRAPPER(init)
 GEN_CALL_WRAPPER(finish)
 GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
+GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
 
 struct loop {
 	/*
@@ -98,12 +132,14 @@ struct loop {
 	 * for the callbacks.
 	 */
 	struct mem_pool *permanent_pool, *batch_pool, *temp_pool;
+	struct pool_list pool_list;
 	// The PCAP interfaces to capture on.
 	struct pcap_interface *pcap_interfaces;
 	size_t pcap_interface_count;
 	// The plugins that handle the packets
 	struct plugin_holder *plugins;
 	size_t plugin_count;
+	struct uplink *uplink;
 	// The epoll
 	int epoll_fd;
 	// Turnes to 1 when we are stopped.
@@ -123,7 +159,8 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 		plugin_packet(&interface->loop->plugins[i], &info);
 }
 
-static void pcap_read(struct pcap_interface *interface) {
+static void pcap_read(struct pcap_interface *interface, uint32_t unused) {
+	(void) unused;
 	ulog(LOG_DEBUG_VERBOSE, "Read on interface %s\n", interface->name);
 	int result = pcap_dispatch(interface->pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) interface);
 	if (result == -1)
@@ -155,10 +192,10 @@ struct loop *loop_create() {
 	struct loop *result = mem_pool_alloc(pool, sizeof *result);
 	*result = (struct loop) {
 		.permanent_pool = pool,
-		.batch_pool = mem_pool_create("Global batch pool"),
-		.temp_pool = mem_pool_create("Global temporary pool"),
 		.epoll_fd = epoll_fd
 	};
+	result->batch_pool = loop_pool_create(result, NULL, "Global batch pool");
+	result->temp_pool = loop_pool_create(result, NULL, "Global temporary pool");
 	return result;
 }
 
@@ -189,7 +226,7 @@ void loop_run(struct loop *loop) {
 				 * as the first element. Therefore, we can cast it to the handler.
 				 */
 				struct epoll_handler *handler = events[i].data.ptr;
-				handler->handler(events[i].data.ptr);
+				handler->handler(events[i].data.ptr, events[i].events);
 			}
 			mem_pool_reset(loop->batch_pool);
 		}
@@ -210,10 +247,10 @@ void loop_destroy(struct loop *loop) {
 	for (size_t i = 0; i < loop->plugin_count; i ++) {
 		ulog(LOG_INFO, "Removing plugin %s\n", loop->plugins[i].plugin.name);
 		plugin_finish(&loop->plugins[i]);
+		pool_list_destroy(&loop->plugins[i].pool_list);
 		mem_pool_destroy(loop->plugins[i].context.permanent_pool);
 	}
-	mem_pool_destroy(loop->temp_pool);
-	mem_pool_destroy(loop->batch_pool);
+	pool_list_destroy(&loop->pool_list);
 	// This mempool must be destroyed last, as the loop is allocated from it
 	mem_pool_destroy(loop->permanent_pool);
 }
@@ -334,13 +371,77 @@ void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
 	 */
 	*new = (struct plugin_holder) {
 		.context = {
-			.permanent_pool = mem_pool_create(plugin->name),
 			.temp_pool = loop->temp_pool,
-			.loop = loop
+			.permanent_pool = mem_pool_create(plugin->name),
+			.loop = loop,
+			.uplink = loop->uplink
 		},
+#ifdef DEBUG
+		.canary = PLUGIN_HOLDER_CANARY,
+#endif
 		.plugin = *plugin
 	};
+	pool_append_pool(&new->pool_list, new->context.permanent_pool)->pool = new->context.permanent_pool;
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(new->context.permanent_pool, plugin->name);
 	plugin_init(new);
+}
+
+void loop_uplink_set(struct loop *loop, struct uplink *uplink) {
+	assert(!loop->uplink);
+	loop->uplink = uplink;
+	for (size_t i = 0; i < loop->plugin_count; i ++)
+		loop->plugins[i].context.uplink = loop->uplink;
+}
+
+void loop_register_fd(struct loop *loop, int fd, struct epoll_handler *handler) {
+	struct epoll_event event = {
+		.events = EPOLLIN | EPOLLRDHUP,
+		.data = {
+			.ptr = handler
+		}
+	};
+	if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_ADD, fd, &event) == -1)
+		die("Can't register fd %d to epoll fd %d (%s)\n", fd, loop->epoll_fd, strerror(errno));
+}
+
+struct mem_pool *loop_pool_create(struct loop *loop, struct context *context, const char *name) {
+	struct pool_list *list = &loop->pool_list;
+	struct mem_pool *pool = loop->permanent_pool;
+	if (context) {
+		struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+		assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+		list = &holder->pool_list;
+		pool = context->permanent_pool;
+	}
+	struct mem_pool *new = mem_pool_create(name);
+	pool_append_pool(list, pool)->pool = new;
+	return new;
+}
+
+struct mem_pool *loop_permanent_pool(struct loop *loop) {
+	return loop->permanent_pool;
+}
+
+struct mem_pool *loop_temp_pool(struct loop *loop) {
+	return loop->temp_pool;
+}
+
+bool loop_plugin_send_data(struct loop *loop, const char *name, const uint8_t *data, size_t length) {
+	for (size_t i = 0; i < loop->plugin_count; i ++)
+		if (strcmp(loop->plugins[i].plugin.name, name) == 0) {
+			plugin_uplink_data(&loop->plugins[i], data, length);
+			return true;
+		}
+	return false;
+}
+
+const char *loop_plugin_get_name(const struct context *context) {
+	const struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+	assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+	return holder->plugin.name;
 }

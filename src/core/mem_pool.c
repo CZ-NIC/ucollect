@@ -5,6 +5,8 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/mman.h>
+#include <stdarg.h>
+#include <stdio.h>
 
 struct pool_page {
 	// Next page in linked list (for freeing them on reset or destroy).
@@ -163,5 +165,21 @@ char *mem_pool_strdup(struct mem_pool *pool, const char *string) {
 	size_t length = strlen(string);
 	char *result = mem_pool_alloc(pool, length + 1);
 	strcpy(result, string);
+	return result;
+}
+
+char *mem_pool_printf(struct mem_pool *pool, const char *format, ...) {
+	va_list args, args_copy;
+	va_start(args, format);
+	va_copy(args_copy, args);
+	// First find out how many bytes are needed
+	size_t needed = vsnprintf(NULL, 0, format, args) + 1;
+	// Allocate and render the result
+	char *result = mem_pool_alloc(pool, needed);
+	size_t written = vsnprintf(result, needed, format, args_copy);
+	va_end(args);
+	va_end(args_copy);
+	// Make sure the amount written is the same as promised.
+	assert(written == needed - 1);
 	return result;
 }
