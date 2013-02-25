@@ -15,8 +15,9 @@
 
 #include <pcap/pcap.h>
 #include <sys/epoll.h>
-
-// TODO: Should these be configurable? Runtime or compile time?
+#include <sys/time.h>
+#include <time.h>
+#include <limits.h>
 
 #define PLUGIN_HOLDER_CANARY 0x7a92f998 // Just some random 4-byte number
 
@@ -116,6 +117,14 @@ GEN_CALL_WRAPPER(finish)
 GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
 GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
 
+struct timeout {
+	uint64_t when;
+	void (*callback)(struct context *context, void *data, size_t id);
+	struct context *context;
+	void *data;
+	size_t id;
+};
+
 struct loop {
 	/*
 	 * The pools used for allocating memory.
@@ -137,6 +146,11 @@ struct loop {
 	struct plugin_holder *plugins;
 	size_t plugin_count;
 	struct uplink *uplink;
+	// Timeouts. Sorted by the 'when' element.
+	struct timeout *timeouts;
+	size_t timeout_count, timeout_capacity;
+	// Last time the epoll returned, in milliseconds since some unspecified point in history
+	uint64_t now;
 	// The epoll
 	int epoll_fd;
 	// Turnes to 1 when we are stopped.
@@ -200,22 +214,66 @@ void loop_break(struct loop *loop) {
 	loop->stopped = 1;
 }
 
+static void loop_get_now(struct loop *loop) {
+	struct timespec ts;
+	/*
+	 * CLOC_MONOTONIC can go backward or jump if admin adjusts date.
+	 * But the CLOCK_MONOTONIC_RAW doesn't seem to be available in uclibc.
+	 * Any better alternative?
+	 */
+	if(clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
+		die("Couldn't get time (%s)\n", strerror(errno));
+	loop->now = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
 void loop_run(struct loop *loop) {
 	ulog(LOG_INFO, "Running the main loop\n");
+	loop_get_now(loop);
 	while (!loop->stopped) {
 		struct epoll_event events[MAX_EVENTS];
-		// TODO: Implement timeouts.
 		// TODO: Support for reconfigure signal (epoll_pwait then).
-		int ready = epoll_wait(loop->epoll_fd, events, MAX_EVENTS, -1);
+		int wait_time;
+		if (loop->timeout_count) {
+			// Set the wait time until the next timeout
+			// Use larger type so we can check the bounds.
+			int64_t wait = loop->timeouts[0].when - loop->now;
+			if (wait < 0)
+				wait = 0;
+			if (wait > INT_MAX)
+				wait = INT_MAX;
+			wait_time = wait;
+		} else {
+			wait_time = -1; // Forever, if no timeouts
+		}
+		int ready = epoll_wait(loop->epoll_fd, events, MAX_EVENTS, wait_time);
+		loop_get_now(loop);
+		// Handle timeouts
+		size_t called = 0;
+		for (size_t i = 0; i < loop->timeout_count; i ++) {
+			// This one is over the time. So, next time.
+			if (loop->timeouts[i].when > loop->now)
+				break;
+			called ++;
+			current_context = loop->timeouts[i].context;
+			loop->timeouts[i].callback(loop->timeouts[i].context, loop->timeouts[i].data, loop->timeouts[i].id);
+			mem_pool_reset(loop->temp_pool);
+			current_context = NULL;
+		}
+		if (called) {
+			// Move the rest to the beginning, erasing the called ones
+			memmove(loop->timeouts, loop->timeouts + called * sizeof *loop->timeouts, (loop->timeout_count - called) * sizeof *loop->timeouts);
+			loop->timeout_count -= called;
+		}
+		// Handle events from epoll
 		if (ready == -1) {
 			if (errno == EINTR) {
 				ulog(LOG_WARN, "epoll_wait on %d interrupted, retry\n", loop->epoll_fd);
 				continue;
 			}
 			die("epoll_wait on %d failed: %s\n", loop->epoll_fd, strerror(errno));
-		} else if (ready == 0) {
+		} else if (ready == 0 && called == 0) {
 			// This is strange. We wait for 1 event idefinitelly and get 0
-			ulog(LOG_WARN, "epoll_wait on %d returned 0 events\n", loop->epoll_fd);
+			ulog(LOG_WARN, "epoll_wait on %d returned 0 events and 0 timeouts\n", loop->epoll_fd);
 		} else {
 			for (size_t i = 0; i < (size_t) ready; i ++) {
 				/*
@@ -225,8 +283,8 @@ void loop_run(struct loop *loop) {
 				struct epoll_handler *handler = events[i].data.ptr;
 				handler->handler(events[i].data.ptr, events[i].events);
 			}
-			mem_pool_reset(loop->batch_pool);
 		}
+		mem_pool_reset(loop->batch_pool);
 	}
 }
 
@@ -350,6 +408,12 @@ bool loop_pcap_add_address(struct loop *loop, const char *address) {
 }
 
 void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
+	/*
+	 * Once we have proper configuration, we won't need to migrate plugin contexts.
+	 * Or will we? The timeout contexts need to be migrated too then. It is not
+	 * implemented yet.
+	 */
+	assert(!loop->timeout_count);
 	ulog(LOG_INFO, "Installing plugin %s\n", plugin->name);
 	// Store the plugin structure.
 	/*
@@ -441,4 +505,56 @@ const char *loop_plugin_get_name(const struct context *context) {
 	assert(holder->canary == PLUGIN_HOLDER_CANARY);
 #endif
 	return holder->plugin.name;
+}
+
+size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *context, void *data, void (*callback)(struct context *context, void *data, size_t id)) {
+	// Enough space?
+	if (loop->timeout_count == loop->timeout_capacity) {
+		loop->timeout_capacity = loop->timeout_capacity * 2;
+		if (!loop->timeout_capacity)
+			loop->timeout_capacity = 2; // Some basic size for the start
+		struct timeout *new = mem_pool_alloc(loop->permanent_pool, loop->timeout_capacity * sizeof *new);
+		memcpy(new, loop->timeouts, loop->timeout_count * sizeof *new);
+		loop->timeouts = new;
+		/* Yes, throwing out the old array. But with the double-growth, only linear
+		 * amount of memory is wasted. And we reuse the space after timed-out timeouts,
+		 * so it should not grow indefinitely.
+		 */
+	}
+	size_t when = loop->now + after;
+	// Sort it in, according to the value of when.
+	size_t pos = 0;
+	for (size_t i = loop->timeout_count; i; i --) {
+		if (loop->timeouts[i - 1].when > when)
+			loop->timeouts[i] = loop->timeouts[i - 1];
+		else {
+			pos = i;
+			break;
+		}
+	}
+	/*
+	 * We let the id wrap around. We expect the old one with the same value already
+	 * timet out a long time ago.
+	 */
+	static size_t id = 0;
+	loop->timeouts[pos] = (struct timeout) {
+		.when = when,
+		.callback = callback,
+		.context = context,
+		.data = data,
+		.id = id ++
+	};
+	loop->timeout_count ++;
+	return loop->timeouts[pos].id;
+}
+
+void loop_timeout_cancel(struct loop *loop, size_t id) {
+	for (size_t i = 0; i < loop->timeout_count; i ++)
+		if (loop->timeouts[i].id == id) {
+			// Move the rest one position left
+			memmove(loop->timeouts + i, loop->timeouts + i + 1, (loop->timeout_count - 1 - i) * sizeof *loop->timeouts);
+			loop->timeout_count --;
+			return;
+		}
+	assert(0); // The ID is not there! Already called the timeout?
 }

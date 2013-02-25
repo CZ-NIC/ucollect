@@ -52,4 +52,16 @@ struct mem_pool *loop_temp_pool(struct loop *loop) __attribute__((nonnull)) __at
  */
 bool loop_plugin_send_data(struct loop *loop, const char *plugin, const uint8_t *data, size_t length) __attribute__((nonnull));
 
+/*
+ * Have a function called after given number of milliseconds.
+ * Context may be NULL in case this is called by something else than a plugin.
+ * It returns an id that is then passed to the callback. It can also be used to cancel the timeout
+ * before it happens.
+ *
+ * The timeouts are not expected to happen often, so this function is not very optimised.
+ */
+size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *context, void *data, void (*callback)(struct context *context, void *data, size_t id)) __attribute__((nonnull(1)));
+// Cancel a timeout. It must not have been called yet.
+void loop_timeout_cancel(struct loop *loop, size_t id) __attribute__((nonnull));
+
 #endif
