@@ -3,6 +3,7 @@
 #include "loop.h"
 #include "util.h"
 #include "context.h"
+#include "tunable.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -21,6 +22,7 @@ struct uplink {
 	const uint8_t *buffer;
 	uint8_t *buffer_pos;
 	size_t buffer_size, size_rest;
+	uint32_t reconnect_timeout;
 	bool has_size;
 	int fd;
 };
@@ -50,24 +52,53 @@ static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo
 	return true;
 }
 
+static void connect_fail(struct uplink *uplink);
+
 // Connect to remote. Blocking. May abort (that one should be solved by retries in future)
 static void uplink_connect(struct uplink *uplink) {
 	assert(uplink->fd == -1);
 	struct addrinfo *remote;
 	int result = getaddrinfo(uplink->remote_name, uplink->service, &(struct addrinfo) { .ai_socktype = SOCK_STREAM }, &remote);
-	if (result != 0)
-		die("Failed to resolve the uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, gai_strerror(result));
+	if (result != 0) {
+		ulog(LOG_ERROR, "Failed to resolve the uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, gai_strerror(result));
+		connect_fail(uplink);
+		return;
+	}
 	bool connected = uplink_connect_internal(uplink, remote);
 	freeaddrinfo(remote);
-	if (!connected)
-		// TODO: Some retry after a while instead of hard die
-		die("Failed to connect to any address and port for uplink %s:%s\n", uplink->remote_name, uplink->service);
+	if (!connected) {
+		ulog(LOG_ERROR, "Failed to connect to any address and port for uplink %s:%s\n", uplink->remote_name, uplink->service);
+		connect_fail(uplink);
+		return;
+	}
+	// We connected. Reset the reconnect timeout.
+	uplink->reconnect_timeout = 0;
 	loop_register_fd(uplink->loop, uplink->fd, (struct epoll_handler *) uplink);
 	/*
 	 * Send 'H'ello. For now, it is empty. In future, we expect to have program & protocol version,
 	 * list of plugins and possibly other things too.
 	 */
 	uplink_send_message(uplink, 'H', NULL, 0);
+}
+
+static void reconnect_now(struct context *unused, void *data, size_t id_unused) {
+	struct uplink *uplink = data;
+	(void) unused;
+	(void) id_unused;
+	ulog(LOG_INFO, "Reconnecting to %s:%s now\n", uplink->remote_name, uplink->service);
+	uplink_connect(uplink);
+}
+
+static void connect_fail(struct uplink *uplink) {
+	if (uplink->reconnect_timeout) {
+		// Some subsequent reconnect.
+		uplink->reconnect_timeout *= RECONNECT_MULTIPLY;
+		if (uplink->reconnect_timeout > RECONNECT_MAX)
+			uplink->reconnect_timeout = RECONNECT_MAX;
+	} else
+		uplink->reconnect_timeout = RECONNECT_BASE;
+	ulog(LOG_INFO, "Going to reconnect to %s:%s after %d seconds\n", uplink->remote_name, uplink->service, uplink->reconnect_timeout / 1000);
+	loop_timeout_add(uplink->loop, uplink->reconnect_timeout, NULL, uplink, reconnect_now);
 }
 
 static void buffer_reset(struct uplink *uplink) {
