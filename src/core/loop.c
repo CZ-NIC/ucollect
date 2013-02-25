@@ -247,22 +247,18 @@ void loop_run(struct loop *loop) {
 		}
 		int ready = epoll_wait(loop->epoll_fd, events, MAX_EVENTS, wait_time);
 		loop_get_now(loop);
-		// Handle timeouts
-		size_t called = 0;
-		for (size_t i = 0; i < loop->timeout_count; i ++) {
-			// This one is over the time. So, next time.
-			if (loop->timeouts[i].when > loop->now)
-				break;
-			called ++;
-			current_context = loop->timeouts[i].context;
-			loop->timeouts[i].callback(loop->timeouts[i].context, loop->timeouts[i].data, loop->timeouts[i].id);
+		// Handle timeouts.
+		bool timeouts_called = false;
+		while (loop->timeout_count && loop->timeouts[0].when <= loop->now) {
+			// Take it out before calling. The callback might manipulate timeouts.
+			struct timeout timeout = loop->timeouts[0];
+			// Suboptimal, but there should be only few timeouts and not often
+			memmove(loop->timeouts, loop->timeouts + 1, (-- loop->timeout_count) * sizeof *loop->timeouts);
+			current_context = timeout.context;
+			timeout.callback(timeout.context, timeout.data, timeout.id);
 			mem_pool_reset(loop->temp_pool);
 			current_context = NULL;
-		}
-		if (called) {
-			// Move the rest to the beginning, erasing the called ones
-			memmove(loop->timeouts, loop->timeouts + called * sizeof *loop->timeouts, (loop->timeout_count - called) * sizeof *loop->timeouts);
-			loop->timeout_count -= called;
+			timeouts_called = true;
 		}
 		// Handle events from epoll
 		if (ready == -1) {
@@ -271,7 +267,7 @@ void loop_run(struct loop *loop) {
 				continue;
 			}
 			die("epoll_wait on %d failed: %s\n", loop->epoll_fd, strerror(errno));
-		} else if (ready == 0 && called == 0) {
+		} else if (!ready && !timeouts_called) {
 			// This is strange. We wait for 1 event idefinitelly and get 0
 			ulog(LOG_WARN, "epoll_wait on %d returned 0 events and 0 timeouts\n", loop->epoll_fd);
 		} else {
