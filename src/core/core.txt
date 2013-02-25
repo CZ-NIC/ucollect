@@ -86,3 +86,101 @@ uplink_data_callback:: This is called whenever the control server
   sends a message directed to the plugin. The data of the message is
   provided as parameter, but the content is plugin-defined. It is up
   to the plugin to provide answer, if any is required.
+
+Modules of the core
+-------------------
+
+Each module is composed of a header file and, optionally, an
+implementation (`.c` file). Usually, each module has some public
+interface and internals. This is similar to object-oriented
+programming and each module would correspond to a class in something
+like C++ or Java.
+
+For details about each module, refer to the comments in the header
+file. This is just overview, not a complete API reference.
+
+address
+~~~~~~~
+
+This module allows to parse string representation of addresses and
+store them. It allows to store a group of addresses (or networks, in
+the address/netmask notation). It is possible to match one address
+against a network or group of networks -- find out if the address is in
+the network, or any of the networks.
+
+context
+~~~~~~~
+
+This defines the context structure. It is just a storage structure,
+holding bunch of information about active plugin and its context. It
+gives the plugin the memory pools and the loop it is being called
+from, the loop's active uplink (if any). It also holds a pointer to
+the plugin's private data.
+
+The plugin is not supposed to change anything except for the pointer
+to private data (`user_data`).
+
+link_list
+~~~~~~~~~
+
+A header allowing for manipulating with liked lists. This header
+generates requested functions by preprocessor macros -- the caller
+defines data types, elements in them and the list of functions to
+generate and includes the header. It can be included multiple times to
+create multiple types of linked lists.
+
+loop
+~~~~
+
+The main event loop. The loop handles new data on file descriptors,
+new capture data from the interfaces, timeouts and such. Then it calls
+corresponding callbacks and handles the plugins. This is the heart of
+the application.
+
+The plugins don't need to interact much with it, though they might
+request a new memory pool from it. Other core modules use the loop a
+lot.
+
+mem_pool
+~~~~~~~~
+
+The memory pools live here. See above.
+
+packet
+~~~~~~
+
+This is the part of application that inspects the captured packets and
+extracts various information from each of them (the addresses,
+protocol used, if the packet is inbound or outbound, etc). The parsing
+is called by loop, so plugins get already pre-parsed packets.
+
+plugin
+~~~~~~
+
+Definitions of each plugin. This is the interface each plugin must
+provide.
+
+tunable
+~~~~~~~
+
+Defines of various constants that can be tweaked to get optimal
+performance or set trade-of values between speed and memory
+consumption.
+
+Not all constants the program uses are present here. For example,
+offsets in packet for various protocols are defined inside the
+`packet` implementation, since they should not be changed.
+
+uplink
+~~~~~~
+
+This communicates with the central server that collects the gathered
+information. This integrates into the loop. The plugins would be
+interested in the `uplink_plugin_send_message` and in the parsing
+helper functions (to read data that are provided to the
+`uplink_data_callback`).
+
+util
+~~~~
+
+Various utilities, like logging and error reporting, live here.
