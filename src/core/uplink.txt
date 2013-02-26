@@ -1,0 +1,78 @@
+The uplink protocol
+===================
+
+The protocol is simple binary protocol. It is binary mostly because it
+is easier to handle fixed-length binary blocks in C than
+variable-length textual data.
+
+The protocol consists of messages. Each message is a block of data,
+preceded by 4-byte network-order number of bytes of the message. The
+4 bytes of length are not themselves counted into the length. As an
+empty message is not allowed, the smallest value of the length is
+therefore 1.
+
+The message starts by single byte, specifying the type of message. The
+value of the byte for each type of message is chosen that if printed
+as character (not a number), the letter reminds of the type name (it
+is usually a significant letter of the name).
+
+The type is then followed by more data, while the format and length is
+specific to the type. However, the format of the data still follows
+similar rules. Each variable-length block is preceded by 4-byte length
+in network byte order, and the 4-byte number is not included in the
+length. Strings are considered to be variable-length blocks, and the
+trailing `\0` is not included. Therefore, string `Hello world` would
+be encoded as:
+
+  [0, 0, 0, 11, 'H', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']
+
+Messages from the client
+------------------------
+
+The client sends the following messages.
+
+Hello::
+  Denoted as `H` in the wire format. It is sent right after
+  connecting. Currently, it carries no additional data. It is expected
+  to be extended in near future. It'll send the version of the client,
+  version of protocol, and possibly more information, like list of
+  active plugins.
+Route data from plugin::
+  It is denoted by `R`. The message sends some plugin-specific data
+  from a plugin. It is usually sent by the
+  `uplink_plugin_send_message`. The `R` is followed by single string,
+  which is the name of the plugin. The rest of the data is the actual
+  payload.
+Error::
+  Denoted by `E`. It is then followed by yet another single byte
+  specifier. The byte specifies which error it is.
+Ping::
+  Denoted by `P`. Request to answer. It is sent repeatedly, to verify
+  the link is alive. If too many pings are not answered, the client
+  reconnects.  Any data can be bundled with the command and the server
+  would just echo them back in the reply.
+Pong::
+  Response to ``Ping''. It should copy data from the ping command and
+  send them back. Denoted by `p`.
+
+Error codes from client
+-----------------------
+
+Plugin doesn't exist::
+  Encoded as `P`. It is followed by the name of module. This error is
+  sent when some message from the server references a module that is
+  not active in the client.
+
+Messages from the server
+------------------------
+
+Route data to plugin::
+  It is denoted by `R` and it is the counterpart of the ``Route data
+  from plugin'' message from client. It is encoded in the same way and
+  the payload is then passed to the plugin's `uplink_data_callback` or
+  a ``Plugin doesn't exist'' error is sent back to the server if such
+  plugin isn't loaded.
+Ping::
+  Same as with client.
+Pong::
+  Same as with client.

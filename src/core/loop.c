@@ -5,6 +5,7 @@
 #include "plugin.h"
 #include "packet.h"
 #include "address.h"
+#include "tunable.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -14,12 +15,9 @@
 
 #include <pcap/pcap.h>
 #include <sys/epoll.h>
-
-// TODO: Should these be configurable? Runtime or compile time?
-#define MAX_EVENTS 10
-#define MAX_PACKETS 100
-#define PCAP_TIMEOUT 100
-#define PCAP_BUFFER 3276800
+#include <sys/time.h>
+#include <time.h>
+#include <limits.h>
 
 #define PLUGIN_HOLDER_CANARY 0x7a92f998 // Just some random 4-byte number
 
@@ -60,7 +58,21 @@ struct pcap_interface {
 	struct address_list *local_addresses;
 	int fd;
 	size_t offset;
+	struct pcap_interface *next;
+	bool mark; // Mark for configurator.
 };
+
+struct pcap_list {
+	struct pcap_interface *head, *tail;
+	size_t count;
+};
+
+#define LIST_NODE struct pcap_interface
+#define LIST_BASE struct pcap_list
+#define LIST_NAME(X) pcap_##X
+#define LIST_COUNT count
+#define LIST_WANT_APPEND_POOL
+#include "link_list.h"
 
 struct plugin_holder {
 	/*
@@ -73,7 +85,20 @@ struct plugin_holder {
 #endif
 	struct plugin plugin;
 	struct pool_list pool_list;
+	struct plugin_holder *next;
+	struct plugin_holder *original; // When copying, in the configurator
+	bool mark; // Mark for configurator.
 };
+
+struct plugin_list {
+	struct plugin_holder *head, *tail;
+};
+
+#define LIST_NODE struct plugin_holder
+#define LIST_BASE struct plugin_list
+#define LIST_NAME(X) plugin_##X
+#define LIST_WANT_APPEND_POOL
+#include "link_list.h"
 
 /*
  * Generate a wrapper around a plugin callback that:
@@ -119,6 +144,14 @@ GEN_CALL_WRAPPER(finish)
 GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
 GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
 
+struct timeout {
+	uint64_t when;
+	void (*callback)(struct context *context, void *data, size_t id);
+	struct context *context;
+	void *data;
+	size_t id;
+};
+
 struct loop {
 	/*
 	 * The pools used for allocating memory.
@@ -131,19 +164,30 @@ struct loop {
 	 * The temp_pool is reset after each callback is finished, serving as a scratchpad
 	 * for the callbacks.
 	 */
-	struct mem_pool *permanent_pool, *batch_pool, *temp_pool;
+	struct mem_pool *permanent_pool, *config_pool, *batch_pool, *temp_pool;
 	struct pool_list pool_list;
 	// The PCAP interfaces to capture on.
-	struct pcap_interface *pcap_interfaces;
-	size_t pcap_interface_count;
+	struct pcap_list pcap_interfaces;
 	// The plugins that handle the packets
-	struct plugin_holder *plugins;
-	size_t plugin_count;
+	struct plugin_list plugins;
 	struct uplink *uplink;
+	// Timeouts. Sorted by the 'when' element.
+	struct timeout *timeouts;
+	size_t timeout_count, timeout_capacity;
+	// Last time the epoll returned, in milliseconds since some unspecified point in history
+	uint64_t now;
 	// The epoll
 	int epoll_fd;
 	// Turnes to 1 when we are stopped.
 	sig_atomic_t stopped; // We may be stopped from a signal, so not bool
+};
+
+// Some stuff for yet uncommited configuration
+struct loop_configurator {
+	struct loop *loop;
+	struct mem_pool *config_pool;
+	struct pcap_list pcap_interfaces;
+	struct plugin_list plugins;
 };
 
 // Handle one packet.
@@ -155,8 +199,8 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 	};
 	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s\n", info.length, interface->name);
 	parse_packet(&info, interface->local_addresses, interface->loop->batch_pool);
-	for (size_t i = 0; i < interface->loop->plugin_count; i ++)
-		plugin_packet(&interface->loop->plugins[i], &info);
+	LFOR(struct plugin_holder, plugin, interface->loop->plugins)
+		plugin_packet(plugin, &info);
 }
 
 static void pcap_read(struct pcap_interface *interface, uint32_t unused) {
@@ -168,15 +212,15 @@ static void pcap_read(struct pcap_interface *interface, uint32_t unused) {
 	ulog(LOG_DEBUG_VERBOSE, "Handled %d packets on %s\n", result, interface->name);
 }
 
-static void epoll_register_pcap(struct loop *loop, size_t index, int op) {
+static void epoll_register_pcap(struct loop *loop, struct pcap_interface *interface, int op) {
 	struct epoll_event event = {
 		.events = EPOLLIN,
 		.data = {
-			.ptr = loop->pcap_interfaces + index
+			.ptr = interface
 		}
 	};
-	if (epoll_ctl(loop->epoll_fd, op, loop->pcap_interfaces[index].fd, &event) == -1)
-		die("Can't register PCAP fd %d of %s to epoll fd %d (%s)\n", loop->pcap_interfaces[index].fd, loop->pcap_interfaces[index].name, loop->epoll_fd, strerror(errno));
+	if (epoll_ctl(loop->epoll_fd, op, interface->fd, &event) == -1)
+		die("Can't register PCAP fd %d of %s to epoll fd %d (%s)\n", interface->fd, interface->name, loop->epoll_fd, strerror(errno));
 }
 
 struct loop *loop_create() {
@@ -203,22 +247,62 @@ void loop_break(struct loop *loop) {
 	loop->stopped = 1;
 }
 
+static void loop_get_now(struct loop *loop) {
+	struct timespec ts;
+	/*
+	 * CLOC_MONOTONIC can go backward or jump if admin adjusts date.
+	 * But the CLOCK_MONOTONIC_RAW doesn't seem to be available in uclibc.
+	 * Any better alternative?
+	 */
+	if(clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
+		die("Couldn't get time (%s)\n", strerror(errno));
+	loop->now = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
 void loop_run(struct loop *loop) {
 	ulog(LOG_INFO, "Running the main loop\n");
+	loop_get_now(loop);
 	while (!loop->stopped) {
 		struct epoll_event events[MAX_EVENTS];
-		// TODO: Implement timeouts.
 		// TODO: Support for reconfigure signal (epoll_pwait then).
-		int ready = epoll_wait(loop->epoll_fd, events, MAX_EVENTS, -1);
+		int wait_time;
+		if (loop->timeout_count) {
+			// Set the wait time until the next timeout
+			// Use larger type so we can check the bounds.
+			int64_t wait = loop->timeouts[0].when - loop->now;
+			if (wait < 0)
+				wait = 0;
+			if (wait > INT_MAX)
+				wait = INT_MAX;
+			wait_time = wait;
+		} else {
+			wait_time = -1; // Forever, if no timeouts
+		}
+		int ready = epoll_wait(loop->epoll_fd, events, MAX_EVENTS, wait_time);
+		loop_get_now(loop);
+		// Handle timeouts.
+		bool timeouts_called = false;
+		while (loop->timeout_count && loop->timeouts[0].when <= loop->now) {
+			// Take it out before calling. The callback might manipulate timeouts.
+			struct timeout timeout = loop->timeouts[0];
+			// Suboptimal, but there should be only few timeouts and not often
+			memmove(loop->timeouts, loop->timeouts + 1, (-- loop->timeout_count) * sizeof *loop->timeouts);
+			current_context = timeout.context;
+			timeout.callback(timeout.context, timeout.data, timeout.id);
+			mem_pool_reset(loop->temp_pool);
+			current_context = NULL;
+			timeouts_called = true;
+		}
+		// Handle events from epoll
 		if (ready == -1) {
 			if (errno == EINTR) {
 				ulog(LOG_WARN, "epoll_wait on %d interrupted, retry\n", loop->epoll_fd);
 				continue;
 			}
 			die("epoll_wait on %d failed: %s\n", loop->epoll_fd, strerror(errno));
-		} else if (ready == 0) {
+		} else if (!ready && !timeouts_called) {
 			// This is strange. We wait for 1 event idefinitelly and get 0
-			ulog(LOG_WARN, "epoll_wait on %d returned 0 events\n", loop->epoll_fd);
+			ulog(LOG_WARN, "epoll_wait on %d returned 0 events and 0 timeouts\n", loop->epoll_fd);
 		} else {
 			for (size_t i = 0; i < (size_t) ready; i ++) {
 				/*
@@ -228,9 +312,21 @@ void loop_run(struct loop *loop) {
 				struct epoll_handler *handler = events[i].data.ptr;
 				handler->handler(events[i].data.ptr, events[i].events);
 			}
-			mem_pool_reset(loop->batch_pool);
 		}
+		mem_pool_reset(loop->batch_pool);
 	}
+}
+
+static void pcap_destroy(struct pcap_interface *interface) {
+	ulog(LOG_INFO, "Closing PCAP on %s\n", interface->name);
+	pcap_close(interface->pcap);
+}
+
+static void plugin_destroy(struct plugin_holder *plugin) {
+	ulog(LOG_INFO, "Removing plugin %s\n", plugin->plugin.name);
+	plugin_finish(plugin);
+	pool_list_destroy(&plugin->pool_list);
+	mem_pool_destroy(plugin->context.permanent_pool);
 }
 
 void loop_destroy(struct loop *loop) {
@@ -239,17 +335,11 @@ void loop_destroy(struct loop *loop) {
 	int result = close(loop->epoll_fd);
 	assert(result == 0);
 	// Close all PCAPs
-	for (size_t i = 0; i < loop->pcap_interface_count; i ++) {
-		ulog(LOG_INFO, "Closing PCAP on %s\n", loop->pcap_interfaces[i].name);
-		pcap_close(loop->pcap_interfaces[i].pcap);
-	}
+	for (struct pcap_interface *interface = loop->pcap_interfaces.head; interface; interface = interface->next)
+		pcap_destroy(interface);
 	// Remove all the plugins.
-	for (size_t i = 0; i < loop->plugin_count; i ++) {
-		ulog(LOG_INFO, "Removing plugin %s\n", loop->plugins[i].plugin.name);
-		plugin_finish(&loop->plugins[i]);
-		pool_list_destroy(&loop->plugins[i].pool_list);
-		mem_pool_destroy(loop->plugins[i].context.permanent_pool);
-	}
+	for (struct plugin_holder *plugin = loop->plugins.head; plugin; plugin = plugin->next)
+		plugin_destroy(plugin);
 	pool_list_destroy(&loop->pool_list);
 	// This mempool must be destroyed last, as the loop is allocated from it
 	mem_pool_destroy(loop->permanent_pool);
@@ -265,7 +355,18 @@ static const size_t ip_offset_table[] =
 	[DLT_PFLOG] = 28,  /* BSD pflog          */
 };
 
-bool loop_add_pcap(struct loop *loop, const char *interface) {
+bool loop_add_pcap(struct loop_configurator *configurator, const char *interface) {
+	// First, go through the old ones and copy it if is there.
+	LFOR(struct pcap_interface, old, configurator->loop->pcap_interfaces)
+		if (strcmp(interface, old->name) == 0) {
+			old->mark = false; // We copy it, don't close it at commit
+			struct pcap_interface *new = pcap_append_pool(&configurator->pcap_interfaces, configurator->config_pool);
+			*new = *old;
+			new->next = NULL;
+			new->local_addresses = address_list_create(configurator->config_pool);
+			new->name = mem_pool_strdup(configurator->config_pool, interface);
+			return true;
+		}
 	ulog(LOG_INFO, "Initializing PCAP on %s\n", interface);
 	// Open the pcap
 	char errbuf[PCAP_ERRBUF_SIZE];
@@ -320,96 +421,88 @@ bool loop_add_pcap(struct loop *loop, const char *interface) {
 		return false;
 	}
 
-	// Put the PCAP into the event loop.
-	/*
-	 * FIXME: This throws away (and leaks) the old array for the interfaces every time.
-	 * This is not currently a problem, because we use single interface only and
-	 * even if we used little bit more, there would be only few interfaces anyway.
-	 * But it is not really clean solution.
-	 */
-	struct pcap_interface *interfaces = mem_pool_alloc(loop->permanent_pool, (loop->pcap_interface_count + 1) * sizeof *interfaces);
-	// Copy the old interfaces (and re-register with epoll, to change the pointer)
-	memcpy(interfaces, loop->pcap_interfaces, loop->pcap_interface_count * sizeof *interfaces);
-	for (size_t i; i < loop->pcap_interface_count; i ++)
-		epoll_register_pcap(loop, i, EPOLL_CTL_MOD);
+	// Put the PCAP into the new configuration loop.
+	struct pcap_interface *new = pcap_append_pool(&configurator->pcap_interfaces, configurator->config_pool);
 	assert(pcap_datalink(pcap) <= DLT_PFLOG);
-	interfaces[loop->pcap_interface_count ++] = (struct pcap_interface) {
+	*new = (struct pcap_interface) {
 		.handler = pcap_read,
-		.loop = loop,
-		.name = mem_pool_strdup(loop->permanent_pool, interface),
+		.loop = configurator->loop,
+		.name = mem_pool_strdup(configurator->config_pool, interface),
 		.pcap = pcap,
-		.local_addresses = address_list_create(loop->permanent_pool),
+		.local_addresses = address_list_create(configurator->config_pool),
 		.fd = fd,
-		.offset = ip_offset_table[pcap_datalink(pcap)]
+		.offset = ip_offset_table[pcap_datalink(pcap)],
+		.mark = true
 	};
-	loop->pcap_interfaces = interfaces;
-	epoll_register_pcap(loop, loop->pcap_interface_count - 1, EPOLL_CTL_ADD);
 	return true;
 }
 
 size_t *loop_pcap_stats(struct context *context) {
 	struct loop *loop = context->loop;
-	size_t *result = mem_pool_alloc(context->temp_pool, (1 + 3 * loop->pcap_interface_count) * sizeof *result);
-	*result = loop->pcap_interface_count;
-	for (size_t i = 0; i < loop->pcap_interface_count; i ++) {
+	size_t *result = mem_pool_alloc(context->temp_pool, (1 + 3 * loop->pcap_interfaces.count) * sizeof *result);
+	*result = loop->pcap_interfaces.count;
+	size_t i = 1;
+	LFOR(struct pcap_interface, interface, loop->pcap_interfaces) {
 		struct pcap_stat ps;
-		int error = pcap_stats(loop->pcap_interfaces[i].pcap, &ps);
+		int error = pcap_stats(interface->pcap, &ps);
 		if (error)
 			memset(result + 1 + 3 * i, 0xff, 3 * sizeof *result);
 		else {
-			result[1 + 3 * i] = ps.ps_recv;
-			result[2 + 3 * i] = ps.ps_drop;
-			result[3 + 3 * i] = ps.ps_ifdrop;
+			result[i ++] = ps.ps_recv;
+			result[i ++] = ps.ps_drop;
+			result[i ++] = ps.ps_ifdrop;
 		}
 	}
 	return result;
 }
 
-bool loop_pcap_add_address(struct loop *loop, const char *address) {
-	assert(loop->pcap_interface_count);
-	return address_list_add_parsed(loop->pcap_interfaces[loop->pcap_interface_count - 1].local_addresses, address, true);
+bool loop_pcap_add_address(struct loop_configurator *configurator, const char *address) {
+	assert(configurator->pcap_interfaces.tail);
+	return address_list_add_parsed(configurator->pcap_interfaces.tail->local_addresses, address, true);
 }
 
-void loop_add_plugin(struct loop *loop, struct plugin *plugin) {
+void loop_add_plugin(struct loop_configurator *configurator, struct plugin *plugin) {
+	// Look for existing plugin first
+	LFOR(struct plugin_holder, old, configurator->loop->plugins)
+		if (strcmp(old->plugin.name, plugin->name) == 0) {
+			old->mark = false; // We copy it, so don't delete after commit
+			struct plugin_holder *new = plugin_append_pool(&configurator->plugins, configurator->config_pool);
+			*new = *old;
+			new->original = old;
+			new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin->name);
+			return;
+		}
 	ulog(LOG_INFO, "Installing plugin %s\n", plugin->name);
 	// Store the plugin structure.
-	/*
-	 * Currently, we throw away the old array and leak little bit. This is OK for now,
-	 * as we'll register just few plugins on start-up. However, once we have the ability
-	 * to reconfigure at run-time and we support removing and adding the plugins again,
-	 * we need to solve it somehow.
-	 */
-	struct plugin_holder *plugins = mem_pool_alloc(loop->permanent_pool, (loop->plugin_count + 1) * sizeof *plugins);
-	memcpy(plugins, loop->plugins, loop->plugin_count * sizeof *plugins);
-	loop->plugins = plugins;
-	struct plugin_holder *new = loop->plugins + loop->plugin_count ++;
+	struct plugin_holder *new = plugin_append_pool(&configurator->plugins, configurator->config_pool);
 	/*
 	 * Each plugin gets its own permanent pool (since we'd delete that one with the plugin),
 	 * but we can reuse the temporary pool.
 	 */
 	*new = (struct plugin_holder) {
 		.context = {
-			.temp_pool = loop->temp_pool,
+			.temp_pool = configurator->loop->temp_pool,
 			.permanent_pool = mem_pool_create(plugin->name),
-			.loop = loop,
-			.uplink = loop->uplink
+			.loop = configurator->loop,
+			.uplink = configurator->loop->uplink
 		},
 #ifdef DEBUG
 		.canary = PLUGIN_HOLDER_CANARY,
 #endif
-		.plugin = *plugin
+		.plugin = *plugin,
+		.mark = true
 	};
 	pool_append_pool(&new->pool_list, new->context.permanent_pool)->pool = new->context.permanent_pool;
 	// Copy the name (it may be temporary), from the plugin's own pool
-	new->plugin.name = mem_pool_strdup(new->context.permanent_pool, plugin->name);
+	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin->name);
 	plugin_init(new);
 }
 
 void loop_uplink_set(struct loop *loop, struct uplink *uplink) {
 	assert(!loop->uplink);
 	loop->uplink = uplink;
-	for (size_t i = 0; i < loop->plugin_count; i ++)
-		loop->plugins[i].context.uplink = loop->uplink;
+	LFOR(struct plugin_holder, plugin, loop->plugins)
+		plugin->context.uplink = uplink;
 }
 
 void loop_register_fd(struct loop *loop, int fd, struct epoll_handler *handler) {
@@ -448,9 +541,9 @@ struct mem_pool *loop_temp_pool(struct loop *loop) {
 }
 
 bool loop_plugin_send_data(struct loop *loop, const char *name, const uint8_t *data, size_t length) {
-	for (size_t i = 0; i < loop->plugin_count; i ++)
-		if (strcmp(loop->plugins[i].plugin.name, name) == 0) {
-			plugin_uplink_data(&loop->plugins[i], data, length);
+	LFOR(struct plugin_holder, plugin, loop->plugins)
+		if (strcmp(plugin->plugin.name, name) == 0) {
+			plugin_uplink_data(plugin, data, length);
 			return true;
 		}
 	return false;
@@ -462,4 +555,117 @@ const char *loop_plugin_get_name(const struct context *context) {
 	assert(holder->canary == PLUGIN_HOLDER_CANARY);
 #endif
 	return holder->plugin.name;
+}
+
+size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *context, void *data, void (*callback)(struct context *context, void *data, size_t id)) {
+	// Enough space?
+	if (loop->timeout_count == loop->timeout_capacity) {
+		loop->timeout_capacity = loop->timeout_capacity * 2;
+		if (!loop->timeout_capacity)
+			loop->timeout_capacity = 2; // Some basic size for the start
+		struct timeout *new = mem_pool_alloc(loop->permanent_pool, loop->timeout_capacity * sizeof *new);
+		memcpy(new, loop->timeouts, loop->timeout_count * sizeof *new);
+		loop->timeouts = new;
+		/* Yes, throwing out the old array. But with the double-growth, only linear
+		 * amount of memory is wasted. And we reuse the space after timed-out timeouts,
+		 * so it should not grow indefinitely.
+		 */
+	}
+	size_t when = loop->now + after;
+	// Sort it in, according to the value of when.
+	size_t pos = 0;
+	for (size_t i = loop->timeout_count; i; i --) {
+		if (loop->timeouts[i - 1].when > when)
+			loop->timeouts[i] = loop->timeouts[i - 1];
+		else {
+			pos = i;
+			break;
+		}
+	}
+	/*
+	 * We let the id wrap around. We expect the old one with the same value already
+	 * timet out a long time ago.
+	 */
+	static size_t id = 0;
+	loop->timeouts[pos] = (struct timeout) {
+		.when = when,
+		.callback = callback,
+		.context = context,
+		.data = data,
+		.id = id ++
+	};
+	loop->timeout_count ++;
+	return loop->timeouts[pos].id;
+}
+
+void loop_timeout_cancel(struct loop *loop, size_t id) {
+	for (size_t i = 0; i < loop->timeout_count; i ++)
+		if (loop->timeouts[i].id == id) {
+			// Move the rest one position left
+			memmove(loop->timeouts + i, loop->timeouts + i + 1, (loop->timeout_count - 1 - i) * sizeof *loop->timeouts);
+			loop->timeout_count --;
+			return;
+		}
+	assert(0); // The ID is not there! Already called the timeout?
+}
+
+struct loop_configurator *loop_config_start(struct loop *loop) {
+	// Create the configurator
+	struct mem_pool *config_pool = mem_pool_create("Config pool");
+	struct loop_configurator *result = mem_pool_alloc(config_pool, sizeof *result);
+	*result = (struct loop_configurator) {
+		.loop = loop,
+		.config_pool = config_pool
+	};
+	// Mark all the old plugins and interfaces for deletion on commit
+	LFOR(struct plugin_holder, plugin, loop->plugins)
+		plugin->mark = true;
+	LFOR(struct pcap_interface, interface, loop->pcap_interfaces)
+		interface->mark = true;
+	return result;
+}
+
+void loop_config_abort(struct loop_configurator *configurator) {
+	/*
+	 * Destroy all the newly-created plugins and interfaces (marked)
+	 *
+	 * Select the ones from the configurator, not loop!
+	 */
+	LFOR(struct plugin_holder, plugin, configurator->plugins)
+		if (plugin->mark)
+			plugin_destroy(plugin);
+	LFOR(struct pcap_interface, interface, configurator->pcap_interfaces)
+		if (interface->mark)
+			pcap_destroy(interface);
+	// And delete all the memory
+	mem_pool_destroy(configurator->config_pool);
+}
+
+void loop_config_commit(struct loop_configurator *configurator) {
+	struct loop *loop = configurator->loop;
+	/*
+	 * Destroy the old plugins and interfaces (still marked).
+	 *
+	 * Take the ones from loop, not configurator.
+	 */
+	LFOR(struct plugin_holder, plugin, loop->plugins)
+		if (plugin->mark)
+			plugin_destroy(plugin);
+	LFOR(struct pcap_interface, interface, loop->pcap_interfaces)
+		if (interface->mark)
+			pcap_destroy(interface);
+	// Migrate the copied ones, register the new ones.
+	LFOR(struct plugin_holder, plugin, configurator->plugins)
+		if (!plugin->mark)
+			for (size_t i = 0; i < loop->timeout_count; i ++)
+				if (loop->timeouts[i].context == &plugin->original->context)
+					loop->timeouts[i].context = &plugin->context;
+	LFOR(struct pcap_interface, interface, configurator->pcap_interfaces)
+		epoll_register_pcap(loop, interface, interface->mark ? EPOLL_CTL_ADD : EPOLL_CTL_MOD);
+	// Destroy the old configuration and merge the new one
+	if (loop->config_pool)
+		mem_pool_destroy(configurator->loop->config_pool);
+	loop->config_pool = configurator->config_pool;
+	loop->pcap_interfaces = configurator->pcap_interfaces;
+	loop->plugins = configurator->plugins;
 }

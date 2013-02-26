@@ -62,23 +62,25 @@ int main(int argc, const char* argv[]) {
 			die("Could not set signal handler for signal %d (%s)\n", stop_signals[i], strerror(errno));
 	}
 
+	struct loop_configurator *configurator = loop_config_start(loop);
+
 	// Provide the interface name
-	if (!loop_add_pcap(loop, argv[1])) {
+	if (!loop_add_pcap(configurator, argv[1])) {
 		cleanup();
 		return 1;
 	}
 
 	// Provide the locat network ranges, so we can detect in and out packets
 	for (int i = 4; i < argc; i ++)
-		if (!loop_pcap_add_address(loop, argv[i])) {
+		if (!loop_pcap_add_address(configurator, argv[i])) {
 			cleanup();
 			return 1;
 		}
 
-	// TODO: Load all the plugins here.
-
 	// FIXME: This is hardcoded just for now.
-	loop_add_plugin(loop, plugin_info());
+	loop_add_plugin(configurator, plugin_info());
+
+	loop_config_commit(configurator);
 
 	// Run until a stop signal comes.
 	loop_run(loop);

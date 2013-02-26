@@ -19,6 +19,8 @@
  *   Defaults to "head" if not specified.
  * - LIST_TAIL Similar, just the last one. Defaults to "tail".
  * - LIST_NEXT The pointer to next node in LIST_NODE. Defaults to "next".
+ * - LIST_COUNT The count variable. It is optional, but if set, the
+ *   functions keep it up to date.
  * - LIST_NAME(X) Macro that generates name of identifier. The X will be
  *   given as part of the identifier.
  *
@@ -57,6 +59,9 @@ static LIST_NODE *LIST_NAME(append_pool)(LIST_BASE *list, struct mem_pool *pool)
 	list->LIST_TAIL = new;
 	if (!list->LIST_HEAD)
 		list->LIST_HEAD = new;
+#ifdef LIST_COUNT
+	list->LIST_COUNT ++;
+#endif
 	return new;
 }
 #endif
@@ -68,4 +73,9 @@ static LIST_NODE *LIST_NAME(append_pool)(LIST_BASE *list, struct mem_pool *pool)
 #undef LIST_TAIL
 #undef LIST_NEXT
 #undef LIST_NAME
+#undef LIST_COUNT
 #undef LIST_WANT_APPEND_POOL
+
+#ifndef LFOR
+#define LFOR(TYPE, VARIABLE, LIST) for (TYPE *VARIABLE = LIST.head; VARIABLE; VARIABLE = VARIABLE->next)
+#endif

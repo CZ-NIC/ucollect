@@ -1,3 +1,4 @@
 LIBRARIES += src/core/libucollect_core
+DOCS += $(addprefix src/core/,core uplink)
 
 libucollect_core_MODULES := mem_pool util loop context packet address uplink
