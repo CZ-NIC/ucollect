@@ -46,6 +46,14 @@ Route data from plugin::
 Error::
   Denoted by `E`. It is then followed by yet another single byte
   specifier. The byte specifies which error it is.
+Ping::
+  Denoted by `P`. Request to answer. It is sent repeatedly, to verify
+  the link is alive. If too many pings are not answered, the client
+  reconnects.  Any data can be bundled with the command and the server
+  would just echo them back in the reply.
+Pong::
+  Response to ``Ping''. It should copy data from the ping command and
+  send them back. Denoted by `p`.
 
 Error codes from client
 -----------------------
@@ -64,3 +72,7 @@ Route data to plugin::
   the payload is then passed to the plugin's `uplink_data_callback` or
   a ``Plugin doesn't exist'' error is sent back to the server if such
   plugin isn't loaded.
+Ping::
+  Same as with client.
+Pong::
+  Same as with client.
