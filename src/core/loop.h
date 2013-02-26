@@ -6,6 +6,8 @@
 #include <stddef.h>
 
 struct loop;
+struct loop_configurator;
+
 struct plugin;
 struct context;
 struct uplink;
@@ -19,10 +21,31 @@ void loop_run(struct loop *loop) __attribute__((nonnull));
 void loop_break(struct loop *loop) __attribute__((nonnull));
 void loop_destroy(struct loop *loop) __attribute__((nonnull));
 
-bool loop_add_pcap(struct loop *loop, const char *interface) __attribute__((nonnull));
+/*
+ * When you want to configure the loop, you start by loop_config_start. You get
+ * a handle to the configurator. You can then call loop_add_pcap, loop_pcap_add_address and
+ * loop_add_plugin functions with it. After you are done, you call loop_config_commit,
+ * which will make the changes available.
+ *
+ * You can call loop_config_abort instead, which will throw out all the changes.
+ *
+ * The whole operation (from _start to _commit or _abort) must happen at once, before
+ * any callback or so is left.
+ *
+ * You need to list all the plugins, addresses, etc. that should be available in the
+ * new configuration. The ones that were available in the old config are copied over
+ * (not initialized again). The new ones are created and the old ones removed on the
+ * commit.
+ */
+struct loop_configurator *loop_config_start(struct loop *loop) __attribute__((nonnull)) __attribute__((malloc));
+void loop_config_commit(struct loop_configurator *configurator) __attribute__((nonnull));
+void loop_config_abort(struct loop_configurator *configurator) __attribute__((nonnull));
+
+bool loop_add_pcap(struct loop_configurator *configurator, const char *interface) __attribute__((nonnull));
 // Add a local address for the last added pcap interface. Can be net address (eg. 192.168.0.0/16).
-bool loop_pcap_add_address(struct loop *loop, const char *address) __attribute__((nonnull));
-void loop_add_plugin(struct loop *loop, struct plugin *plugin) __attribute__((nonnull));
+bool loop_pcap_add_address(struct loop_configurator *configurator, const char *address) __attribute__((nonnull));
+void loop_add_plugin(struct loop_configurator *configurator, struct plugin *plugin) __attribute__((nonnull));
+
 const char *loop_plugin_get_name(const struct context *context) __attribute__((nonnull)) __attribute__((const));
 /*
  * Set the uplink used by this loop. This may be called at most once on
