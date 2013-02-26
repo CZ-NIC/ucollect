@@ -64,11 +64,13 @@ struct pcap_interface {
 
 struct pcap_list {
 	struct pcap_interface *head, *tail;
+	size_t count;
 };
 
 #define LIST_NODE struct pcap_interface
 #define LIST_BASE struct pcap_list
 #define LIST_NAME(X) pcap_##X
+#define LIST_COUNT count
 #define LIST_WANT_APPEND_POOL
 #include "link_list.h"
 
