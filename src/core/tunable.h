@@ -18,4 +18,9 @@
 // Double the time for reconnect attempt on failure
 #define RECONNECT_MULTIPLY 2
 
+// How much time to wait between pings? 30s could be enough but not too much to timeout NAT
+#define PING_TIMEOUT (30 * 1000)
+// If so many pings are not answered, consider the link dead
+#define PING_COUNT 2
+
 #endif

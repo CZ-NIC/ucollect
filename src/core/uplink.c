@@ -16,6 +16,7 @@
 struct uplink {
 	// Will always be uplink_read, this is to be able to use it as epoll_handler
 	void (*uplink_read)(struct uplink *uplink, uint32_t events);
+	// Timeouts for pings, etc.
 	struct loop *loop;
 	struct mem_pool *buffer_pool;
 	const char *remote_name, *service;
@@ -24,6 +25,9 @@ struct uplink {
 	size_t buffer_size, size_rest;
 	uint32_t reconnect_timeout;
 	bool has_size;
+	size_t ping_timeout; // The ID of the timeout.
+	size_t pings_unanswered; // Number of pings sent without answer (in a row)
+	bool ping_scheduled;
 	int fd;
 };
 
@@ -53,6 +57,7 @@ static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo
 }
 
 static void connect_fail(struct uplink *uplink);
+static void send_ping(struct context *context, void *data, size_t id);
 
 // Connect to remote. Blocking. May abort (that one should be solved by retries in future)
 static void uplink_connect(struct uplink *uplink) {
@@ -73,6 +78,10 @@ static void uplink_connect(struct uplink *uplink) {
 	}
 	// We connected. Reset the reconnect timeout.
 	uplink->reconnect_timeout = 0;
+	// Reset the pings.
+	uplink->pings_unanswered = 0;
+	uplink->ping_timeout = loop_timeout_add(uplink->loop, PING_TIMEOUT, NULL, uplink, send_ping);
+	uplink->ping_scheduled = true;
 	loop_register_fd(uplink->loop, uplink->fd, (struct epoll_handler *) uplink);
 	/*
 	 * Send 'H'ello. For now, it is empty. In future, we expect to have program & protocol version,
@@ -116,8 +125,30 @@ static void uplink_disconnect(struct uplink *uplink) {
 			ulog(LOG_ERROR, "Couldn't close uplink connection to %s:%s, leaking file descriptor %d (%s)\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
 		uplink->fd = -1;
 		buffer_reset(uplink);
+		if (uplink->ping_scheduled)
+			loop_timeout_cancel(uplink->loop, uplink->ping_timeout);
 	} else
 		ulog(LOG_DEBUG, "Uplink connection to %s:%s not open\n", uplink->remote_name, uplink->service);
+}
+
+static void send_ping(struct context *context_unused, void *data, size_t id_unused) {
+	(void) context_unused;
+	(void) id_unused;
+	struct uplink *uplink = data;
+	uplink->ping_scheduled = false;
+	// How long does it not answer pings?
+	if (uplink->pings_unanswered >= PING_COUNT) {
+		ulog(LOG_ERROR, "Too many pings not answered on %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
+		uplink_disconnect(uplink);
+		uplink_connect(uplink);
+		return;
+	}
+	ulog(LOG_DEBUG, "Sending ping to %s:%s\n", uplink->remote_name, uplink->service);
+	uplink->pings_unanswered ++;
+	uplink_send_message(uplink, 'P', NULL, 0);
+	// Schedule new ping
+	uplink->ping_timeout = loop_timeout_add(uplink->loop, PING_TIMEOUT, NULL, uplink, send_ping);
+	uplink->ping_scheduled = true;
 }
 
 const char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) {
@@ -166,6 +197,12 @@ static void handle_buffer(struct uplink *uplink) {
 					}
 					break;
 				}
+				case 'P': // Ping from the server. Send a pong back.
+					uplink_send_message(uplink, 'p', uplink->buffer, uplink->buffer_size);
+					break;
+				case 'p': // Pong. Reset the number of unanswered pings, we got some answer, the link works
+					uplink->pings_unanswered = 0;
+					break;
 				default:
 					ulog(LOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
 					break;

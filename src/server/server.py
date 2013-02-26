@@ -46,6 +46,12 @@ def handle_command(sock):
 	buf = read_buf(sock, buflen - 1)
 	if ctype == 'H':
 		print("Client sent 'Hello' with " + str(buflen - 1) + " bytes of data")
+	elif ctype == 'P':
+		# It is ping, send pong
+		buf = struct.pack('!Lc', 1, 'p')
+		sock.sendall(buf)
+	elif ctype == 'p':
+		print("Got pong")
 	else:
 		print("Unknown command " + ctype + " with " + str(buflen - 1) + " bytes of data")
 
@@ -55,6 +61,8 @@ def send_request(sock):
 	buf = struct.pack('!LcL5sc', 11, 'R', 5, 'Count', 'D')
 	# Get the statistics
 	buf += struct.pack('!LcL5sc', 11, 'R', 5, 'Count', 'S')
+	# Add one ping, just to test it
+	buf += struct.pack('!Lc', 1, 'P')
 	sock.sendall(buf)
 
 def handle_client(sock):
