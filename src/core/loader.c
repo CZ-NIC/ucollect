@@ -3,13 +3,21 @@
 #include "plugin.h"
 
 #include <dlfcn.h>
+#include <limits.h>
+#include <stdio.h>
 
 void *plugin_load(const char *libname, struct plugin *target) {
 	ulog(LOG_INFO, "Loading plugin library %s\n", libname);
 	dlerror(); // Reset errors
-	void *library = dlopen(libname, RTLD_NOW | RTLD_LOCAL);
+#ifdef PLUGIN_PATH
+	char libpath[PATH_MAX + 1];
+	snprintf(libpath, PATH_MAX + 1, PLUGIN_PATH "/%s", libname);
+#else
+	const char *libpath = libname;
+#endif
+	void *library = dlopen(libpath, RTLD_NOW | RTLD_LOCAL);
 	if (!library) {
-		ulog(LOG_ERROR, "Can't load plugin %s: %s\n", libname, dlerror());
+		ulog(LOG_ERROR, "Can't load plugin %s: %s\n", libpath, dlerror());
 		return NULL;
 	}
 	struct plugin *(*plugin_info)();
@@ -23,7 +31,7 @@ void *plugin_load(const char *libname, struct plugin *target) {
 #pragma GCC diagnostic pop
 	const char *error = dlerror();
 	if (error) {
-		ulog(LOG_ERROR, "The library %s doesn't contain plugin_info() - is it a plugin?: %s\n", libname, error);
+		ulog(LOG_ERROR, "The library %s doesn't contain plugin_info() - is it a plugin?: %s\n", libpath, error);
 		dlclose(library);
 		return NULL;
 	}
