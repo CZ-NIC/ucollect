@@ -189,9 +189,10 @@ static void handle_buffer(struct uplink *uplink) {
 						// First goes error specifier - 'P'lugin name doesn't exist
 						buffer[0] = 'P';
 						// Then one byte after, the length of the name
-						*(uint32_t *)(buffer + 1) = htonl(pname_len);
+						uint32_t len_n = htonl(pname_len);
+						memcpy(buffer + 1, &len_n, sizeof len_n);
 						// And the string itself
-						memcpy(buffer + 1 + sizeof pname_len, plugin_name, pname_len);
+						memcpy(buffer + 1 + sizeof len_n, plugin_name, pname_len);
 						// Send an error
 						uplink_send_message(uplink, 'E', buffer, msgsize);
 					}
@@ -215,7 +216,9 @@ static void handle_buffer(struct uplink *uplink) {
 		buffer_reset(uplink);
 	} else {
 		// This is the size of the real message. Get the buffer for the message.
-		uplink->buffer_size = uplink->size_rest = ntohl(*(const uint32_t *) uplink->buffer);
+		uint32_t buffer_size;
+		memcpy(&buffer_size, uplink->buffer, sizeof buffer_size);
+		uplink->buffer_size = uplink->size_rest = ntohl(buffer_size);
 		uplink->buffer = uplink->buffer_pos = mem_pool_alloc(uplink->buffer_pool, uplink->buffer_size);
 		uplink->has_size = true;
 	}
@@ -321,7 +324,8 @@ bool uplink_send_message(struct uplink *uplink, char type, const void *data, siz
 	// The +1 is for the type sent directly after the length
 	size_t head_len = sizeof(uint32_t) + 1;
 	uint8_t head_buffer[head_len];
-	*(uint32_t *) head_buffer = htonl(size + 1);
+	uint32_t head_size = htonl(size + 1);
+	memcpy(head_buffer, &head_size, sizeof head_size);
 	head_buffer[head_len - 1] = type;
 	return buffer_send(uplink, head_buffer, head_len) && buffer_send(uplink, data, size);
 }
@@ -332,7 +336,8 @@ bool uplink_plugin_send_message(struct context *context, const void *data, size_
 	uint32_t name_length = strlen(name);
 	uint32_t length = sizeof name_length + name_length + size;
 	uint8_t buffer[length];
-	*(uint32_t *)buffer = htonl(name_length);
+	uint32_t name_length_n = htonl(name_length);
+	memcpy(buffer, &name_length_n, sizeof name_length_n);
 	memcpy(buffer + sizeof name_length, name, name_length);
 	memcpy(buffer + sizeof name_length + name_length, data, size);
 	return uplink_send_message(context->uplink, 'R', buffer, length);
