@@ -6,6 +6,7 @@
 #include "packet.h"
 #include "address.h"
 #include "tunable.h"
+#include "loader.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -83,6 +84,8 @@ struct plugin_holder {
 #ifdef DEBUG
 	uint32_t canary; // To be able to check it is really a plugin holder
 #endif
+	const char *libname;
+	void *plugin_handle;
 	struct plugin plugin;
 	struct pool_list pool_list;
 	struct plugin_holder *next;
@@ -327,6 +330,7 @@ static void plugin_destroy(struct plugin_holder *plugin) {
 	plugin_finish(plugin);
 	pool_list_destroy(&plugin->pool_list);
 	mem_pool_destroy(plugin->context.permanent_pool);
+	plugin_unload(plugin->plugin_handle);
 }
 
 void loop_destroy(struct loop *loop) {
@@ -442,18 +446,24 @@ bool loop_pcap_add_address(struct loop_configurator *configurator, const char *a
 	return address_list_add_parsed(configurator->pcap_interfaces.tail->local_addresses, address, true);
 }
 
-void loop_add_plugin(struct loop_configurator *configurator, struct plugin *plugin) {
+bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {
 	// Look for existing plugin first
 	LFOR(struct plugin_holder, old, configurator->loop->plugins)
-		if (strcmp(old->plugin.name, plugin->name) == 0) {
+		if (strcmp(old->libname, libname) == 0) {
 			old->mark = false; // We copy it, so don't delete after commit
 			struct plugin_holder *new = plugin_append_pool(&configurator->plugins, configurator->config_pool);
 			*new = *old;
 			new->original = old;
-			new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin->name);
-			return;
+			new->plugin.name = mem_pool_strdup(configurator->config_pool, old->plugin.name);
+			new->libname = mem_pool_strdup(configurator->config_pool, libname);
+			return true;
 		}
-	ulog(LOG_INFO, "Installing plugin %s\n", plugin->name);
+	// Load the plugin
+	struct plugin plugin;
+	void *plugin_handle = plugin_load(libname, &plugin);
+	if (!plugin_handle)
+		return false;
+	ulog(LOG_INFO, "Installing plugin %s\n", plugin.name);
 	// Store the plugin structure.
 	struct plugin_holder *new = plugin_append_pool(&configurator->plugins, configurator->config_pool);
 	/*
@@ -463,20 +473,23 @@ void loop_add_plugin(struct loop_configurator *configurator, struct plugin *plug
 	*new = (struct plugin_holder) {
 		.context = {
 			.temp_pool = configurator->loop->temp_pool,
-			.permanent_pool = mem_pool_create(plugin->name),
+			.permanent_pool = mem_pool_create(plugin.name),
 			.loop = configurator->loop,
 			.uplink = configurator->loop->uplink
 		},
+		.libname = mem_pool_strdup(configurator->config_pool, libname),
+		.plugin_handle = plugin_handle,
 #ifdef DEBUG
 		.canary = PLUGIN_HOLDER_CANARY,
 #endif
-		.plugin = *plugin,
+		.plugin = plugin,
 		.mark = true
 	};
 	pool_append_pool(&new->pool_list, new->context.permanent_pool)->pool = new->context.permanent_pool;
 	// Copy the name (it may be temporary), from the plugin's own pool
-	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin->name);
+	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
 	plugin_init(new);
+	return true;
 }
 
 void loop_uplink_set(struct loop *loop, struct uplink *uplink) {

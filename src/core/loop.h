@@ -44,7 +44,8 @@ void loop_config_abort(struct loop_configurator *configurator) __attribute__((no
 bool loop_add_pcap(struct loop_configurator *configurator, const char *interface) __attribute__((nonnull));
 // Add a local address for the last added pcap interface. Can be net address (eg. 192.168.0.0/16).
 bool loop_pcap_add_address(struct loop_configurator *configurator, const char *address) __attribute__((nonnull));
-void loop_add_plugin(struct loop_configurator *configurator, struct plugin *plugin) __attribute__((nonnull));
+// Add a plugin. Provide the name of the library to load.
+bool loop_add_plugin(struct loop_configurator *configurator, const char *plugin) __attribute__((nonnull));
 
 const char *loop_plugin_get_name(const struct context *context) __attribute__((nonnull)) __attribute__((const));
 /*
