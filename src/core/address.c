@@ -139,6 +139,11 @@ void address_list_add(struct address_list *list, const struct address *address) 
 	address_list_append_pool(list, list->pool)->address = *address;
 }
 
+void address_list_copy(struct address_list *dest, const struct address_list *src) {
+	LFOR(struct address_node, address, *src)
+		address_list_add(dest, &address->address);
+}
+
 bool address_list_add_parsed(struct address_list *list, const char *address, bool allow_net) {
 	struct address address_bin;
 	if (!parse_address(address, &address_bin, allow_net))

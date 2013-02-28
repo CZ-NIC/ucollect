@@ -35,6 +35,7 @@ struct address_list *address_list_create(struct mem_pool *pool) __attribute__((n
 void address_list_add(struct address_list *list, const struct address *address) __attribute__((nonnull));
 // Add another address to a list, parsed from a textual representation. Wrapper from above functions.
 bool address_list_add_parsed(struct address_list *list, const char *address, bool allow_net) __attribute__((nonnull));
+void address_list_copy(struct address_list *dest, const struct address_list *from) __attribute__((nonnull));
 
 // Is address inside net (address with mask)
 bool addr_in_net(const uint8_t *address, size_t addr_len, const struct address *net) __attribute__((nonnull)) __attribute__((const));

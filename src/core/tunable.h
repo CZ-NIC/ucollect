@@ -7,6 +7,9 @@
 #define PCAP_TIMEOUT 100
 #define PCAP_BUFFER 3276800
 
+// How many times a plugin may fail before we give up and disable it
+#define FAIL_COUNT 5
+
 // For the memory pool
 #define PAGE_CACHE_SIZE 20
 
