@@ -359,8 +359,23 @@ static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
 	plugin_unload(plugin->plugin_handle);
 }
 
+static int blocked_signals[] = {
+	// Termination signals
+	SIGINT,
+	SIGQUIT,
+	SIGHUP,
+	SIGTERM
+};
+
 void loop_run(struct loop *loop) {
 	ulog(LOG_INFO, "Running the main loop\n");
+	sigset_t blocked;
+	// Block signals during actions, and let them only during the epoll
+	sigemptyset(&blocked);
+	for (size_t i = 0; i < sizeof blocked_signals / sizeof blocked_signals[0]; i ++)
+		sigaddset(&blocked, blocked_signals[i]);
+	sigset_t original_mask;
+	sigprocmask(SIG_BLOCK, &blocked, &original_mask);
 	REINIT:
 	if (setjmp(jump_env)) {
 		if (current_context) {
@@ -416,7 +431,7 @@ void loop_run(struct loop *loop) {
 		} else {
 			wait_time = -1; // Forever, if no timeouts
 		}
-		int ready = epoll_wait(loop->epoll_fd, events, MAX_EVENTS, wait_time);
+		int ready = epoll_pwait(loop->epoll_fd, events, MAX_EVENTS, wait_time, &original_mask);
 		loop_get_now(loop);
 		// Handle timeouts.
 		bool timeouts_called = false;
@@ -454,6 +469,7 @@ void loop_run(struct loop *loop) {
 		mem_pool_reset(loop->batch_pool);
 	}
 	jump_ready = 0;
+	sigprocmask(SIG_SETMASK, &blocked, &original_mask);
 }
 
 static void pcap_destroy(struct pcap_interface *interface) {
