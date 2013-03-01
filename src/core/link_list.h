@@ -77,5 +77,5 @@ static LIST_NODE *LIST_NAME(append_pool)(LIST_BASE *list, struct mem_pool *pool)
 #undef LIST_WANT_APPEND_POOL
 
 #ifndef LFOR
-#define LFOR(TYPE, VARIABLE, LIST) for (TYPE *VARIABLE = LIST.head; VARIABLE; VARIABLE = VARIABLE->next)
+#define LFOR(TYPE, VARIABLE, LIST) for (TYPE *VARIABLE = (LIST).head; VARIABLE; VARIABLE = VARIABLE->next)
 #endif

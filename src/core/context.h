@@ -20,10 +20,4 @@ struct context {
 	struct user_data *user_data;
 };
 
-/*
- * Currently active context. For things like signal handlers and debug,
- * not to be used directly. A copy should be always passed to the callback.
- */
-extern struct context *current_context;
-
 #endif

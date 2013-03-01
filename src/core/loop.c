@@ -6,6 +6,7 @@
 #include "packet.h"
 #include "address.h"
 #include "tunable.h"
+#include "loader.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -18,6 +19,73 @@
 #include <sys/time.h>
 #include <time.h>
 #include <limits.h>
+#include <setjmp.h>
+#include <stdlib.h>
+
+/*
+ * Low-level error handling.
+ *
+ * If we are in a plugin, we have the context stored. We also have the
+ * jump_ready variable. If it is set, it means the jump_env is ready to
+ * jump to from signal handler.
+ *
+ * So we set the signal handlers and jump from them if a problem happens.
+ * It depends on what is catching that, but usually the plugin will be
+ * re-initialized if that happens.
+ *
+ * If the signal happens, the signal number is stored in jump_signum.
+ */
+
+static volatile sig_atomic_t jump_ready = 0;
+static jmp_buf jump_env;
+static struct context *current_context = NULL;
+static int jump_signum = 0;
+static bool sig_initialized;
+
+static void sig_handler(int signal) {
+	if (jump_ready) {
+		jump_ready = 0; // Don't try to jump twice in a row if anything goes bad
+		// There's a handler
+		jump_signum = signal;
+		longjmp(jump_env, 1);
+		// TODO: Core file!
+	} else {
+		// Not ready to jump. Abort. Disable catching the signal first.
+		struct sigaction sa = {
+			.sa_handler = SIG_DFL
+		};
+		sigaction(SIGABRT, &sa, NULL);
+		abort();
+		// Couldn't commit suicide yet? Try exit.
+		exit(1);
+		// Still nothing?
+		kill(getpid(), SIGKILL);
+	}
+}
+
+static const int signals[] = {
+	SIGILL,
+	SIGTRAP,
+	SIGABRT,
+	SIGBUS,
+	SIGFPE,
+	SIGSEGV,
+	SIGPIPE,
+	SIGALRM,
+	SIGTTIN,
+	SIGTTOU
+};
+
+static void signal_initialize() {
+	ulog(LOG_INFO, "Initializing emergency signal handlers\n");
+	struct sigaction action = {
+		.sa_handler = sig_handler,
+		.sa_flags = SA_NODEFER
+	};
+	for (size_t i = 0; i < sizeof signals / sizeof signals[0]; i ++)
+		if (sigaction(signals[i], &action, NULL) == -1)
+			die("Sigaction failed for signal %d: %s\n", signals[i], strerror(errno));
+}
 
 #define PLUGIN_HOLDER_CANARY 0x7a92f998 // Just some random 4-byte number
 
@@ -83,11 +151,14 @@ struct plugin_holder {
 #ifdef DEBUG
 	uint32_t canary; // To be able to check it is really a plugin holder
 #endif
+	const char *libname;
+	void *plugin_handle;
 	struct plugin plugin;
 	struct pool_list pool_list;
 	struct plugin_holder *next;
 	struct plugin_holder *original; // When copying, in the configurator
 	bool mark; // Mark for configurator.
+	size_t failed;
 };
 
 struct plugin_list {
@@ -179,7 +250,7 @@ struct loop {
 	// The epoll
 	int epoll_fd;
 	// Turnes to 1 when we are stopped.
-	sig_atomic_t stopped; // We may be stopped from a signal, so not bool
+	volatile sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 };
 
 // Some stuff for yet uncommited configuration
@@ -224,6 +295,10 @@ static void epoll_register_pcap(struct loop *loop, struct pcap_interface *interf
 }
 
 struct loop *loop_create() {
+	if (!sig_initialized) {
+		signal_initialize();
+		sig_initialized = true;
+	}
 	ulog(LOG_INFO, "Creating a main loop\n");
 	/*
 	 * 42 is arbitrary choice. The man page says it is ignored except it must
@@ -259,8 +334,86 @@ static void loop_get_now(struct loop *loop) {
 	loop->now = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
+static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
+	ulog(LOG_INFO, "Removing plugin %s\n", plugin->plugin.name);
+	if (setjmp(jump_env)) {
+		ulog(LOG_ERROR, "Signal %d during plugin finish, doing emergency shutdown instead\n", jump_signum);
+		emergency = true;
+	}
+	jump_ready = true;
+	if (!emergency)
+		plugin_finish(plugin);
+	size_t pos = 0;
+	struct loop *loop = plugin->context.loop;
+	while (pos < loop->timeout_count) {
+		if (loop->timeouts[pos].context == &plugin->context) {
+			// Drop this timeout, as we kill the corresponding plugin
+			memmove(loop->timeouts + pos, loop->timeouts + pos + 1, (loop->timeout_count - pos - 1) * sizeof *loop->timeouts);
+			loop->timeout_count --;
+		} else
+			pos ++;
+	}
+	jump_ready = false;
+	pool_list_destroy(&plugin->pool_list);
+	mem_pool_destroy(plugin->context.permanent_pool);
+	plugin_unload(plugin->plugin_handle);
+}
+
+static int blocked_signals[] = {
+	// Termination signals
+	SIGINT,
+	SIGQUIT,
+	SIGHUP,
+	SIGTERM
+};
+
 void loop_run(struct loop *loop) {
 	ulog(LOG_INFO, "Running the main loop\n");
+	sigset_t blocked;
+	// Block signals during actions, and let them only during the epoll
+	sigemptyset(&blocked);
+	for (size_t i = 0; i < sizeof blocked_signals / sizeof blocked_signals[0]; i ++)
+		sigaddset(&blocked, blocked_signals[i]);
+	sigset_t original_mask;
+	sigprocmask(SIG_BLOCK, &blocked, &original_mask);
+	REINIT:
+	if (setjmp(jump_env)) {
+		if (current_context) {
+			struct plugin_holder *holder = (struct plugin_holder *) current_context;
+#ifdef DEBUG
+			assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+			bool reinit = holder->failed < FAIL_COUNT;
+			size_t failed = holder->failed;
+			ulog(LOG_ERROR, "Signal %d in plugin %s (failed %zu times before)\n", jump_signum, holder->plugin.name, failed);
+			plugin_destroy(holder, true);
+			struct loop_configurator *configurator = loop_config_start(loop);
+			holder->mark = false; // This one is already destroyed
+			const char *libname = holder->libname; // Make sure it is not picked up
+			holder->libname = "";
+			LFOR(struct plugin_holder, plugin, loop->plugins)
+				if (plugin->mark) { // Copy all the other plugins, and this one if it is to be reinited
+					if (!loop_add_plugin(configurator, plugin->libname))
+						die("Copy of %s failed\n", plugin->libname);
+				} else if (reinit) {
+					if (!loop_add_plugin(configurator, libname))
+						ulog(LOG_ERROR, "Reinit of %s failed, aborting plugin\n", libname);
+					else
+						configurator->plugins.tail->failed = failed + 1;
+				}
+			LFOR(struct pcap_interface, interface, loop->pcap_interfaces) {
+				if (!loop_add_pcap(configurator, interface->name))
+					die("Copy of %s failed\n", interface->name);
+				address_list_copy(configurator->pcap_interfaces.tail->local_addresses, interface->local_addresses);
+			}
+			loop_config_commit(configurator);
+			goto REINIT;
+		} else {
+			ulog(LOG_ERROR, "Signal %d outside of plugin, aborting\n", jump_signum);
+			abort();
+		}
+	}
+	jump_ready = 1;
 	loop_get_now(loop);
 	while (!loop->stopped) {
 		struct epoll_event events[MAX_EVENTS];
@@ -278,7 +431,7 @@ void loop_run(struct loop *loop) {
 		} else {
 			wait_time = -1; // Forever, if no timeouts
 		}
-		int ready = epoll_wait(loop->epoll_fd, events, MAX_EVENTS, wait_time);
+		int ready = epoll_pwait(loop->epoll_fd, events, MAX_EVENTS, wait_time, &original_mask);
 		loop_get_now(loop);
 		// Handle timeouts.
 		bool timeouts_called = false;
@@ -315,18 +468,13 @@ void loop_run(struct loop *loop) {
 		}
 		mem_pool_reset(loop->batch_pool);
 	}
+	jump_ready = 0;
+	sigprocmask(SIG_SETMASK, &blocked, &original_mask);
 }
 
 static void pcap_destroy(struct pcap_interface *interface) {
 	ulog(LOG_INFO, "Closing PCAP on %s\n", interface->name);
 	pcap_close(interface->pcap);
-}
-
-static void plugin_destroy(struct plugin_holder *plugin) {
-	ulog(LOG_INFO, "Removing plugin %s\n", plugin->plugin.name);
-	plugin_finish(plugin);
-	pool_list_destroy(&plugin->pool_list);
-	mem_pool_destroy(plugin->context.permanent_pool);
 }
 
 void loop_destroy(struct loop *loop) {
@@ -339,7 +487,7 @@ void loop_destroy(struct loop *loop) {
 		pcap_destroy(interface);
 	// Remove all the plugins.
 	for (struct plugin_holder *plugin = loop->plugins.head; plugin; plugin = plugin->next)
-		plugin_destroy(plugin);
+		plugin_destroy(plugin, false);
 	pool_list_destroy(&loop->pool_list);
 	// This mempool must be destroyed last, as the loop is allocated from it
 	mem_pool_destroy(loop->permanent_pool);
@@ -461,41 +609,59 @@ bool loop_pcap_add_address(struct loop_configurator *configurator, const char *a
 	return address_list_add_parsed(configurator->pcap_interfaces.tail->local_addresses, address, true);
 }
 
-void loop_add_plugin(struct loop_configurator *configurator, struct plugin *plugin) {
+bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {
 	// Look for existing plugin first
 	LFOR(struct plugin_holder, old, configurator->loop->plugins)
-		if (strcmp(old->plugin.name, plugin->name) == 0) {
+		if (strcmp(old->libname, libname) == 0) {
 			old->mark = false; // We copy it, so don't delete after commit
 			struct plugin_holder *new = plugin_append_pool(&configurator->plugins, configurator->config_pool);
 			*new = *old;
 			new->original = old;
-			new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin->name);
-			return;
+			new->plugin.name = mem_pool_strdup(configurator->config_pool, old->plugin.name);
+			new->libname = mem_pool_strdup(configurator->config_pool, libname);
+			return true;
 		}
-	ulog(LOG_INFO, "Installing plugin %s\n", plugin->name);
-	// Store the plugin structure.
-	struct plugin_holder *new = plugin_append_pool(&configurator->plugins, configurator->config_pool);
+	// Load the plugin
+	struct plugin plugin;
+	void *plugin_handle = plugin_load(libname, &plugin);
+	if (!plugin_handle)
+		return false;
+	ulog(LOG_INFO, "Installing plugin %s\n", plugin.name);
+	struct mem_pool *permanent_pool = mem_pool_create(plugin.name);
+	assert(!jump_ready);
+	if (setjmp(jump_env)) {
+		ulog(LOG_ERROR, "Signal %d during plugin initialization, aborting load\n", jump_signum);
+		mem_pool_destroy(permanent_pool);
+		plugin_unload(plugin_handle);
+		return false;
+	}
+	jump_ready = 1;
 	/*
 	 * Each plugin gets its own permanent pool (since we'd delete that one with the plugin),
 	 * but we can reuse the temporary pool.
 	 */
-	*new = (struct plugin_holder) {
+	struct plugin_holder new = {
 		.context = {
 			.temp_pool = configurator->loop->temp_pool,
-			.permanent_pool = mem_pool_create(plugin->name),
+			.permanent_pool = permanent_pool,
 			.loop = configurator->loop,
 			.uplink = configurator->loop->uplink
 		},
+		.libname = mem_pool_strdup(configurator->config_pool, libname),
+		.plugin_handle = plugin_handle,
 #ifdef DEBUG
 		.canary = PLUGIN_HOLDER_CANARY,
 #endif
-		.plugin = *plugin,
+		.plugin = plugin,
 		.mark = true
 	};
-	pool_append_pool(&new->pool_list, new->context.permanent_pool)->pool = new->context.permanent_pool;
 	// Copy the name (it may be temporary), from the plugin's own pool
-	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin->name);
-	plugin_init(new);
+	new.plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
+	plugin_init(&new);
+	jump_ready = 0;
+	// Store the plugin structure.
+	*plugin_append_pool(&configurator->plugins, configurator->config_pool) = new;
+	return true;
 }
 
 void loop_uplink_set(struct loop *loop, struct uplink *uplink) {
@@ -633,7 +799,7 @@ void loop_config_abort(struct loop_configurator *configurator) {
 	 */
 	LFOR(struct plugin_holder, plugin, configurator->plugins)
 		if (plugin->mark)
-			plugin_destroy(plugin);
+			plugin_destroy(plugin, false);
 	LFOR(struct pcap_interface, interface, configurator->pcap_interfaces)
 		if (interface->mark)
 			pcap_destroy(interface);
@@ -650,7 +816,7 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	 */
 	LFOR(struct plugin_holder, plugin, loop->plugins)
 		if (plugin->mark)
-			plugin_destroy(plugin);
+			plugin_destroy(plugin, false);
 	LFOR(struct pcap_interface, interface, loop->pcap_interfaces)
 		if (interface->mark)
 			pcap_destroy(interface);
