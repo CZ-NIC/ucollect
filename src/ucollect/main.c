@@ -3,9 +3,6 @@
 #include "../core/plugin.h"
 #include "../core/uplink.h"
 
-// FIXME: This is hardcoded for now, remove once we have a plugin loader
-#include "../plugins/count/count.h"
-
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
@@ -28,11 +25,14 @@ static const int stop_signals[] = {
 
 // Data used from the cleanup handler
 static struct uplink *uplink;
+static struct loop_configurator *configurator;
 
 static void cleanup() {
 	// TODO: Release all the plugins here.
 	if (uplink)
 		uplink_destroy(uplink);
+	if (configurator)
+		loop_config_abort(configurator);
 	loop_destroy(loop);
 }
 
@@ -62,7 +62,7 @@ int main(int argc, const char* argv[]) {
 			die("Could not set signal handler for signal %d (%s)\n", stop_signals[i], strerror(errno));
 	}
 
-	struct loop_configurator *configurator = loop_config_start(loop);
+	configurator = loop_config_start(loop);
 
 	// Provide the interface name
 	if (!loop_add_pcap(configurator, argv[1])) {
@@ -78,9 +78,13 @@ int main(int argc, const char* argv[]) {
 		}
 
 	// FIXME: This is hardcoded just for now.
-	loop_add_plugin(configurator, plugin_info());
+	if (!loop_add_plugin(configurator, "libplugin_count.so")) {
+		cleanup();
+		return 1;
+	}
 
 	loop_config_commit(configurator);
+	configurator = NULL;
 
 	// Run until a stop signal comes.
 	loop_run(loop);
