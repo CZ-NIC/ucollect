@@ -1,6 +1,7 @@
 #include "../core/loop.h"
 #include "../core/util.h"
 #include "../core/uplink.h"
+#include "../core/configure.h"
 
 #include <signal.h>
 #include <string.h>
@@ -33,14 +34,14 @@ static void cleanup() {
 }
 
 int main(int argc, const char* argv[]) {
-	if (argc < 4)
-		die("usage: %s <interface name> <server name> <server port> <local net address> <local net address> ...\n", argv[0]);
+	if (argc < 3)
+		die("usage: %s <server name> <server port>\n", argv[0]);
 
 	// Create the loop.
 	loop = loop_create();
 
 	// Connect upstream
-	uplink = uplink_create(loop, argv[2], argv[3]);
+	uplink = uplink_create(loop, argv[1], argv[2]);
 
 	// Register all stop signals.
 	for (size_t i = 0; i < sizeof stop_signals / sizeof *stop_signals; i ++) {
@@ -58,23 +59,11 @@ int main(int argc, const char* argv[]) {
 			die("Could not set signal handler for signal %d (%s)\n", stop_signals[i], strerror(errno));
 	}
 
-	struct loop_configurator *configurator = loop_config_start(loop);
-
-	// Provide the interface name
-	if (!loop_add_pcap(configurator, argv[1])) {
+	if (!load_config(loop)) {
+		ulog(LOG_ERROR, "No configuration available\n");
 		cleanup();
 		return 1;
 	}
-
-	// Provide the locat network ranges, so we can detect in and out packets
-	for (int i = 4; i < argc; i ++)
-		if (!loop_pcap_add_address(configurator, argv[i])) {
-			cleanup();
-			return 1;
-		}
-
-	// TODO: Load all the plugins here.
-	loop_config_commit(configurator);
 
 	// Run until a stop signal comes.
 	loop_run(loop);
