@@ -236,17 +236,18 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 	ssize_t amount = recv(uplink->fd, uplink->buffer_pos, uplink->size_rest, MSG_DONTWAIT);
 	if (amount == -1) {
 		switch (errno) {
-			case EAGAIN:
-#if EAGAIN != EWOULDBLOCK
-			case EWOULDBLOCK:
-#endif
-			case EINTR:
 				/*
 				 * Non-fatal errors. EINTR can happen without problems.
 				 *
 				 * EAGAIN/EWOULDBLOCK should not, but it is said linux can create spurious
 				 * events on sockets sometime.
 				 */
+			case EAGAIN:
+#if EAGAIN != EWOULDBLOCK
+			case EWOULDBLOCK:
+#endif
+				return;
+			case EINTR:
 				ulog(LOG_WARN, "Non-fatal error reading from %s:%s (%d): %s\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
 				return; // We'll just retry next time
 			case ECONNRESET:
@@ -267,6 +268,8 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 		if (uplink->size_rest == 0)
 			handle_buffer(uplink);
 	}
+	// Try more reading until we run out
+	uplink_read(uplink, 0);
 }
 
 struct uplink *uplink_create(struct loop *loop, const char *remote_name, const char *service) {
