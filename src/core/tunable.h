@@ -10,6 +10,9 @@
 // How many times a plugin may fail before we give up and disable it
 #define FAIL_COUNT 5
 
+// How long to wait before interface reconfiguration attempt happens (10s)
+#define IFACE_RECONFIGURE_TIME 10000
+
 // For the memory pool
 #define PAGE_CACHE_SIZE 20
 

@@ -269,6 +269,7 @@ struct loop {
 	// Turnes to 1 when we are stopped.
 	volatile sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 	volatile sig_atomic_t reconfigure; // Set to 1 when there's SIGHUP and we should reconfigure
+	bool retry_reconfigure_on_failure;
 };
 
 // Some stuff for yet uncommited configuration
@@ -292,12 +293,28 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 		plugin_packet(plugin, &info);
 }
 
+static void self_reconfigure(struct context *context, void *data, size_t id) {
+	(void) context;
+	(void) data;
+	(void) id;
+	/*
+	 * The easiest way to reconfigure ourselves is to send self the SIGHUP signal.
+	 * We can't really reconfigure here, as it would break the loop. And setting
+	 * the reconfigure flag might have effect after long time.
+	 */
+	if (kill(getpid(), SIGHUP) == -1)
+		die("Couldn't SIGHUP self (%s)\n", strerror(errno));
+}
+
 static void pcap_read(struct pcap_interface *interface, uint32_t unused) {
 	(void) unused;
 	ulog(LOG_DEBUG_VERBOSE, "Read on interface %s\n", interface->name);
 	int result = pcap_dispatch(interface->pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) interface);
-	if (result == -1)
-		die("Error reading packets from PCAP on %s (%s)\n", interface->name, pcap_geterr(interface->pcap));
+	if (result == -1) {
+		ulog(LOG_ERROR, "Error reading packets from PCAP on %s (%s)\n", interface->name, pcap_geterr(interface->pcap));
+		interface->loop->retry_reconfigure_on_failure = true;
+		self_reconfigure(NULL, NULL, 0); // Try to reconfigure on the next loop iteration
+	}
 	ulog(LOG_DEBUG_VERBOSE, "Handled %d packets on %s\n", result, interface->name);
 }
 
@@ -469,8 +486,13 @@ void loop_run(struct loop *loop) {
 			jump_ready = 0;
 			loop->reconfigure = false;
 			ulog(LOG_INFO, "Reconfiguring\n");
-			if (!load_config(loop))
+			if (load_config(loop))
+				loop->retry_reconfigure_on_failure = false;
+			else {
 				ulog(LOG_ERROR, "Reconfiguration failed, using previous configuration\n");
+				if (loop->retry_reconfigure_on_failure)
+					loop_timeout_add(loop, IFACE_RECONFIGURE_TIME, NULL, NULL, self_reconfigure);
+			}
 			goto REINIT;
 		}
 		// Handle timeouts.
