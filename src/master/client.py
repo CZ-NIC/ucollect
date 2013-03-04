@@ -1,3 +1,4 @@
+from twisted.internet.task import LoopingCall
 import twisted.internet.protocol
 import twisted.protocols.basic
 
@@ -11,13 +12,28 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 	def __init__(self, plugins, addr):
 		self.__plugins = plugins
 		self.__addr = addr
+		self.__pings_outstanding = 0
+
+	def ping(self):
+		"""
+		Send a ping every now and then, to see the client is
+		still alive. If it didn't answer many times, drop the
+		connection.
+		"""
+		if self.__pings_outstanding >= 3:
+			self.transport.abortConnection()
+		self.__pings_outstanding += 1
+		self.sendString('P')
 
 	def connectionMade(self):
 		print("Connection made from " + str(self.__addr))
+		self.__pinger = LoopingCall(self.ping)
+		self.__pinger.start(5, False)
 		# TODO: Register within the plugins
 
 	def connectionLost(self, reason):
 		print("Connection lost from " + str(self.__addr))
+		self.__pinger.stop()
 		# TODO: Unregister
 
 	def stringReceived(self, string):
@@ -26,6 +42,8 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			pass # No info on 'H'ello yet
 		elif msg == 'P': # Ping. Answer pong.
 			self.sendString('p' + params)
+		elif msg == 'p': # Pong. Reset the watchdog count
+			self.__pings_outstanding = 0
 		else:
 			print("Unknown message " + msg)
 
