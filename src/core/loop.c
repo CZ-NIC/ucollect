@@ -269,6 +269,7 @@ struct loop {
 	// Turnes to 1 when we are stopped.
 	volatile sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 	volatile sig_atomic_t reconfigure; // Set to 1 when there's SIGHUP and we should reconfigure
+	volatile sig_atomic_t reconfigure_full; // De-initialize first.
 	bool retry_reconfigure_on_failure;
 };
 
@@ -400,7 +401,8 @@ static int blocked_signals[] = {
 	SIGQUIT,
 	SIGTERM,
 	// Reconfiguration
-	SIGHUP
+	SIGHUP,
+	SIGUSR1
 };
 
 // Not thread safe, not even reentrant :-(
@@ -410,6 +412,13 @@ static void request_reconfigure(int unused) {
 	(void) unused;
 	assert(current_loop);
 	current_loop->reconfigure = 1;
+}
+
+static void request_reconfigure_full(int unused) {
+	(void) unused;
+	assert(current_loop);
+	current_loop->reconfigure = 1;
+	current_loop->reconfigure_full = 1;
 }
 
 void loop_run(struct loop *loop) {
@@ -423,9 +432,11 @@ void loop_run(struct loop *loop) {
 	if (sigprocmask(SIG_BLOCK, &blocked, &original_mask) == -1)
 		die("Could not mask signals (%s)\n", strerror(errno));
 	current_loop = loop;
-	struct sigaction original_sighup;
+	struct sigaction original_sighup, original_sigusr1;
 	if (sigaction(SIGHUP, &(struct sigaction) { .sa_handler = request_reconfigure }, &original_sighup) == -1)
 		die("Could not sigaction SIGHUP (%s\n)", strerror(errno));
+	if (sigaction(SIGUSR1, &(struct sigaction) { .sa_handler = request_reconfigure_full }, &original_sigusr1) == -1)
+		die("Could not sigaction SIGUSR1 (%s\n)", strerror(errno));
 	REINIT:
 	if (setjmp(jump_env)) {
 		if (current_context) {
@@ -486,6 +497,9 @@ void loop_run(struct loop *loop) {
 			jump_ready = 0;
 			loop->reconfigure = false;
 			ulog(LOG_INFO, "Reconfiguring\n");
+			if (loop->reconfigure_full)
+				// Wipe out current configuration, so we start clean
+				loop_config_commit(loop_config_start(loop));
 			if (load_config(loop))
 				loop->retry_reconfigure_on_failure = false;
 			else {
@@ -531,6 +545,8 @@ void loop_run(struct loop *loop) {
 		mem_pool_reset(loop->batch_pool);
 	}
 	jump_ready = 0;
+	if (sigaction(SIGUSR1, &original_sighup, NULL) == -1)
+		die("Could not return sigaction of SIGUSR1 (%s)\n", strerror(errno));
 	if (sigaction(SIGHUP, &original_sighup, NULL) == -1)
 		die("Could not return sigaction of SIGHUP (%s)\n", strerror(errno));
 	current_loop = NULL;
