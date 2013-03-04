@@ -29,12 +29,12 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		print("Connection made from " + str(self.__addr))
 		self.__pinger = LoopingCall(self.ping)
 		self.__pinger.start(5, False)
-		# TODO: Register within the plugins
+		self.__plugins.register_client(self)
 
 	def connectionLost(self, reason):
 		print("Connection lost from " + str(self.__addr))
 		self.__pinger.stop()
-		# TODO: Unregister
+		self.__plugins.unregister_client(self)
 
 	def stringReceived(self, string):
 		(msg, params) = (string[0], string[1:])
@@ -46,6 +46,13 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__pings_outstanding = 0
 		else:
 			print("Unknown message " + msg)
+
+	def cid(self):
+		"""
+		The client ID. We use the address for now, but we may
+		want to use something else.
+		"""
+		return self.__addr.host
 
 class ClientFactory(twisted.internet.protocol.Factory):
 	"""
