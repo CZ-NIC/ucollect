@@ -42,24 +42,37 @@ static struct context *current_context = NULL;
 static int jump_signum = 0;
 static bool sig_initialized;
 
+static void abort_safe() {
+	// Disable catching the signal first.
+	struct sigaction sa = {
+		.sa_handler = SIG_DFL
+	};
+	sigaction(SIGABRT, &sa, NULL);
+	abort();
+	// Couldn't commit suicide yet? Try exit.
+	exit(1);
+	// Still nothing?
+	kill(getpid(), SIGKILL);
+}
+
 static void sig_handler(int signal) {
-	if (jump_ready) {
+	if (jump_ready && current_context) {
 		jump_ready = 0; // Don't try to jump twice in a row if anything goes bad
 		// There's a handler
 		jump_signum = signal;
+#ifdef DEBUG
+		ulog(LOG_WARN, "Trying to create a core dump (if they are enabled)\n");
+		/*
+		 * Create a core dump. Do it by copying the process by fork and then
+		 * aborting the child. Abort creates a core dump, if it is enabled.
+		 */
+		if (fork() == 0)
+			abort_safe();
+#endif
 		longjmp(jump_env, 1);
-		// TODO: Core file!
 	} else {
-		// Not ready to jump. Abort. Disable catching the signal first.
-		struct sigaction sa = {
-			.sa_handler = SIG_DFL
-		};
-		sigaction(SIGABRT, &sa, NULL);
-		abort();
-		// Couldn't commit suicide yet? Try exit.
-		exit(1);
-		// Still nothing?
-		kill(getpid(), SIGKILL);
+		// Not ready to jump. Abort.
+		abort_safe();
 	}
 }
 
