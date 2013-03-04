@@ -1,0 +1,2 @@
+LIBRARIES += src/plugins/count/libplugin_count
+libplugin_count_MODULES := count

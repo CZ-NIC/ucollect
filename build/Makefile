@@ -1,4 +1,4 @@
 RESTRICT := build
 RELATIVE := ../
 
-include ../Makefile
+include $(RELATIVE)/Makefile

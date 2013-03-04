@@ -1,0 +1,1 @@
+include $(S)/src/plugins/count/Makefile.dir

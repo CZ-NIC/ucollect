@@ -2,6 +2,6 @@ BINARIES += src/ucollect/ucollect
 
 ucollect_MODULES := \
 	main
-ucollect_LOCAL_LIBS := ucollect_core
+ucollect_LOCAL_LIBS := ucollect_core plugin_count
 # TODO: Make the build system take this from the ucollect_core somehow
 ucollect_SYSTEM_LIBS := pcap rt dl uci

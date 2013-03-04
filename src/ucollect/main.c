@@ -1,5 +1,6 @@
 #include "../core/loop.h"
 #include "../core/util.h"
+#include "../core/plugin.h"
 #include "../core/uplink.h"
 #include "../core/configure.h"
 
@@ -25,11 +26,14 @@ static const int stop_signals[] = {
 
 // Data used from the cleanup handler
 static struct uplink *uplink;
+static struct loop_configurator *configurator;
 
 static void cleanup() {
 	// TODO: Release all the plugins here.
 	if (uplink)
 		uplink_destroy(uplink);
+	if (configurator)
+		loop_config_abort(configurator);
 	loop_destroy(loop);
 }
 

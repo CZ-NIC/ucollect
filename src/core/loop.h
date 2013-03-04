@@ -22,6 +22,17 @@ void loop_break(struct loop *loop) __attribute__((nonnull));
 void loop_destroy(struct loop *loop) __attribute__((nonnull));
 
 /*
+ * Get statistics of the interfaces of the loop.
+ *
+ * It returns an array allocated from the temporary memory pool.
+ * First, there's number of interfaces. Then, each iterface has 3 items:
+ * (received, dropped, dropped by interface driver).
+ *
+ * In case the statistics for an interface fail, all the three items of it
+ * are set to maximum value.
+ */
+size_t *loop_pcap_stats(struct context *context) __attribute__((nonnull)) __attribute__((malloc));
+/*
  * When you want to configure the loop, you start by loop_config_start. You get
  * a handle to the configurator. You can then call loop_add_pcap, loop_pcap_add_address and
  * loop_add_plugin functions with it. After you are done, you call loop_config_commit,
