@@ -17,6 +17,7 @@ struct epoll_handler {
 };
 
 struct loop *loop_create() __attribute__((malloc));
+// Warning: This one is not reentrant, due to signal handling :-(
 void loop_run(struct loop *loop) __attribute__((nonnull));
 void loop_break(struct loop *loop) __attribute__((nonnull));
 void loop_destroy(struct loop *loop) __attribute__((nonnull));

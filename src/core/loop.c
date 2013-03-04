@@ -7,6 +7,7 @@
 #include "address.h"
 #include "tunable.h"
 #include "loader.h"
+#include "configure.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -34,11 +35,13 @@
  * re-initialized if that happens.
  *
  * If the signal happens, the signal number is stored in jump_signum.
+ *
+ * This is, unfortunately, not reentrant :-(. Any idea how to make it so?
  */
 
 static volatile sig_atomic_t jump_ready = 0;
 static jmp_buf jump_env;
-static struct context *current_context = NULL;
+static volatile struct context *current_context = NULL;
 static int jump_signum = 0;
 static bool sig_initialized;
 
@@ -86,7 +89,8 @@ static const int signals[] = {
 	SIGPIPE,
 	SIGALRM,
 	SIGTTIN,
-	SIGTTOU
+	SIGTTOU,
+	SIGHUP
 };
 
 static void signal_initialize() {
@@ -264,6 +268,7 @@ struct loop {
 	int epoll_fd;
 	// Turnes to 1 when we are stopped.
 	volatile sig_atomic_t stopped; // We may be stopped from a signal, so not bool
+	volatile sig_atomic_t reconfigure; // Set to 1 when there's SIGHUP and we should reconfigure
 };
 
 // Some stuff for yet uncommited configuration
@@ -376,9 +381,19 @@ static int blocked_signals[] = {
 	// Termination signals
 	SIGINT,
 	SIGQUIT,
-	SIGHUP,
-	SIGTERM
+	SIGTERM,
+	// Reconfiguration
+	SIGHUP
 };
+
+// Not thread safe, not even reentrant :-(
+static volatile struct loop *current_loop;
+
+static void request_reconfigure(int unused) {
+	(void) unused;
+	assert(current_loop);
+	current_loop->reconfigure = 1;
+}
 
 void loop_run(struct loop *loop) {
 	ulog(LOG_INFO, "Running the main loop\n");
@@ -388,7 +403,12 @@ void loop_run(struct loop *loop) {
 	for (size_t i = 0; i < sizeof blocked_signals / sizeof blocked_signals[0]; i ++)
 		sigaddset(&blocked, blocked_signals[i]);
 	sigset_t original_mask;
-	sigprocmask(SIG_BLOCK, &blocked, &original_mask);
+	if (sigprocmask(SIG_BLOCK, &blocked, &original_mask) == -1)
+		die("Could not mask signals (%s)\n", strerror(errno));
+	current_loop = loop;
+	struct sigaction original_sighup;
+	if (sigaction(SIGHUP, &(struct sigaction) { .sa_handler = request_reconfigure }, &original_sighup) == -1)
+		die("Could not sigaction SIGHUP (%s\n)", strerror(errno));
 	REINIT:
 	if (setjmp(jump_env)) {
 		if (current_context) {
@@ -430,7 +450,6 @@ void loop_run(struct loop *loop) {
 	loop_get_now(loop);
 	while (!loop->stopped) {
 		struct epoll_event events[MAX_EVENTS];
-		// TODO: Support for reconfigure signal (epoll_pwait then).
 		int wait_time;
 		if (loop->timeout_count) {
 			// Set the wait time until the next timeout
@@ -446,6 +465,14 @@ void loop_run(struct loop *loop) {
 		}
 		int ready = epoll_pwait(loop->epoll_fd, events, MAX_EVENTS, wait_time, &original_mask);
 		loop_get_now(loop);
+		if (loop->reconfigure) { // We are asked to reconfigure
+			jump_ready = 0;
+			loop->reconfigure = false;
+			ulog(LOG_INFO, "Reconfiguring\n");
+			if (!load_config(loop))
+				ulog(LOG_ERROR, "Reconfiguration failed, using previous configuration\n");
+			goto REINIT;
+		}
 		// Handle timeouts.
 		bool timeouts_called = false;
 		while (loop->timeout_count && loop->timeouts[0].when <= loop->now) {
@@ -482,7 +509,11 @@ void loop_run(struct loop *loop) {
 		mem_pool_reset(loop->batch_pool);
 	}
 	jump_ready = 0;
-	sigprocmask(SIG_SETMASK, &blocked, &original_mask);
+	if (sigaction(SIGHUP, &original_sighup, NULL) == -1)
+		die("Could not return sigaction of SIGHUP (%s)\n", strerror(errno));
+	current_loop = NULL;
+	if (sigprocmask(SIG_SETMASK, &blocked, &original_mask) == -1)
+		die("Could not restore sigprocmask (%s)\n", strerror(errno));
 }
 
 static void pcap_destroy(struct pcap_interface *interface) {

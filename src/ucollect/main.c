@@ -20,7 +20,6 @@ static void stop_signal_handler(int unused) {
 static const int stop_signals[] = {
 	SIGINT,
 	SIGQUIT,
-	SIGHUP,
 	SIGTERM
 };
 
