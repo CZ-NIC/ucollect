@@ -227,49 +227,52 @@ static void handle_buffer(struct uplink *uplink) {
 static void uplink_read(struct uplink *uplink, uint32_t unused) {
 	(void) unused;
 	ulog(LOG_DEBUG, "Read on uplink %s:%s (%d)\n", uplink->remote_name, uplink->service, uplink->fd);
-	if (!uplink->buffer) {
-		// No buffer - prepare one for the size
-		uplink->buffer_size = uplink->size_rest = sizeof(uint32_t);
-		uplink->buffer = uplink->buffer_pos = mem_pool_alloc(uplink->buffer_pool, uplink->buffer_size);
-	}
-	// Read once. If there's more to read, the loop will call us again. We just don't want to process for too long.
-	ssize_t amount = recv(uplink->fd, uplink->buffer_pos, uplink->size_rest, MSG_DONTWAIT);
-	if (amount == -1) {
-		switch (errno) {
+	size_t limit = 50; // Max of 50 messages, so we don't block forever. Arbitrary smallish number.
+	while (limit) {
+		limit --;
+		if (!uplink->buffer) {
+			// No buffer - prepare one for the size
+			uplink->buffer_size = uplink->size_rest = sizeof(uint32_t);
+			uplink->buffer = uplink->buffer_pos = mem_pool_alloc(uplink->buffer_pool, uplink->buffer_size);
+		}
+		// Read once.
+		ssize_t amount = recv(uplink->fd, uplink->buffer_pos, uplink->size_rest, MSG_DONTWAIT);
+		if (amount == -1) {
+			switch (errno) {
 				/*
 				 * Non-fatal errors. EINTR can happen without problems.
 				 *
 				 * EAGAIN/EWOULDBLOCK should not, but it is said linux can create spurious
 				 * events on sockets sometime.
 				 */
-			case EAGAIN:
+				case EAGAIN:
 #if EAGAIN != EWOULDBLOCK
-			case EWOULDBLOCK:
+				case EWOULDBLOCK:
 #endif
-				return;
-			case EINTR:
-				ulog(LOG_WARN, "Non-fatal error reading from %s:%s (%d): %s\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
-				return; // We'll just retry next time
-			case ECONNRESET:
-				// This is similar to close
-				ulog(LOG_WARN, "Connection to %s:%s reset, reconnecting\n", uplink->remote_name, uplink->service);
-				goto CLOSED;
-			default: // Other errors are fatal, as we don't know the cause
-				die("Error reading from uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, strerror(errno));
+					return;
+				case EINTR:
+					ulog(LOG_WARN, "Non-fatal error reading from %s:%s (%d): %s\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
+					continue; // We'll just retry next time
+				case ECONNRESET:
+					// This is similar to close
+					ulog(LOG_WARN, "Connection to %s:%s reset, reconnecting\n", uplink->remote_name, uplink->service);
+					goto CLOSED;
+				default: // Other errors are fatal, as we don't know the cause
+					die("Error reading from uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, strerror(errno));
+			}
+		} else if (amount == 0) { // 0 means socket closed
+			ulog(LOG_WARN, "Remote closed the uplink %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
+CLOSED:
+			uplink_disconnect(uplink);
+			uplink_connect(uplink);
+			return; // We are done with this socket.
+		} else {
+			uplink->buffer_pos += amount;
+			uplink->size_rest -= amount;
+			if (uplink->size_rest == 0)
+				handle_buffer(uplink);
 		}
-	} else if (amount == 0) { // 0 means socket closed
-		ulog(LOG_WARN, "Remote closed the uplink %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
-		CLOSED:
-		uplink_disconnect(uplink);
-		uplink_connect(uplink);
-	} else {
-		uplink->buffer_pos += amount;
-		uplink->size_rest -= amount;
-		if (uplink->size_rest == 0)
-			handle_buffer(uplink);
 	}
-	// Try more reading until we run out
-	uplink_read(uplink, 0);
 }
 
 struct uplink *uplink_create(struct loop *loop, const char *remote_name, const char *service) {
