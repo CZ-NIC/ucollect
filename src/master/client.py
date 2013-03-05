@@ -14,7 +14,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__addr = addr
 		self.__pings_outstanding = 0
 
-	def ping(self):
+	def __ping(self):
 		"""
 		Send a ping every now and then, to see the client is
 		still alive. If it didn't answer many times, drop the
@@ -27,7 +27,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 
 	def connectionMade(self):
 		print("Connection made from " + str(self.__addr))
-		self.__pinger = LoopingCall(self.ping)
+		self.__pinger = LoopingCall(self.__ping)
 		self.__pinger.start(5, False)
 		self.__plugins.register_client(self)
 

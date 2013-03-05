@@ -1,3 +1,5 @@
+from protocol import format_string
+
 class Plugin:
 	"""
 	Base class of a plugin. Use this when writing new plugins. Provides
@@ -39,6 +41,12 @@ class Plugin:
 		"""
 		pass
 
+	def broadcast(self, message):
+		"""
+		Broadcast a message from this plugin to all the connected
+		clients.
+		"""
+		self.__plugins.broadcast('R' + format_string(self.name()) + message)
 
 class Plugins:
 	"""
@@ -76,3 +84,10 @@ class Plugins:
 		for p in self.__plugins.values():
 			p.client_disconnected(client)
 		del self.__clients[client.cid()]
+
+	def broadcast(self, message):
+		"""
+		Send a message to all the connected clients.
+		"""
+		for c in self.__clients.values():
+			c.sendString(message)
