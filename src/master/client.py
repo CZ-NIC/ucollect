@@ -1,6 +1,7 @@
 from twisted.internet.task import LoopingCall
 import twisted.internet.protocol
 import twisted.protocols.basic
+from protocol import extract_string
 
 class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 	"""
@@ -44,6 +45,10 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.sendString('p' + params)
 		elif msg == 'p': # Pong. Reset the watchdog count
 			self.__pings_outstanding = 0
+		elif msg == 'R': # Route data to a plugin
+			(plugin, data) = extract_string(params)
+			self.__plugins.route_to_plugin(plugin, data)
+			# TODO: Handle the possibility the plugin doesn't exist somehow.
 		else:
 			print("Unknown message " + msg)
 

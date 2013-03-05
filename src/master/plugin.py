@@ -8,6 +8,8 @@ class Plugin:
 	Provide at least these methods:
 	- name(): String ID of the plugin. It must match the name in the client
 	    counterpart.
+	- message_from_client(message): Called when the client sends some data,
+	    usually as a response to some request.
 	"""
 	def __init__(self, plugins):
 		"""
@@ -91,3 +93,10 @@ class Plugins:
 		"""
 		for c in self.__clients.values():
 			c.sendString(message)
+
+	def route_to_plugin(self, name, message):
+		"""
+		Forward a message to plugin of given name.
+		"""
+		# TODO: The plugin of that name might not exist.
+		self.__plugins[name].message_from_client(message)

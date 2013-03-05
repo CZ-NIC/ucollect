@@ -39,10 +39,6 @@ def read_buf(sock, amount):
 		amount -= len(part)
 	return buf
 
-def getstr(buf):
-	(slen,) = struct.unpack('!L', buf[:4])
-	return (buf[4:slen + 4], buf[slen + 4:])
-
 last = (None, 0, 0, 0)
 
 def handle_command(sock):
