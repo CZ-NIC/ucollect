@@ -31,9 +31,14 @@ class CountPlugin(plugin.Plugin):
 			print("Warning: stats and data answers don't match")
 		print("Information about " + str(len(self.__data)) + " clients")
 		names = ('Count', 'IPv6', 'IPv4', 'In', 'Out', 'TCP', 'UDP', 'ICMP', 'LPort', 'SIn', 'SOut', 'Size')
+		sums = []
 		for i in range(0, 12):
 			value = sum(map(lambda d: d[i], self.__data.values()))
-			print(names[i] + ':\t\t\t\t' + str(value))
+			sums.append(value)
+			percent = ''
+			if i > 0 and i <= 8:
+				percent = '\t' + str(100 * value / sums[0]) + '%'
+			print(names[i] + ':\t\t\t\t' + str(value) + percent)
 		# TODO: Do we want to do more? Like speeds, percents of traffic on v4/v6, etc?
 		# It might be nice eye candy.
 
