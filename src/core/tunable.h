@@ -10,8 +10,16 @@
 // How many times a plugin may fail before we give up and disable it
 #define FAIL_COUNT 5
 
-// How long to wait before interface reconfiguration attempt happens (10s)
+/*
+ * How long to wait before interface reconfiguration attempt happens (10s).
+ * This is done if the interface breaks down (like when it is turned off).
+ */
 #define IFACE_RECONFIGURE_TIME 10000
+
+// We expect there should be a packet at least once in 10 minutes.
+#define PCAP_WATCHDOG_TIME (10 * 1000 * 60)
+// If nothing comes in 50 + a bit minutes, panic and do a full reconfigure
+#define WATCHDOG_MISSED_COUNT 5
 
 // For the memory pool
 #define PAGE_CACHE_SIZE 20

@@ -143,6 +143,9 @@ struct pcap_interface {
 	struct address_list *local_addresses;
 	int fd;
 	size_t offset;
+	size_t watchdog_timer;
+	bool watchdog_received;
+	size_t watchdog_missed;
 	struct pcap_interface *next;
 	bool mark; // Mark for configurator.
 };
@@ -316,6 +319,7 @@ static void pcap_read(struct pcap_interface *interface, uint32_t unused) {
 		interface->loop->retry_reconfigure_on_failure = true;
 		self_reconfigure(NULL, NULL, 0); // Try to reconfigure on the next loop iteration
 	}
+	interface->watchdog_received = true;
 	ulog(LOG_DEBUG_VERBOSE, "Handled %d packets on %s\n", result, interface->name);
 }
 
@@ -556,6 +560,7 @@ void loop_run(struct loop *loop) {
 
 static void pcap_destroy(struct pcap_interface *interface) {
 	ulog(LOG_INFO, "Closing PCAP on %s\n", interface->name);
+	loop_timeout_cancel(interface->loop, interface->watchdog_timer);
 	pcap_close(interface->pcap);
 }
 
@@ -889,6 +894,36 @@ void loop_config_abort(struct loop_configurator *configurator) {
 	mem_pool_destroy(configurator->config_pool);
 }
 
+/*
+ * In the rare situation when someone shuts down an interface and then removes it
+ * (for example by unloading the module), we get a stray handle to non-existant
+ * pcap. We do reinitialize when it is shut down, but then it stays inactive and
+ * we get no error on the removal of the interface. This watchdog looks to see
+ * if there are any data. If there are not any data for a long time, we try to
+ * do a full reconfiguration, which would force us to open the interface again.
+ * If it so happens the interface was really removed, we get an error now.
+ */
+static void pcap_watchdog(struct context *context_unused, void *data, size_t id_unused) {
+	(void) context_unused;
+	(void) id_unused;
+	struct pcap_interface *interface = data;
+	if (interface->watchdog_received) {
+		interface->watchdog_missed = 0;
+	} else {
+		ulog(LOG_WARN, "No data on interface %s in a long time\n", interface->name);
+		if (interface->watchdog_missed >= WATCHDOG_MISSED_COUNT) {
+			ulog(LOG_ERROR, "Too many missed intervals of data on %s, doing full reconfigure in attempt to recover from unknown external errors\n", interface->name);
+			interface->loop->retry_reconfigure_on_failure = true;
+			if (kill(getpid(), SIGUSR1))
+				die("Can't send SIGUSR1 to self (%s)\n", strerror(errno));
+		}
+		interface->watchdog_missed ++;
+	}
+	interface->watchdog_received = false;
+	// Schedule new timeout after a long while, to see if we miss the next interval
+	interface->watchdog_timer = loop_timeout_add(interface->loop, PCAP_WATCHDOG_TIME, NULL, interface, pcap_watchdog);
+}
+
 void loop_config_commit(struct loop_configurator *configurator) {
 	struct loop *loop = configurator->loop;
 	/*
@@ -908,8 +943,12 @@ void loop_config_commit(struct loop_configurator *configurator) {
 			for (size_t i = 0; i < loop->timeout_count; i ++)
 				if (loop->timeouts[i].context == &plugin->original->context)
 					loop->timeouts[i].context = &plugin->context;
-	LFOR(struct pcap_interface, interface, configurator->pcap_interfaces)
+	LFOR(struct pcap_interface, interface, configurator->pcap_interfaces) {
 		epoll_register_pcap(loop, interface, interface->mark ? EPOLL_CTL_ADD : EPOLL_CTL_MOD);
+		if (!interface->mark)
+			loop_timeout_cancel(loop, interface->watchdog_timer);
+		interface->watchdog_timer = loop_timeout_add(loop, PCAP_WATCHDOG_TIME, NULL, interface, pcap_watchdog);
+	}
 	// Destroy the old configuration and merge the new one
 	if (loop->config_pool)
 		mem_pool_destroy(configurator->loop->config_pool);
