@@ -1,5 +1,6 @@
 from twisted.internet.task import LoopingCall
 from twisted.internet import reactor
+import struct
 import plugin
 
 class CountPlugin(plugin.Plugin):
@@ -24,13 +25,25 @@ class CountPlugin(plugin.Plugin):
 		self.__data = {}
 		self.__stats = {}
 		reactor.callLater(1, self.__process)
-		print("Download")
 
 	def __process(self):
-		print("Process")
+		if set(self.__data.keys()) != set(self.__stats.keys()):
+			print("Warning: stats and data answers don't match")
+		print("Information about " + str(len(self.__data)) + " clients")
+		names = ('Count', 'IPv6', 'IPv4', 'In', 'Out', 'TCP', 'UDP', 'ICMP', 'LPort', 'SIn', 'SOut', 'Size')
+		for i in range(0, 12):
+			value = sum(map(lambda d: d[i], self.__data.values()))
+			print(names[i] + ':\t\t\t\t' + str(value))
+		# TODO: Do we want to do more? Like speeds, percents of traffic on v4/v6, etc?
+		# It might be nice eye candy.
 
 	def name(self):
 		return 'Count'
 
 	def message_from_client(self, message, client):
-		print("Message from client " + str(client))
+		count = len(message) / 4
+		data = struct.unpack('!' + str(count) + 'L', message)
+		if len(data) == 12: # The 'D'ata answer.
+			self.__data[client] = data
+		else:
+			self.__stats[client] = data[1:] # Strip the number of interfaces, uninteresting
