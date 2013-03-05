@@ -47,7 +47,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__pings_outstanding = 0
 		elif msg == 'R': # Route data to a plugin
 			(plugin, data) = extract_string(params)
-			self.__plugins.route_to_plugin(plugin, data)
+			self.__plugins.route_to_plugin(plugin, data, self.cid())
 			# TODO: Handle the possibility the plugin doesn't exist somehow.
 		else:
 			print("Unknown message " + msg)

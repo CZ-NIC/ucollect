@@ -32,5 +32,5 @@ class CountPlugin(plugin.Plugin):
 	def name(self):
 		return 'Count'
 
-	def message_from_client(self, message):
-		print("Message!")
+	def message_from_client(self, message, client):
+		print("Message from client " + str(client))

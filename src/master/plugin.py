@@ -94,9 +94,10 @@ class Plugins:
 		for c in self.__clients.values():
 			c.sendString(message)
 
-	def route_to_plugin(self, name, message):
+	def route_to_plugin(self, name, message, client):
 		"""
-		Forward a message to plugin of given name.
+		Forward a message to plugin of given name. Pass the name
+		of client too.
 		"""
 		# TODO: The plugin of that name might not exist.
-		self.__plugins[name].message_from_client(message)
+		self.__plugins[name].message_from_client(message, client)
