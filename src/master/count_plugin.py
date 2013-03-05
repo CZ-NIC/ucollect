@@ -14,6 +14,7 @@ class CountPlugin(plugin.Plugin):
 		self.__downloader.start(5, False)
 		self.__data = {}
 		self.__stats = {}
+		self.__last = {}
 
 	def __init_download(self):
 		"""
@@ -37,10 +38,38 @@ class CountPlugin(plugin.Plugin):
 			sums.append(value)
 			percent = ''
 			if i > 0 and i <= 8:
-				percent = '\t' + str(100 * value / sums[0]) + '%'
+				try:
+					percent = '\t' + str(100 * value / sums[0]) + '%'
+				except ZeroDivisionError:
+					pass
 			print(names[i] + ':\t\t\t\t' + str(value) + percent)
-		# TODO: Do we want to do more? Like speeds, percents of traffic on v4/v6, etc?
-		# It might be nice eye candy.
+		sums = [0, 0, 0]
+		print("\t\t\t\tCaptured\t\tDropped\t\tLost in driver\t\tPercent lost")
+		def format(name, output):
+			try:
+				percent = 100 * (output[1] + output[2]) / output[0]
+				print(name + '\t' + str(output[0]) + '\t\t\t' + str(output[1]) + '\t\t\t' + str(output[2]) + '\t\t\t' + str(percent) + "%")
+			except ZeroDivisionError:
+				print(name + "\t---------------------------------------------------------------------------")
+		new_last = {}
+		for stat in self.__stats:
+			value = self.__stats[stat]
+			i = 0
+			while value:
+				v = list(value[:3])
+				value = value[3:]
+				name = stat + '[' + str(i) + ']'
+				new_last[name] = list(v)
+				last = self.__last.get(name, [0, 0, 0])
+				while len(name) < 24:
+					name += ' '
+				i += 1
+				for j in range(0, 3):
+					v[j] -= last[j]
+					sums[j] += v[j]
+				format(name, v)
+		format("Total\t\t\t", sums)
+		self.__last = new_last
 
 	def name(self):
 		return 'Count'
