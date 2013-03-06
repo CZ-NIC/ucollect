@@ -31,8 +31,9 @@ void uplink_destroy(struct uplink *uplink) __attribute__((nonnull));
  *
  * Blocking, we expect to send small amounts of data, so the link should not get filled.
  *
- * Returns if the message was successfully sent or we reconnected during the attempt.
- * On the reconnect, the message is dropped.
+ * Returns if the message was successfully sent. The connection might have been lost
+ * during the send, or not exist at all, in which case it returns false. The message
+ * is dropped!
  */
 bool uplink_send_message(struct uplink *uplink, char type, const void *data, size_t size) __attribute__((nonnull(1)));
 

@@ -329,6 +329,8 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 }
 
 bool uplink_send_message(struct uplink *uplink, char type, const void *data, size_t size) {
+	if (uplink->fd == -1)
+		return false; // Not connected, we can't send.
 	// The +1 is for the type sent directly after the length
 	size_t head_len = sizeof(uint32_t) + 1;
 	uint8_t head_buffer[head_len];
