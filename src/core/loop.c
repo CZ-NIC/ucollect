@@ -232,6 +232,8 @@ static void plugin_##NAME(struct plugin_holder *plugin, TYPE1 PARAM1, TYPE2 PARA
 
 GEN_CALL_WRAPPER(init)
 GEN_CALL_WRAPPER(finish)
+GEN_CALL_WRAPPER(uplink_connected)
+GEN_CALL_WRAPPER(uplink_disconnected)
 GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
 GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
 
@@ -958,4 +960,14 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	loop->config_pool = configurator->config_pool;
 	loop->pcap_interfaces = configurator->pcap_interfaces;
 	loop->plugins = configurator->plugins;
+}
+
+void loop_uplink_connected(struct loop *loop) {
+	LFOR(struct plugin_holder, plugin, loop->plugins)
+		plugin_uplink_connected(plugin);
+}
+
+void loop_uplink_disconnected(struct loop *loop) {
+	LFOR(struct plugin_holder, plugin, loop->plugins)
+		plugin_uplink_disconnected(plugin);
 }

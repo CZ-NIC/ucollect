@@ -14,6 +14,8 @@ struct plugin {
 	packet_callback_t packet_callback;
 	void (*init_callback)(struct context *context);
 	void (*finish_callback)(struct context *context);
+	void (*uplink_connected_callback)(struct context *context);
+	void (*uplink_disconnected_callback)(struct context *context);
 	void (*uplink_data_callback)(struct context *context, const uint8_t *data, size_t length);
 };
 

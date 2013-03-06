@@ -65,6 +65,10 @@ const char *loop_plugin_get_name(const struct context *context) __attribute__((n
  * a given loop.
  */
 void loop_uplink_set(struct loop *loop, struct uplink *uplink) __attribute__((nonnull));
+// Called by the uplink when connection is made
+void loop_uplink_connected(struct loop *loop) __attribute__((nonnull));
+// Called by the uplink when connection is lost
+void loop_uplink_disconnected(struct loop *loop) __attribute__((nonnull));
 
 // Register a file descriptor for reading & closing events. Removed on close.
 void loop_register_fd(struct loop *loop, int fd, struct epoll_handler *handler) __attribute__((nonnull));

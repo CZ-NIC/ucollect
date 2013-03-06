@@ -86,6 +86,12 @@ uplink_data_callback:: This is called whenever the control server
   sends a message directed to the plugin. The data of the message is
   provided as parameter, but the content is plugin-defined. It is up
   to the plugin to provide answer, if any is required.
+uplink_connected_callback:: Called when the uplink connects to the
+  central server. This can be called multiple times over the lifetime
+  of plugin (or never, if the connection was made before and it is
+  never lost).
+uplink_disconnected_callback:: Called when the connection to the
+  remote server is lost.
 
 Modules of the core
 -------------------

@@ -88,6 +88,7 @@ static void uplink_connect(struct uplink *uplink) {
 	 * list of plugins and possibly other things too.
 	 */
 	uplink_send_message(uplink, 'H', NULL, 0);
+	loop_uplink_connected(uplink->loop);
 }
 
 static void reconnect_now(struct context *unused, void *data, size_t id_unused) {
@@ -120,6 +121,7 @@ static void buffer_reset(struct uplink *uplink) {
 static void uplink_disconnect(struct uplink *uplink) {
 	if (uplink->fd != -1) {
 		ulog(LOG_DEBUG, "Closing uplink connection %d to %s:%s\n", uplink->fd, uplink->remote_name, uplink->service);
+		loop_uplink_disconnected(uplink->loop);
 		int result = close(uplink->fd);
 		if (result != 0)
 			ulog(LOG_ERROR, "Couldn't close uplink connection to %s:%s, leaking file descriptor %d (%s)\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
