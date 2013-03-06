@@ -144,7 +144,7 @@ struct pcap_interface {
 	int fd;
 	size_t offset;
 	size_t watchdog_timer;
-	bool watchdog_received;
+	bool watchdog_received,  watchdog_initialized;
 	size_t watchdog_missed;
 	struct pcap_interface *next;
 	bool mark; // Mark for configurator.
@@ -560,7 +560,8 @@ void loop_run(struct loop *loop) {
 
 static void pcap_destroy(struct pcap_interface *interface) {
 	ulog(LOG_INFO, "Closing PCAP on %s\n", interface->name);
-	loop_timeout_cancel(interface->loop, interface->watchdog_timer);
+	if (interface->watchdog_initialized)
+		loop_timeout_cancel(interface->loop, interface->watchdog_timer);
 	pcap_close(interface->pcap);
 }
 
@@ -948,6 +949,7 @@ void loop_config_commit(struct loop_configurator *configurator) {
 		if (!interface->mark)
 			loop_timeout_cancel(loop, interface->watchdog_timer);
 		interface->watchdog_timer = loop_timeout_add(loop, PCAP_WATCHDOG_TIME, NULL, interface, pcap_watchdog);
+		interface->watchdog_initialized = true;
 	}
 	// Destroy the old configuration and merge the new one
 	if (loop->config_pool)
