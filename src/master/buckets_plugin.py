@@ -18,14 +18,15 @@ class BucketsPlugin(plugin.Plugin):
 	def name(self):
 		return "Buckets"
 
-	def client_connected(self, client):
-		"""
-		Client has connected. Send the initial settings to
-		it.
-		"""
-		self.send('I' + self.__config(), client.cid())
+	def message_from_client(self, message, client):
+		kind = message[0]
+		if kind == 'C':
+			# It asks for config. Send some.
+			self.send('C' + self.__config(), client)
+		else:
+			print("Unkown data from Buckets plugin: " + message)
 
 	def __config(self):
-		header = struct.pack('!4LQ', self.__bucket_count, self.__hash_count, self.__criteria_count, self.__history_sizet , self.__seed)
+		header = struct.pack('!4LQ', self.__bucket_count, self.__hash_count, self.__criteria_count, self.__history_size , self.__seed)
 		# TODO: Describe the criteria to gather
 		return header

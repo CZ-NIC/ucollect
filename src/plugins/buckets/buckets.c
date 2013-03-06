@@ -1,6 +1,7 @@
 #include "../../core/plugin.h"
 #include "../../core/context.h"
 #include "../../core/mem_pool.h"
+#include "../../core/uplink.h"
 
 #include <stdbool.h>
 
@@ -17,6 +18,7 @@ void initialize(struct context *context) {
 	*context->user_data = (struct user_data) {
 		.initialized = false
 	};
+	uplink_plugin_send_message(context, "C", 1);
 }
 
 struct plugin *plugin_info() {
