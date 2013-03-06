@@ -48,7 +48,16 @@ class Plugin:
 		Broadcast a message from this plugin to all the connected
 		clients.
 		"""
-		self.__plugins.broadcast('R' + format_string(self.name()) + message)
+		self.__plugins.broadcast(self.__routed_message(message))
+
+	def send(self, message, to):
+		"""
+		Send a message from this plugin to the client given by name.
+		"""
+		self.__plugins.send(self.__routed_message(message), to)
+
+	def __routed_message(self, message):
+		return 'R' + format_string(self.name()) + message
 
 class Plugins:
 	"""
@@ -93,6 +102,13 @@ class Plugins:
 		"""
 		for c in self.__clients.values():
 			c.sendString(message)
+
+	def send(self, message, to):
+		"""
+		Send a message to the named client.
+		"""
+		# TODO: Client of that name might not exist
+		self.__clients[to].sendString(message)
 
 	def route_to_plugin(self, name, message, client):
 		"""

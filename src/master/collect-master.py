@@ -4,9 +4,11 @@ from twisted.internet.endpoints import TCP6ServerEndpoint
 from client import ClientFactory
 from plugin import Plugins
 import count_plugin
+import buckets_plugin
 
 plugins = Plugins()
 count_plugin.CountPlugin(plugins)
+buckets_plugin.BucketsPlugin(plugins)
 # Some configuration, to load the port from?
 endpoint = TCP6ServerEndpoint(reactor, 5678)
 endpoint.listen(ClientFactory(plugins))
