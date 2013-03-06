@@ -1,2 +1,2 @@
 LIBRARIES += src/plugins/buckets/libplugin_buckets
-libplugin_buckets_MODULES := rng
+libplugin_buckets_MODULES := rng buckets
