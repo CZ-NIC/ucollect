@@ -334,6 +334,18 @@ static void epoll_register_pcap(struct loop *loop, struct pcap_interface *interf
 		die("Can't register PCAP fd %d of %s to epoll fd %d (%s)\n", interface->fd, interface->name, loop->epoll_fd, strerror(errno));
 }
 
+static void loop_get_now(struct loop *loop) {
+	struct timespec ts;
+	/*
+	 * CLOC_MONOTONIC can go backward or jump if admin adjusts date.
+	 * But the CLOCK_MONOTONIC_RAW doesn't seem to be available in uclibc.
+	 * Any better alternative?
+	 */
+	if(clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
+		die("Couldn't get time (%s)\n", strerror(errno));
+	loop->now = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
 struct loop *loop_create() {
 	if (!sig_initialized) {
 		signal_initialize();
@@ -355,23 +367,12 @@ struct loop *loop_create() {
 	};
 	result->batch_pool = loop_pool_create(result, NULL, "Global batch pool");
 	result->temp_pool = loop_pool_create(result, NULL, "Global temporary pool");
+	loop_get_now(result);
 	return result;
 }
 
 void loop_break(struct loop *loop) {
 	loop->stopped = 1;
-}
-
-static void loop_get_now(struct loop *loop) {
-	struct timespec ts;
-	/*
-	 * CLOC_MONOTONIC can go backward or jump if admin adjusts date.
-	 * But the CLOCK_MONOTONIC_RAW doesn't seem to be available in uclibc.
-	 * Any better alternative?
-	 */
-	if(clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
-		die("Couldn't get time (%s)\n", strerror(errno));
-	loop->now = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
 static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
