@@ -12,6 +12,7 @@ class BucketsPlugin(plugin.Plugin):
 		self.__hash_count = 4
 		self.__criteria_count = 1
 		self.__history_size = 1
+		self.__config_version = 1
 		# Just an arbitrary number
 		self.__seed = 872945724987
 
@@ -27,6 +28,6 @@ class BucketsPlugin(plugin.Plugin):
 			print("Unkown data from Buckets plugin: " + message)
 
 	def __config(self):
-		header = struct.pack('!4LQ', self.__bucket_count, self.__hash_count, self.__criteria_count, self.__history_size , self.__seed)
+		header = struct.pack('!5LQ', self.__bucket_count, self.__hash_count, self.__criteria_count, self.__history_size , self.__config_version, self.__seed)
 		# TODO: Describe the criteria to gather
 		return header
