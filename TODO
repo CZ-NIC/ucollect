@@ -1,0 +1,4 @@
+• Document the configuration & interface of ucollect
+• Add a command from the uplink to re-initialize given plugin. This will allow
+  a plugin which gets most of its config from the server to free old memory and
+  generate everything anew.
