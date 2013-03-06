@@ -28,6 +28,6 @@ struct rng_seed {
 struct rng_seed rng_seed_init(uint64_t seed);
 
 // Generate a random number and update the seed.
-uint32_t rng_get(struct rng_seed *seed);
+uint32_t rng_get(struct rng_seed *seed) __attribute__((nonnull));
 
 #endif

@@ -13,7 +13,7 @@ struct user_data {
 	bool initialized; // Were we initialized already by the server?
 };
 
-void initialize(struct context *context) {
+static void initialize(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 	*context->user_data = (struct user_data) {
 		.initialized = false
@@ -21,10 +21,20 @@ void initialize(struct context *context) {
 	uplink_plugin_send_message(context, "C", 1);
 }
 
+static void connected(struct context *context) {
+	/*
+	 * If we weren't connected on our initialization, ask for the
+	 * configuration now.
+	 */
+	if (!context->user_data->initialized)
+		uplink_plugin_send_message(context, "C", 1);
+}
+
 struct plugin *plugin_info() {
 	static struct plugin plugin = {
 		.name = "Buckets",
-		.init_callback = initialize
+		.init_callback = initialize,
+		.uplink_connected_callback = connected
 	};
 	return &plugin;
 }
