@@ -10,7 +10,7 @@ class BucketsPlugin(plugin.Plugin):
 		plugin.Plugin.__init__(self, plugins)
 		self.__bucket_count = 16
 		self.__hash_count = 4
-		self.__criteria_count = 1
+		self.__criteria = ['I']
 		self.__history_size = 1
 		self.__config_version = 1
 		# Just an arbitrary number
@@ -28,6 +28,5 @@ class BucketsPlugin(plugin.Plugin):
 			print("Unkown data from Buckets plugin: " + message)
 
 	def __config(self):
-		header = struct.pack('!5LQ', self.__bucket_count, self.__hash_count, self.__criteria_count, self.__history_size , self.__config_version, self.__seed)
-		# TODO: Describe the criteria to gather
+		header = struct.pack('!Q5L' + str(len(self.__criteria)) + 'c', self.__seed, self.__bucket_count, self.__hash_count, len(self.__criteria), self.__history_size , self.__config_version, *self.__criteria)
 		return header
