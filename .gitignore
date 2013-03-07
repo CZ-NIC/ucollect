@@ -9,3 +9,4 @@ src/core/libucollect_core.*
 *.so
 *.html
 *.pyc
+src/plugins/buckets/hash_test

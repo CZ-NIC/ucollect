@@ -10,6 +10,6 @@ struct mem_pool;
 const uint32_t *gen_hash_data(uint64_t seed_base, size_t hash_count, size_t hash_line_size, struct mem_pool *pool);
 
 // Compute hash of given key. Provide random data for the computation.
-uint32_t hash(const uint8_t *key, size_t key_size, const uint8_t *hash_data);
+uint32_t hash(const uint8_t *key, size_t key_size, const uint32_t *hash_data);
 
 #endif

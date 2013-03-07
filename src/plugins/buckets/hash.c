@@ -21,7 +21,7 @@ const uint32_t *gen_hash_data(uint64_t seed_base, size_t hash_count, size_t hash
  *
  * The only thing to worry about is how random the random data is.
  */
-uint32_t hash(const uint8_t *key, size_t key_size, const uint8_t *hash_data) {
+uint32_t hash(const uint8_t *key, size_t key_size, const uint32_t *hash_data) {
 	uint32_t result = 0;
 	for (size_t i = 0; i < key_size; i ++) {
 		// Pick a random number based on the next byte of input
