@@ -13,6 +13,7 @@ class BucketsPlugin(plugin.Plugin):
 		self.__criteria = ['I']
 		self.__history_size = 1
 		self.__config_version = 1
+		self.__max_key_count = 102400
 		# Just an arbitrary number
 		self.__seed = 872945724987
 
@@ -28,5 +29,5 @@ class BucketsPlugin(plugin.Plugin):
 			print("Unkown data from Buckets plugin: " + message)
 
 	def __config(self):
-		header = struct.pack('!Q5L' + str(len(self.__criteria)) + 'c', self.__seed, self.__bucket_count, self.__hash_count, len(self.__criteria), self.__history_size , self.__config_version, *self.__criteria)
+		header = struct.pack('!Q6L' + str(len(self.__criteria)) + 'c', self.__seed, self.__bucket_count, self.__hash_count, len(self.__criteria), self.__history_size , self.__config_version, self.__max_key_count, *self.__criteria)
 		return header
