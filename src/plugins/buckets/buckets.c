@@ -1,4 +1,4 @@
-#include "rng.h"
+#include "hash.h"
 
 #include "../../core/plugin.h"
 #include "../../core/context.h"
@@ -50,6 +50,7 @@ struct generation {
 struct user_data {
 	size_t bucket_count; // Number of buckets per hash
 	size_t hash_count; // Count of different hashes
+	size_t hash_line_size; // Number of bytes in hash_data per hash.
 	size_t history_size; // How many old snapshots we keep, for the server to ask details about
 	size_t max_key_count; // Maximum number of unique keys stored per generation and criterion.
 	uint32_t config_version;
@@ -92,16 +93,6 @@ struct config_header {
 	uint32_t max_key_count;
 	char criteria[];
 } __attribute__((__packed__));
-
-static const uint32_t *gen_hash_data(uint64_t seed_base, size_t hash_count, size_t max_key_size, struct mem_pool *pool) {
-	struct rng_seed seed = rng_seed_init(seed_base);
-	// 256 possible values of byte, a block of bytes for each position in eatch hash
-	size_t size = 256 * max_key_size * hash_count;
-	uint32_t *result = mem_pool_alloc(pool, size * sizeof *result);
-	for (size_t i = 0; i < size; i ++)
-		result[i] = rng_get(&seed);
-	return result;
-}
 
 static void generation_activate(struct user_data *u, size_t generation) {
 	struct generation *g = &u->generations[generation];
@@ -146,7 +137,8 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 			die("Bucket riterion of name '%c' not known\n", header->criteria[i]);
 	}
 	// Generate the random hash data
-	u->hash_data = gen_hash_data(be64toh(header->seed), u->hash_count, max_keysize, context->permanent_pool);
+	u->hash_line_size = 256 * max_keysize;
+	u->hash_data = gen_hash_data(be64toh(header->seed), u->hash_count, u->hash_line_size, context->permanent_pool);
 	// Make room for the generations, hash counts and gathered keys
 	u->generations = mem_pool_alloc(context->permanent_pool, (1 + u->history_size) * sizeof *u->generations);
 	for (size_t i = 0; i <= u->history_size; i ++) {
