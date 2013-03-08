@@ -17,7 +17,7 @@ static bool copy_ip(uint8_t *where, const struct packet_info *packet) {
 	if (!packet->addresses[remote])
 		return false; // Not an IP packet.
 	size_t len = packet->addr_len;
-	assert(ADDR_SIZE - 1 <= len);
+	assert(ADDR_SIZE - 1 >= len);
 	memcpy(where + 1, packet->addresses[remote], len);
 	memset(where + 1 + len, 0, ADDR_SIZE - 1 - len);
 	*where = packet->ip_protocol;
