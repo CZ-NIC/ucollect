@@ -25,6 +25,7 @@
  *   prefix will be something you'd like the list functions to start with.
  *
  * - LIST_WANT_APPEND_POOL Generate the LIST_NAME(append_pool) function
+ * - LIST_WANT_INSERT_AFTER Generate the LIST_NAME(insert_after) function
  * - LIST_WANT_LFOR Make sure the LFOR macro works for this list
  */
 
@@ -50,19 +51,37 @@
 #define LIST_NEXT next
 #endif
 
+#if defined(LIST_WANT_APPEND_POOL) && (!defined(LIST_WANT_INSERT_AFTER))
+#define LIST_WANT_INSERT_AFTER
+#endif
+
+#ifdef LIST_WANT_INSERT_AFTER
+/*
+ * Add the node to the list, positioned after the node 'after'. The 'after' node
+ * may be NULL, in which case the item is prepended to the list. A non-null after
+ * must be from the given list.
+ */
+static void LIST_NAME(insert_after)(LIST_BASE *list, LIST_NODE *node, LIST_NODE *after) {
+	if (after) {
+		node->LIST_NEXT = after->LIST_NEXT;
+		after->LIST_NEXT = node;
+	} else {
+		node->LIST_NEXT = list->LIST_HEAD;
+		list->LIST_HEAD = node;
+	}
+	if (list->LIST_TAIL == after)
+		list->LIST_TAIL = node;
+#ifdef LIST_COUNT
+	list->LIST_COUNT ++;
+#endif
+}
+#endif
+
 // Functions
 #ifdef LIST_WANT_APPEND_POOL
 static LIST_NODE *LIST_NAME(append_pool)(LIST_BASE *list, struct mem_pool *pool) {
 	LIST_NODE *new = mem_pool_alloc(pool, sizeof *new);
-	new->LIST_NEXT = NULL;
-	if (list->LIST_TAIL)
-		list->LIST_TAIL->LIST_NEXT = new;
-	list->LIST_TAIL = new;
-	if (!list->LIST_HEAD)
-		list->LIST_HEAD = new;
-#ifdef LIST_COUNT
-	list->LIST_COUNT ++;
-#endif
+	LIST_NAME(insert_after)(list, new, list->LIST_TAIL);
 	return new;
 }
 #endif
@@ -89,6 +108,7 @@ typedef LIST_NODE LIST_NAME(node_t);
 #undef LIST_COUNT
 #undef LIST_PREFIX
 #undef LIST_WANT_APPEND_POOL
+#undef LIST_WANT_INSERT_AFTER
 
 #ifdef LIST_WANT_LFOR
 #ifndef LFOR
