@@ -21,10 +21,11 @@
  * - LIST_NEXT The pointer to next node in LIST_NODE. Defaults to "next".
  * - LIST_COUNT The count variable. It is optional, but if set, the
  *   functions keep it up to date.
- * - LIST_NAME(X) Macro that generates name of identifier. The X will be
- *   given as part of the identifier.
+ * - LIST_NAME(X) A name-generating macro. It should be prefix_##X, where
+ *   prefix will be something you'd like the list functions to start with.
  *
  * - LIST_WANT_APPEND_POOL Generate the LIST_NAME(append_pool) function
+ * - LIST_WANT_LFOR Make sure the LFOR macro works for this list
  */
 
 // Check all needed defines are there
@@ -66,6 +67,18 @@ static LIST_NODE *LIST_NAME(append_pool)(LIST_BASE *list, struct mem_pool *pool)
 }
 #endif
 
+#ifdef LIST_WANT_LFOR
+static LIST_NODE *LIST_NAME(get_head)(const LIST_BASE *list) {
+	return list->LIST_HEAD;
+}
+
+static LIST_NODE *LIST_NAME(get_next)(const LIST_NODE *node) {
+	return node->LIST_NEXT;
+}
+
+typedef LIST_NODE LIST_NAME(node_t);
+#endif
+
 // Clean up the defines
 #undef LIST_NODE
 #undef LIST_BASE
@@ -74,8 +87,12 @@ static LIST_NODE *LIST_NAME(append_pool)(LIST_BASE *list, struct mem_pool *pool)
 #undef LIST_NEXT
 #undef LIST_NAME
 #undef LIST_COUNT
+#undef LIST_PREFIX
 #undef LIST_WANT_APPEND_POOL
 
+#ifdef LIST_WANT_LFOR
 #ifndef LFOR
-#define LFOR(TYPE, VARIABLE, LIST) for (TYPE *VARIABLE = (LIST).head; VARIABLE; VARIABLE = VARIABLE->next)
+#define LFOR(TYPE, VARIABLE, LIST) for (TYPE##_node_t *VARIABLE = TYPE##_get_head((LIST)); VARIABLE; VARIABLE = TYPE##_get_next(VARIABLE))
+#endif
+#undef LIST_WANT_LFOR
 #endif

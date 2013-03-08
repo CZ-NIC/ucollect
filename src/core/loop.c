@@ -160,6 +160,7 @@ struct pcap_list {
 #define LIST_NAME(X) pcap_##X
 #define LIST_COUNT count
 #define LIST_WANT_APPEND_POOL
+#define LIST_WANT_LFOR
 #include "link_list.h"
 
 struct plugin_holder {
@@ -189,6 +190,7 @@ struct plugin_list {
 #define LIST_BASE struct plugin_list
 #define LIST_NAME(X) plugin_##X
 #define LIST_WANT_APPEND_POOL
+#define LIST_WANT_LFOR
 #include "link_list.h"
 
 /*
@@ -295,7 +297,7 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 	};
 	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s\n", info.length, interface->name);
 	parse_packet(&info, interface->local_addresses, interface->loop->batch_pool);
-	LFOR(struct plugin_holder, plugin, interface->loop->plugins)
+	LFOR(plugin, plugin, &interface->loop->plugins)
 		plugin_packet(plugin, &info);
 }
 
@@ -459,7 +461,7 @@ void loop_run(struct loop *loop) {
 			holder->mark = false; // This one is already destroyed
 			const char *libname = holder->libname; // Make sure it is not picked up
 			holder->libname = "";
-			LFOR(struct plugin_holder, plugin, loop->plugins)
+			LFOR(plugin, plugin, &loop->plugins)
 				if (plugin->mark) { // Copy all the other plugins, and this one if it is to be reinited
 					if (!loop_add_plugin(configurator, plugin->libname))
 						die("Copy of %s failed\n", plugin->libname);
@@ -469,7 +471,7 @@ void loop_run(struct loop *loop) {
 					else
 						configurator->plugins.tail->failed = failed + 1;
 				}
-			LFOR(struct pcap_interface, interface, loop->pcap_interfaces) {
+			LFOR(pcap, interface, &loop->pcap_interfaces) {
 				if (!loop_add_pcap(configurator, interface->name))
 					die("Copy of %s failed\n", interface->name);
 				address_list_copy(configurator->pcap_interfaces.tail->local_addresses, interface->local_addresses);
@@ -596,7 +598,7 @@ static const size_t ip_offset_table[] =
 
 bool loop_add_pcap(struct loop_configurator *configurator, const char *interface) {
 	// First, go through the old ones and copy it if is there.
-	LFOR(struct pcap_interface, old, configurator->loop->pcap_interfaces)
+	LFOR(pcap, old, &configurator->loop->pcap_interfaces)
 		if (strcmp(interface, old->name) == 0) {
 			old->mark = false; // We copy it, don't close it at commit
 			struct pcap_interface *new = pcap_append_pool(&configurator->pcap_interfaces, configurator->config_pool);
@@ -681,7 +683,7 @@ size_t *loop_pcap_stats(struct context *context) {
 	size_t *result = mem_pool_alloc(context->temp_pool, (1 + 3 * loop->pcap_interfaces.count) * sizeof *result);
 	*result = loop->pcap_interfaces.count;
 	size_t i = 1;
-	LFOR(struct pcap_interface, interface, loop->pcap_interfaces) {
+	LFOR(pcap, interface, &loop->pcap_interfaces) {
 		struct pcap_stat ps;
 		int error = pcap_stats(interface->pcap, &ps);
 		if (error)
@@ -702,7 +704,7 @@ bool loop_pcap_add_address(struct loop_configurator *configurator, const char *a
 
 bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {
 	// Look for existing plugin first
-	LFOR(struct plugin_holder, old, configurator->loop->plugins)
+	LFOR(plugin, old, &configurator->loop->plugins)
 		if (strcmp(old->libname, libname) == 0) {
 			old->mark = false; // We copy it, so don't delete after commit
 			struct plugin_holder *new = plugin_append_pool(&configurator->plugins, configurator->config_pool);
@@ -758,7 +760,7 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 void loop_uplink_set(struct loop *loop, struct uplink *uplink) {
 	assert(!loop->uplink);
 	loop->uplink = uplink;
-	LFOR(struct plugin_holder, plugin, loop->plugins)
+	LFOR(plugin, plugin, &loop->plugins)
 		plugin->context.uplink = uplink;
 }
 
@@ -798,7 +800,7 @@ struct mem_pool *loop_temp_pool(struct loop *loop) {
 }
 
 bool loop_plugin_send_data(struct loop *loop, const char *name, const uint8_t *data, size_t length) {
-	LFOR(struct plugin_holder, plugin, loop->plugins)
+	LFOR(plugin, plugin, &loop->plugins)
 		if (strcmp(plugin->plugin.name, name) == 0) {
 			plugin_uplink_data(plugin, data, length);
 			return true;
@@ -875,9 +877,9 @@ struct loop_configurator *loop_config_start(struct loop *loop) {
 		.config_pool = config_pool
 	};
 	// Mark all the old plugins and interfaces for deletion on commit
-	LFOR(struct plugin_holder, plugin, loop->plugins)
+	LFOR(plugin, plugin, &loop->plugins)
 		plugin->mark = true;
-	LFOR(struct pcap_interface, interface, loop->pcap_interfaces)
+	LFOR(pcap, interface, &loop->pcap_interfaces)
 		interface->mark = true;
 	return result;
 }
@@ -888,10 +890,10 @@ void loop_config_abort(struct loop_configurator *configurator) {
 	 *
 	 * Select the ones from the configurator, not loop!
 	 */
-	LFOR(struct plugin_holder, plugin, configurator->plugins)
+	LFOR(plugin, plugin, &configurator->plugins)
 		if (plugin->mark)
 			plugin_destroy(plugin, false);
-	LFOR(struct pcap_interface, interface, configurator->pcap_interfaces)
+	LFOR(pcap, interface, &configurator->pcap_interfaces)
 		if (interface->mark)
 			pcap_destroy(interface);
 	// And delete all the memory
@@ -935,19 +937,19 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	 *
 	 * Take the ones from loop, not configurator.
 	 */
-	LFOR(struct plugin_holder, plugin, loop->plugins)
+	LFOR(plugin, plugin, &loop->plugins)
 		if (plugin->mark)
 			plugin_destroy(plugin, false);
-	LFOR(struct pcap_interface, interface, loop->pcap_interfaces)
+	LFOR(pcap, interface, &loop->pcap_interfaces)
 		if (interface->mark)
 			pcap_destroy(interface);
 	// Migrate the copied ones, register the new ones.
-	LFOR(struct plugin_holder, plugin, configurator->plugins)
+	LFOR(plugin, plugin, &configurator->plugins)
 		if (!plugin->mark)
 			for (size_t i = 0; i < loop->timeout_count; i ++)
 				if (loop->timeouts[i].context == &plugin->original->context)
 					loop->timeouts[i].context = &plugin->context;
-	LFOR(struct pcap_interface, interface, configurator->pcap_interfaces) {
+	LFOR(pcap, interface, &configurator->pcap_interfaces) {
 		epoll_register_pcap(loop, interface, interface->mark ? EPOLL_CTL_ADD : EPOLL_CTL_MOD);
 		if (!interface->mark)
 			loop_timeout_cancel(loop, interface->watchdog_timer);
@@ -963,11 +965,11 @@ void loop_config_commit(struct loop_configurator *configurator) {
 }
 
 void loop_uplink_connected(struct loop *loop) {
-	LFOR(struct plugin_holder, plugin, loop->plugins)
+	LFOR(plugin, plugin, &loop->plugins)
 		plugin_uplink_connected(plugin);
 }
 
 void loop_uplink_disconnected(struct loop *loop) {
-	LFOR(struct plugin_holder, plugin, loop->plugins)
+	LFOR(plugin, plugin, &loop->plugins)
 		plugin_uplink_disconnected(plugin);
 }

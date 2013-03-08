@@ -23,6 +23,7 @@ struct address_list {
 #define LIST_BASE struct address_list
 #define LIST_NAME(X) address_list_##X
 #define LIST_WANT_APPEND_POOL
+#define LIST_WANT_LFOR
 #include "link_list.h"
 
 struct address_list *address_list_create(struct mem_pool *pool) {
@@ -140,7 +141,7 @@ void address_list_add(struct address_list *list, const struct address *address) 
 }
 
 void address_list_copy(struct address_list *dest, const struct address_list *src) {
-	LFOR(struct address_node, address, *src)
+	LFOR(address_list, address, src)
 		address_list_add(dest, &address->address);
 }
 
