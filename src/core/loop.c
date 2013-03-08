@@ -709,6 +709,7 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 			old->mark = false; // We copy it, so don't delete after commit
 			struct plugin_holder *new = plugin_append_pool(&configurator->plugins, configurator->config_pool);
 			*new = *old;
+			new->next = NULL;
 			new->original = old;
 			new->plugin.name = mem_pool_strdup(configurator->config_pool, old->plugin.name);
 			new->libname = mem_pool_strdup(configurator->config_pool, libname);
