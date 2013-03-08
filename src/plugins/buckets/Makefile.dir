@@ -1,6 +1,7 @@
 LIBRARIES += src/plugins/buckets/libplugin_buckets
-libplugin_buckets_MODULES := rng buckets hash
+libplugin_buckets_MODULES := rng buckets hash criteria
 
+# A test for the hash and rng
 BINARIES += src/plugins/buckets/hash_test
 hash_test_MODULES := hash_test
 hash_test_LOCAL_LIBS := plugin_buckets ucollect_core

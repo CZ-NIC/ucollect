@@ -1,4 +1,5 @@
 #include "hash.h"
+#include "criteria.h"
 
 #include "../../core/plugin.h"
 #include "../../core/context.h"
@@ -11,19 +12,6 @@
 #include <assert.h>
 #include <string.h>
 #include <arpa/inet.h>
-
-struct criterion_def {
-	size_t key_size;
-	void (*extract_key)(const struct packet_info *packet, struct mem_pool *tmp_pool);
-	char name; // Name as denoted in the config
-};
-
-static struct criterion_def criteria[] = {
-	{ // Remote address
-		.key_size = 17, // IPv6 is 16 bytes long, preceded by the version byte. We pad v4 by zeroes.
-		.name = 'I'
-	}
-};
 
 struct key {
 	struct key *next;
@@ -126,7 +114,7 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 	size_t max_keysize = 0;
 	for (size_t i = 0; i < u->criteria_count; i ++) {
 		bool found = false;
-		for (size_t j = 0; j < sizeof criteria / sizeof criteria[0]; j ++)
+		for (size_t j = 0; criteria[j].name; j ++)
 			if (criteria[j].name == header->criteria[i]) {
 				found = true;
 				u->criteria[i] = &criteria[j];
