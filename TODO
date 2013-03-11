@@ -2,3 +2,6 @@
 • Add a command from the uplink to re-initialize given plugin. This will allow
   a plugin which gets most of its config from the server to free old memory and
   generate everything anew.
+• Document protocols used by count & bucket plugin
+• Why does the uplink reset when a plugin crashes?
+• Re-think how to request keys from clients
