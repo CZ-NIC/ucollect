@@ -31,6 +31,21 @@ class BucketsPlugin(plugin.Plugin):
 		if kind == 'C':
 			# It asks for config. Send some.
 			self.send('C' + self.__config(), client)
+		elif kind == 'G':
+			# Generation data.
+			# Parse it. Something less error-prone when confused config?
+			# FIXME: Part of this won't work with more than 1 criterion
+			per_criterion = self.__bucket_count * self.__hash_count + 1
+			count = len(self.__criteria) * per_criterion
+			deserialized = struct.unpack('!QL' + str(count) + 'L', message[1:])
+			(timestamp, version) = deserialized[:2]
+			print("Hash buckets from " + client + " since " + time.ctime(timestamp) + " on version " + str(version))
+			deserialized = deserialized[3:] # Skip one for the overflow flag
+			total = sum(deserialized)
+			print("Total " + str(total / self.__hash_count))
+			while deserialized:
+				print(deserialized[:self.__bucket_count])
+				deserialized = deserialized[self.__bucket_count:]
 		else:
 			print("Unkown data from Buckets plugin: " + message)
 
@@ -42,5 +57,5 @@ class BucketsPlugin(plugin.Plugin):
 		"""
 		Ask the clients to provide some data.
 		"""
-		data = struct.pack('Q', int(time.time()))
+		data = struct.pack('!Q', int(time.time()))
 		self.broadcast('G' + data)
