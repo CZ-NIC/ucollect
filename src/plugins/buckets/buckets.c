@@ -195,12 +195,13 @@ static void provide_generation(struct context *context, const uint8_t *data, siz
 		struct criterion *src = &g->criteria[i];
 		struct criterion_data *dst = (struct criterion_data *) &msg->data[i * criterion_size];
 		dst->overflow = htonl(src->overflow);
-		size_t total_count;
+		size_t total_count = 0;
 		for (size_t j = 0; j < u->hash_count * u->bucket_count; j ++) {
 			dst->counts[j] = htonl(src->counts[j]);
-			total_count += src->counts[i];
+			total_count += src->counts[j];
 		}
-		assert(total_count = src->packet_count);
+		// Every packet should be once in each hash
+		assert(total_count == src->packet_count * u->hash_count);
 	}
 	// Send it (skip the padding)
 	uplink_plugin_send_message(context, &msg->code, sizeof *msg + criterion_size * u->criteria_count - sizeof msg->padding);
