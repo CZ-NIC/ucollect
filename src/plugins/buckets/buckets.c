@@ -160,12 +160,73 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 	u->initialized = true;
 }
 
+// The data of one generation, as sent on the wire.
+struct generation_data {
+	// Padding to align the rest. Skip on send.
+	uint8_t padding[sizeof(uint64_t) - 1];
+	char code; // Send from here onwards
+	uint64_t timestamp;
+	uint32_t config_version;
+	uint8_t data[];
+} __attribute__((packed));
+
+// Part of the generation_data, placed in the data[] element.
+struct criterion_data {
+	uint32_t overflow; // Could be bool, but it would mess alignment
+	uint32_t counts[];
+} __attribute__((packed));
+
+static void provide_generation(struct context *context, const uint8_t *data, size_t length) {
+	struct user_data *u = context->user_data;
+	// Read the new timestamp
+	uint64_t timestamp;
+	assert(length == sizeof timestamp);
+	memcpy(&timestamp, data, length); // Copy, to ensure correct alignment
+	timestamp = be64toh(timestamp);
+	// Compute the size of the message to send
+	size_t criterion_size = sizeof(struct criterion_data) + u->hash_count * u->bucket_count * sizeof(uint32_t);
+	struct generation_data *msg = mem_pool_alloc(context->temp_pool, sizeof *msg + criterion_size * u->criteria_count);
+	struct generation *g = &u->generations[u->current_generation];
+	// Build the message
+	msg->code = 'G';
+	msg->timestamp = htobe64(g->timestamp);
+	msg->config_version = htonl(u->config_version);
+	for (size_t i = 0; i < u->criteria_count; i ++) {
+		struct criterion *src = &g->criteria[i];
+		struct criterion_data *dst = (struct criterion_data *) &msg->data[i * criterion_size];
+		dst->overflow = htonl(src->overflow);
+		size_t total_count;
+		for (size_t j = 0; j < u->hash_count * u->bucket_count; j ++) {
+			dst->counts[j] = htonl(src->counts[j]);
+			total_count += src->counts[i];
+		}
+		assert(total_count = src->packet_count);
+	}
+	// Send it (skip the padding)
+	uplink_plugin_send_message(context, &msg->code, sizeof *msg + criterion_size * u->criteria_count - sizeof msg->padding);
+}
+
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
 	assert(length);
 	switch (*data) {
 		case 'C': // Good, we got configuration
 			assert(!context->user_data->initialized);
 			configure(context, data + 1, length - 1);
+			return;
+		case 'G': // We are asked to send the current generation and start a new one
+			if (context->user_data->initialized) {
+				ulog(LOG_DEBUG, "Asked for generation data\n");
+				provide_generation(context, data + 1, length - 1);
+			} else {
+				/*
+				 * It could probably hapen in rare race condition when we connect
+				 * and directly get a request for data before we even get the
+				 * configuration. This is because the server just broadcasts the
+				 * request without tracking who already asked for configuration.
+				 */
+				ulog(LOG_WARN, "Asked for generation data, but not initialized yet.\n");
+				// Ignore it, we have nothing.
+			}
 			return;
 		default:
 			ulog(LOG_WARN, "Unknown buckets request %hhu/%c\n", *data, (char) *data);
