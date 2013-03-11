@@ -1,6 +1,8 @@
 import struct
 import plugin
 
+import time
+
 class BucketsPlugin(plugin.Plugin):
 	"""
 	Counterpart of the "buckets" plugin in the client. It does
@@ -29,5 +31,5 @@ class BucketsPlugin(plugin.Plugin):
 			print("Unkown data from Buckets plugin: " + message)
 
 	def __config(self):
-		header = struct.pack('!Q6L' + str(len(self.__criteria)) + 'c', self.__seed, self.__bucket_count, self.__hash_count, len(self.__criteria), self.__history_size , self.__config_version, self.__max_key_count, *self.__criteria)
+		header = struct.pack('!2Q6L' + str(len(self.__criteria)) + 'c', self.__seed, int(time.time()), self.__bucket_count, self.__hash_count, len(self.__criteria), self.__history_size , self.__config_version, self.__max_key_count, *self.__criteria)
 		return header

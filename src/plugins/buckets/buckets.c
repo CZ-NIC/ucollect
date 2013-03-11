@@ -40,6 +40,7 @@ struct criterion {
 struct generation {
 	struct mem_pool *pool; // Pool where the keys will be allocated from
 	struct criterion *criteria;
+	uint64_t timestamp;
 };
 
 struct user_data {
@@ -80,6 +81,7 @@ static void connected(struct context *context) {
  */
 struct config_header {
 	uint64_t seed;
+	uint64_t timestamp;
 	uint32_t bucket_count;
 	uint32_t hash_count;
 	uint32_t criteria_count;
@@ -89,7 +91,7 @@ struct config_header {
 	char criteria[];
 } __attribute__((__packed__));
 
-static void generation_activate(struct user_data *u, size_t generation) {
+static void generation_activate(struct user_data *u, size_t generation, uint64_t timestamp) {
 	struct generation *g = &u->generations[generation];
 	for (size_t i = 0; i < u->criteria_count; i ++) {
 		// Reset the lists and the counts
@@ -100,6 +102,7 @@ static void generation_activate(struct user_data *u, size_t generation) {
 		memset(g->criteria[i].counts, 0, u->bucket_count * u->hash_count * sizeof *g->criteria[i].counts);
 	}
 	mem_pool_reset(g->pool);
+	g->timestamp = timestamp;
 }
 
 static void configure(struct context *context, const uint8_t *data, size_t length) {
@@ -151,7 +154,7 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 			};
 			// We don't care about the values in newly-allocated data. We reset it at the start of generation
 	}
-	generation_activate(u, 0);
+	generation_activate(u, 0, be64toh(header->timestamp));
 	assert(u->criteria_count && u->hash_count && u->bucket_count);
 	ulog(LOG_INFO, "Received bucket information version %u (%u buckets, %u hashes)\n", (unsigned) u->config_version, (unsigned) u->bucket_count, (unsigned) u->hash_count);
 	u->initialized = true;
