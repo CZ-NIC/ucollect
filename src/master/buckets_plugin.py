@@ -43,9 +43,25 @@ class BucketsPlugin(plugin.Plugin):
 			deserialized = deserialized[3:] # Skip one for the overflow flag
 			total = sum(deserialized)
 			print("Total " + str(total / self.__hash_count))
+			h = 0
+			examine = []
 			while deserialized:
-				print(deserialized[:self.__bucket_count])
+				line = deserialized[:self.__bucket_count]
+				i = 0
+				maxval = 0
+				maxindex = 0
+				for v in line:
+					if v > maxval:
+						maxindex = i
+						maxval = v
+					i += 1
+				print(line)
 				deserialized = deserialized[self.__bucket_count:]
+				examine.extend([0, h, maxval])
+				h += 1
+			msg = struct.pack('!Q' + str(len(examine)) + 'L', timestamp, *examine)
+			# Ask for the keys to examine
+			self.send('K' + msg, client)
 		else:
 			print("Unkown data from Buckets plugin: " + message)
 
