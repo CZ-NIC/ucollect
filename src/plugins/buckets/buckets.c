@@ -103,6 +103,7 @@ static void generation_activate(struct user_data *u, size_t generation, uint64_t
 	}
 	mem_pool_reset(g->pool);
 	g->timestamp = timestamp;
+	u->current_generation = generation;
 }
 
 static void configure(struct context *context, const uint8_t *data, size_t length) {
@@ -205,6 +206,9 @@ static void provide_generation(struct context *context, const uint8_t *data, siz
 	}
 	// Send it (skip the padding)
 	uplink_plugin_send_message(context, &msg->code, sizeof *msg + criterion_size * u->criteria_count - sizeof msg->padding);
+	size_t next_generation = u->current_generation + 1;
+	next_generation %= (u->history_size + 1);
+	generation_activate(u, next_generation, timestamp);
 }
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
