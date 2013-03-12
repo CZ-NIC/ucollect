@@ -43,8 +43,7 @@ class BucketsPlugin(plugin.Plugin):
 			deserialized = deserialized[3:] # Skip one for the overflow flag
 			total = sum(deserialized)
 			print("Total " + str(total / self.__hash_count))
-			h = 0
-			examine = []
+			examine = [42, 0] # All in the 0th criterion, and 42 is ID
 			while deserialized:
 				line = deserialized[:self.__bucket_count]
 				i = 0
@@ -57,8 +56,7 @@ class BucketsPlugin(plugin.Plugin):
 					i += 1
 				print(line)
 				deserialized = deserialized[self.__bucket_count:]
-				examine.extend([0, h, maxval])
-				h += 1
+				examine.extend([1, maxindex]) # One index in this hash
 			msg = struct.pack('!Q' + str(len(examine)) + 'L', timestamp, *examine)
 			# Ask for the keys to examine
 			self.send('K' + msg, client)
