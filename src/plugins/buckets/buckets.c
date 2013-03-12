@@ -408,7 +408,7 @@ static void packet(struct context *context, const struct packet_info *packet) {
 	}
 }
 
-struct plugin *plugin_info() {
+struct plugin *plugin_info(void) {
 	static struct plugin plugin = {
 		.name = "Buckets",
 		.init_callback = initialize,

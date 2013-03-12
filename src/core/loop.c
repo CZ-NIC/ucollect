@@ -45,7 +45,7 @@ static volatile struct context *current_context = NULL;
 static int jump_signum = 0;
 static bool sig_initialized;
 
-static void abort_safe() {
+static void abort_safe(void) {
 	// Disable catching the signal first.
 	struct sigaction sa = {
 		.sa_handler = SIG_DFL
@@ -93,7 +93,7 @@ static const int signals[] = {
 	SIGHUP
 };
 
-static void signal_initialize() {
+static void signal_initialize(void) {
 	ulog(LOG_INFO, "Initializing emergency signal handlers\n");
 	struct sigaction action = {
 		.sa_handler = sig_handler,
@@ -350,7 +350,7 @@ static void loop_get_now(struct loop *loop) {
 	loop->now = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-struct loop *loop_create() {
+struct loop *loop_create(void) {
 	if (!sig_initialized) {
 		signal_initialize();
 		sig_initialized = true;
