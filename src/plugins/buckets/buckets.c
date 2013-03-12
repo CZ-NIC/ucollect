@@ -350,6 +350,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 		case 'K': // Send keys
 			assert(context->user_data->initialized); // The server should track who it asks
 			provide_keys(context, data + 1, length - 1);
+			return;
 		default:
 			ulog(LOG_WARN, "Unknown buckets request %hhu/%c\n", *data, (char) *data);
 			return;
