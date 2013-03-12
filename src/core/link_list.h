@@ -19,6 +19,8 @@
  *   Defaults to "head" if not specified.
  * - LIST_TAIL Similar, just the last one. Defaults to "tail".
  * - LIST_NEXT The pointer to next node in LIST_NODE. Defaults to "next".
+ * - LIST_PREV If specified, the linked list is double-linked and this
+ *   points to the previous item in it.
  * - LIST_COUNT The count variable. It is optional, but if set, the
  *   functions keep it up to date.
  * - LIST_NAME(X) A name-generating macro. It should be prefix_##X, where
@@ -63,9 +65,19 @@
  */
 static void LIST_NAME(insert_after)(LIST_BASE *list, LIST_NODE *node, LIST_NODE *after) {
 	if (after) {
+#ifdef LIST_PREV
+		node->LIST_PREV = after;
+		if (after->LIST_NEXT)
+			after->LIST_NEXT->LIST_PREV = node;
+#endif
 		node->LIST_NEXT = after->LIST_NEXT;
 		after->LIST_NEXT = node;
 	} else {
+#ifdef LIST_PREV
+		node->LIST_PREV = NULL;
+		if (list->LIST_HEAD)
+			list->LIST_HEAD->LIST_PREV = node;
+#endif
 		node->LIST_NEXT = list->LIST_HEAD;
 		list->LIST_HEAD = node;
 	}
@@ -107,6 +119,7 @@ typedef LIST_NODE LIST_NAME(node_t);
 #undef LIST_NAME
 #undef LIST_COUNT
 #undef LIST_PREFIX
+#undef LIST_PREV
 #undef LIST_WANT_APPEND_POOL
 #undef LIST_WANT_INSERT_AFTER
 
