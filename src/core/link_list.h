@@ -28,6 +28,7 @@
  *
  * - LIST_WANT_APPEND_POOL Generate the LIST_NAME(append_pool) function
  * - LIST_WANT_INSERT_AFTER Generate the LIST_NAME(insert_after) function
+ * - LIST_WANT_REMOVE Generate the LIST_NAME(remove) function
  * - LIST_WANT_LFOR Make sure the LFOR macro works for this list
  */
 
@@ -89,13 +90,35 @@ static void LIST_NAME(insert_after)(LIST_BASE *list, LIST_NODE *node, LIST_NODE 
 }
 #endif
 
-// Functions
 #ifdef LIST_WANT_APPEND_POOL
 static LIST_NODE *LIST_NAME(append_pool)(LIST_BASE *list, struct mem_pool *pool) {
 	LIST_NODE *new = mem_pool_alloc(pool, sizeof *new);
 	LIST_NAME(insert_after)(list, new, list->LIST_TAIL);
 	return new;
 }
+#endif
+
+#ifdef LIST_WANT_REMOVE
+#ifdef LIST_PREV
+// Remove a node from a list. Must come from the list.
+static void LIST_NAME(remove)(LIST_BASE *list, LIST_NODE *node) {
+	if (node->LIST_NEXT)
+		node->LIST_NEXT->LIST_PREV = node->LIST_PREV;
+	else
+		list->LIST_TAIL = node->LIST_PREV;
+	if (node->LIST_PREV)
+		node->LIST_PREV->LIST_NEXT = node->LIST_NEXT;
+	else
+		list->LIST_HEAD = node->LIST_NEXT;
+	node->LIST_NEXT = NULL;
+	node->LIST_PREV = NULL;
+#ifdef LIST_COUNT
+	list->LIST_COUNT --;
+#endif
+}
+#else
+#error "Remove is supported only on doubly-linked lists, define LIST_PREV"
+#endif
 #endif
 
 #ifdef LIST_WANT_LFOR
