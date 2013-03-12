@@ -120,7 +120,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	}
 }
 
-struct plugin *plugin_info() {
+struct plugin *plugin_info(void) {
 	static struct plugin plugin = {
 		.name = "Count",
 		.packet_callback = packet_handle,

@@ -45,7 +45,7 @@ static volatile struct context *current_context = NULL;
 static int jump_signum = 0;
 static bool sig_initialized;
 
-static void abort_safe() {
+static void abort_safe(void) {
 	// Disable catching the signal first.
 	struct sigaction sa = {
 		.sa_handler = SIG_DFL
@@ -93,7 +93,7 @@ static const int signals[] = {
 	SIGHUP
 };
 
-static void signal_initialize() {
+static void signal_initialize(void) {
 	ulog(LOG_INFO, "Initializing emergency signal handlers\n");
 	struct sigaction action = {
 		.sa_handler = sig_handler,
@@ -334,7 +334,7 @@ static void epoll_register_pcap(struct loop *loop, struct pcap_interface *interf
 		die("Can't register PCAP fd %d of %s to epoll fd %d (%s)\n", interface->fd, interface->name, loop->epoll_fd, strerror(errno));
 }
 
-struct loop *loop_create() {
+struct loop *loop_create(void) {
 	if (!sig_initialized) {
 		signal_initialize();
 		sig_initialized = true;

@@ -27,7 +27,7 @@ static const int stop_signals[] = {
 static struct uplink *uplink;
 static struct loop_configurator *configurator;
 
-static void cleanup() {
+static void cleanup(void) {
 	// TODO: Release all the plugins here.
 	if (uplink)
 		uplink_destroy(uplink);
