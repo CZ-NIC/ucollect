@@ -2,7 +2,7 @@ from twisted.internet.task import LoopingCall
 import time
 import struct
 import plugin
-
+import socket
 
 class BucketsPlugin(plugin.Plugin):
 	"""
@@ -60,6 +60,19 @@ class BucketsPlugin(plugin.Plugin):
 			msg = struct.pack('!Q' + str(len(examine)) + 'L', timestamp, *examine)
 			# Ask for the keys to examine
 			self.send('K' + msg, client)
+		elif kind == 'K':
+			# Got keys from the plugin
+			(req_id,) = struct.unpack('!L', message[1:5])
+			message = message[5:]
+			print("Keys for ID " + str(req_id) + " on " + client)
+			while message:
+				if message[0] == '\x04': # IPv4
+					print(socket.inet_ntop(socket.AF_INET, message[1:5]))
+				elif message[0] == '\x06': # IPv6
+					print(socket.inet_ntop(socket.AF_INET6, message[1:17]))
+				else:
+					print("Unknown address type " + message[0])
+				message = message[17:]
 		else:
 			print("Unkown data from Buckets plugin: " + message)
 
