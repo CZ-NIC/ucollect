@@ -14,6 +14,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 
+// A list to store the keys in one generation
 struct key {
 	struct key *next;
 	uint8_t data[];
@@ -29,6 +30,28 @@ struct keys {
 #define LIST_WANT_LFOR
 #define LIST_WANT_INSERT_AFTER
 #include "../../core/link_list.h"
+
+// A double-linked list to store the keys we work with atm.
+struct key_candidate {
+	struct key_candidate *next, *prev;
+	struct key *key;
+};
+
+struct key_candidates {
+	struct key_candidate *head, *tail;
+	size_t count;
+};
+
+#define LIST_NODE struct key_candidate
+#define LIST_BASE struct key_candidates
+#define LIST_PREV prev
+#define LIST_COUNT count
+#define LIST_NAME(X) key_candidates_##X
+#define LIST_WANT_LFOR
+#define LIST_WANT_APPEND_POOL
+#define LIST_WANT_REMOVE
+#include "../../core/link_list.h"
+
 struct criterion {
 	struct keys *hashed_keys; // Line corresponding to the first hash, storing the keys
 	uint32_t *counts; // hash_count lines of bucket_count sizes
@@ -211,6 +234,97 @@ static void provide_generation(struct context *context, const uint8_t *data, siz
 	generation_activate(u, next_generation, timestamp);
 }
 
+// A request to provide some filtered keys by the server
+struct key_request {
+	uint64_t generation_timestamp; // For finding the correct generation
+	uint32_t req_id; // Just request ID to be sent back
+	uint32_t criterion;
+	uint32_t key_indices[];
+} __attribute__((packed));
+
+// An answer for key request
+struct key_answer {
+	char code; // Will be set to 'K'
+	uint32_t req_id; // Copied from key_request, without a change
+	uint8_t data[]; // The keys to be sent
+} __attribute__((packed));
+
+static void provide_keys(struct context *context, const uint8_t *data, size_t length) {
+	struct user_data *u = context->user_data;
+	// No key index is split in half
+	assert((length - sizeof(struct key_request)) % sizeof(uint32_t) == 0);
+	// Copy the data so it is properly aligned
+	struct key_request *request = mem_pool_alloc(context->temp_pool, length);
+	memcpy(request, data, length);
+	// How many indices are thele?
+	length -= sizeof(struct key_request);
+	length /= sizeof(uint32_t);
+	// Find the generation
+	struct generation *g = NULL;
+	for (size_t i = 0; i <= u->history_size; i ++)
+		if (u->generations[i].timestamp == be64toh(request->generation_timestamp)) {
+			g = &u->generations[i];
+			break;
+		}
+	if (!g) {
+		// Say we are missing this generation
+		uplink_plugin_send_message(context, "M", 1);
+		return;
+	}
+	// Walk the data and extract the keys for 0th hash function (directly stored)
+	for (size_t i = 0; i < length; i ++)
+		request->key_indices[i] = ntohl(request->key_indices[i]);
+	assert(length);
+	uint32_t index_count = request->key_indices[0];
+	length --;
+	assert(length >= index_count);
+	uint32_t *indices = &request->key_indices[1];
+	struct key_candidates candidates = { .count = 0 };
+	size_t criterion = ntohl(request->criterion);
+	for (size_t i = 0; i < index_count; i ++)
+		LFOR(keys, key, &g->criteria[criterion].hashed_keys[indices[i]])
+			key_candidates_append_pool(&candidates, context->temp_pool)->key = key;
+	// Iterate the other levels and remove keys not passing the filter of indices
+	size_t key_size = u->criteria[criterion]->key_size;
+	for (size_t i = 1; i < u->hash_count; i ++) {
+		// Move to the next group of indices
+		indices += index_count;
+		length -= index_count;
+		assert(length);
+		index_count = *indices;
+		length --;
+		indices ++;
+		assert(length >= index_count);
+		// Not using LFOR here, we need to manipulate the variable in the process
+		struct key_candidate *candidate = candidates.head;
+		while (candidate) {
+			uint32_t h = hash(candidate->key->data, key_size, u->hash_data + i * u->hash_line_size);
+			h %= u->bucket_count;
+			struct key_candidate *to_del = candidate;
+			for (size_t j = 0; j < index_count; j ++)
+				if (indices[j] == h) {
+					// This one is in a bucket we want
+					to_del = NULL;
+					break;
+				}
+			candidate = candidate->next; // Move to the next before we potentially remove it
+			if (to_del)
+				key_candidates_remove(&candidates, to_del);
+		}
+	}
+	assert(length == index_count); // All indices eaten
+	// Build the answer - just copy all the passed keys to the result
+	size_t answer_length = sizeof(struct key_answer) + key_size * candidates.count;
+	struct key_answer *answer = mem_pool_alloc(context->temp_pool, answer_length);
+	answer->code = 'K';
+	// Copy the request id. By memcpy, since answer doesn't have to be aligned
+	memcpy(&answer->req_id, &request->req_id, sizeof answer->req_id);
+	size_t index = 0;
+	LFOR(key_candidates, candidate, &candidates)
+		memcpy(answer->data + index ++ * key_size, candidate->key->data, key_size);
+	uplink_plugin_send_message(context, answer, answer_length);
+}
+
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
 	assert(length);
 	switch (*data) {
@@ -233,6 +347,9 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 				// Ignore it, we have nothing.
 			}
 			return;
+		case 'K': // Send keys
+			assert(context->user_data->initialized); // The server should track who it asks
+			provide_keys(context, data + 1, length - 1);
 		default:
 			ulog(LOG_WARN, "Unknown buckets request %hhu/%c\n", *data, (char) *data);
 			return;
