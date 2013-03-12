@@ -40,13 +40,19 @@ struct mem_pool {
 static struct pool_page *page_get(size_t size, const char *name) {
 	ulog(LOG_DEBUG, "Getting page %zu large for pool '%s'\n", size, name);
 	struct pool_page *result;
-	if (size == PAGE_SIZE && page_cache_size)
+	if (size == PAGE_SIZE && page_cache_size) {
 		// If it is a single, take it from the cache
 		result = page_cache[-- page_cache_size];
-	else {
+#ifdef DEBUG
+		memset(result, '%', size);
+#endif
+	} else {
 		result = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		if (result == MAP_FAILED)
 			die("Couldn't get page of %zu bytes for pool '%s' (%s)\n", size, name, strerror(errno));
+#ifdef DEBUG
+		memset(result, '#', size);
+#endif
 		result->size = size;
 	}
 	result->next = NULL;
