@@ -24,6 +24,7 @@ my $address = 'localhost'; # Which host to spam
 my $burst = 10; # How many packets in each burst
 my $size = 100; # Size of the payload of the packet
 my $interval = 0.01; # Time between starts of bursts.
+my $srccount = 1;
 
 GetOptions
 	'port=i' => \$port,
@@ -31,6 +32,7 @@ GetOptions
 	'burst=i' => \$burst,
 	'size=i' => \$size,
 	'interval=f' => \$interval,
+	'origincount=i' => \$srccount,
 or exit 1;
 
 # Some information about how much will be sent.
@@ -42,8 +44,12 @@ print "Expected throughput: $speed MBits, ", $burst / $interval, " packets/s\n";
 
 # Connect the socket (which only sets the address with UDP packet, but we don't want
 # to provide it each time).
-socket(my $socket, PF_INET, SOCK_DGRAM, 0) or die "Could not create socket ($!)\n";
-connect($socket, pack_sockaddr_in($port, inet_aton($address))) or die "Could not connect the UDP socket ($!)\n";
+my @sockets;
+for (0..$srccount) {
+	socket(my $socket, PF_INET, SOCK_DGRAM, 0) or die "Could not create socket ($!)\n";
+	connect($socket, pack_sockaddr_in($port, inet_aton($address))) or die "Could not connect the UDP socket ($!)\n";
+	push @sockets, $socket;
+}
 
 # Payload of the packet
 my $payload = ' ' x $size;
@@ -55,7 +61,7 @@ my $start_time = gettimeofday;
 while (1) {
 	# Send burst of packets first.
 	for (1..$burst) {
-		my $result = send $socket, $payload, 0;
+		my $result = send $sockets[int rand $srccount], $payload, 0;
 		if (defined $result) {
 			if ($result < $size) {
 				warn "Packet only $result of $size bytes\n";
