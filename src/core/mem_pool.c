@@ -103,14 +103,16 @@ struct mem_pool {
 
 // Get a page of given total size. Data size will be smaller.
 static struct pool_page *page_get(size_t size, const char *name) {
-	ulog(LOG_DEBUG, "Getting page %zu large for pool '%s'\n", size, name);
 	struct pool_page *result;
+	const char *cached = "";
 	if (size == PAGE_SIZE && page_cache_size) {
 		// If it is a single, take it from the cache
 		result = page_cache[-- page_cache_size];
+		cached = " (cached)";
 #ifdef DEBUG
 		memset(result, '%', size);
 #endif
+		result->size = size;
 	} else {
 		result = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		if (result == MAP_FAILED)
@@ -121,12 +123,13 @@ static struct pool_page *page_get(size_t size, const char *name) {
 		result->size = size;
 	}
 	result->next = NULL;
+	ulog(LOG_DEBUG, "Got page %zu large for pool '%s' (%p) %s\n", size, name, (void *) result, cached);
 	return result;
 }
 
 // Release a given page (previously allocated by page_get).
 static void page_return(struct pool_page *page, const char *name) {
-	ulog(LOG_DEBUG, "Releasing page %zu large from pool '%s'\n", page->size, name);
+	ulog(LOG_DEBUG, "Releasing page %zu large from pool '%s' (%p) %s\n", page->size, name, (void *) page, (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE) ? " (cached)" : "");
 	if (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE)
 		// A single page can be put into the cache, if it is not already full
 		page_cache[page_cache_size ++] = page;
@@ -242,7 +245,8 @@ void mem_pool_reset(struct mem_pool *pool) {
 	// Reset the pool position
 	pool->pos = pool->first->data;
 	pool->available = pool->first->size - sizeof *pool->first;
-	// Allocate the pool (again) from the page.
+	pool->first->next = NULL;
+	// Allocate the pool (again) from the page. It is already there.
 	struct mem_pool *the_pool = page_alloc(&pool->pos, &pool->available, sizeof *pool + 1 + strlen(pool->name));
 	assert(pool == the_pool); // It should be the same pool.
 }
