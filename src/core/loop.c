@@ -277,6 +277,7 @@ struct loop {
 	volatile sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 	volatile sig_atomic_t reconfigure; // Set to 1 when there's SIGHUP and we should reconfigure
 	volatile sig_atomic_t reconfigure_full; // De-initialize first.
+	struct context *reinitialize_plugin; // Please reinitialize this plugin on return from jump
 	bool retry_reconfigure_on_failure;
 };
 
@@ -450,14 +451,27 @@ void loop_run(struct loop *loop) {
 		die("Could not sigaction SIGUSR1 (%s\n)", strerror(errno));
 	REINIT:
 	if (setjmp(jump_env)) {
-		if (current_context) {
-			struct plugin_holder *holder = (struct plugin_holder *) current_context;
+		volatile struct context *context;
+		bool failure = false;
+		if (loop->reinitialize_plugin) {
+			context = loop->reinitialize_plugin;
+			loop->reinitialize_plugin = NULL;
+		} else {
+			failure = true;
+			context = current_context;
+		}
+		if (context) {
+			struct plugin_holder *holder = (struct plugin_holder *) context;
 #ifdef DEBUG
 			assert(holder->canary == PLUGIN_HOLDER_CANARY);
 #endif
-			bool reinit = holder->failed < FAIL_COUNT;
-			size_t failed = holder->failed;
-			ulog(LOG_ERROR, "Signal %d in plugin %s (failed %zu times before)\n", jump_signum, holder->plugin.name, failed);
+			bool reinit = true;
+			size_t failed = 0;
+			if (failure) {
+				reinit = holder->failed < FAIL_COUNT;
+				failed = holder->failed;
+				ulog(LOG_ERROR, "Signal %d in plugin %s (failed %zu times before)\n", jump_signum, holder->plugin.name, failed);
+			}
 			plugin_destroy(holder, true);
 			struct loop_configurator *configurator = loop_config_start(loop);
 			holder->mark = false; // This one is already destroyed
@@ -975,4 +989,10 @@ void loop_uplink_connected(struct loop *loop) {
 void loop_uplink_disconnected(struct loop *loop) {
 	LFOR(plugin, plugin, &loop->plugins)
 		plugin_uplink_disconnected(plugin);
+}
+
+void loop_plugin_reinit(struct context *context) {
+	context->loop->reinitialize_plugin = context;
+	assert(jump_ready);
+	longjmp(jump_env, 1);
 }

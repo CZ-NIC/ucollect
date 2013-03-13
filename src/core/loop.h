@@ -58,6 +58,12 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 bool loop_pcap_add_address(struct loop_configurator *configurator, const char *address) __attribute__((nonnull));
 // Add a plugin. Provide the name of the library to load.
 bool loop_add_plugin(struct loop_configurator *configurator, const char *plugin) __attribute__((nonnull));
+/*
+ * Reinitialize the current plugin. Must not be called from outside of a plugin.
+ *
+ * It'll not return to the plugin, the plugin will be terminated at that moment.
+ */
+void loop_plugin_reinit(struct context *context) __attribute__((nonnull)) __attribute__((noreturn));
 
 const char *loop_plugin_get_name(const struct context *context) __attribute__((nonnull)) __attribute__((const));
 /*
