@@ -4,4 +4,4 @@
   generate everything anew.
 • Document protocols used by count & bucket plugin
 • Why does the uplink reset when a plugin crashes?
-• Re-think how to request keys from clients
+• More things to hash
