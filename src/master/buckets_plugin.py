@@ -11,9 +11,9 @@ class BucketsPlugin(plugin.Plugin):
 	"""
 	def __init__(self, plugins):
 		plugin.Plugin.__init__(self, plugins)
-		self.__bucket_count = 16
-		self.__hash_count = 4
-		self.__criteria = ['I']
+		self.__bucket_count = 2
+		self.__hash_count = 2
+		self.__criteria = ['B', 'P']
 		self.__history_size = 1
 		self.__config_version = 1
 		self.__max_key_count = 102400
@@ -40,39 +40,49 @@ class BucketsPlugin(plugin.Plugin):
 			deserialized = struct.unpack('!QL' + str(count) + 'L', message[1:])
 			(timestamp, version) = deserialized[:2]
 			print("Hash buckets from " + client + " since " + time.ctime(timestamp) + " on version " + str(version))
-			deserialized = deserialized[3:] # Skip one for the overflow flag
-			total = sum(deserialized)
-			print("Total " + str(total / self.__hash_count))
-			examine = [42, 0] # All in the 0th criterion, and 42 is ID
+			deserialized = deserialized[2:]
+			criterion = 0
 			while deserialized:
-				line = deserialized[:self.__bucket_count]
-				i = 0
-				maxval = 0
-				maxindex = 0
-				for v in line:
-					if v > maxval:
-						maxindex = i
-						maxval = v
-					i += 1
-				print(line)
-				deserialized = deserialized[self.__bucket_count:]
-				examine.extend([1, maxindex]) # One index in this hash
-			msg = struct.pack('!Q' + str(len(examine)) + 'L', timestamp, *examine)
-			# Ask for the keys to examine
-			self.send('K' + msg, client)
+				deserialized = deserialized[1:] # The overflow flag
+				local = deserialized[:self.__bucket_count * self.__hash_count]
+				deserialized = deserialized[self.__bucket_count * self.__hash_count:]
+				total = sum(local)
+				print("Total " + str(total / self.__hash_count))
+				examine = [criterion, criterion]
+				criterion += 1
+				while local:
+					line = local[:self.__bucket_count]
+					i = 0
+					maxval = 0
+					maxindex = 0
+					for v in line:
+						if v > maxval:
+							maxindex = i
+							maxval = v
+						i += 1
+					print(line)
+					local = local[self.__bucket_count:]
+					examine.extend([1, maxindex]) # One index in this hash
+				msg = struct.pack('!Q' + str(len(examine)) + 'L', timestamp, *examine)
+				# Ask for the keys to examine
+				self.send('K' + msg, client)
 		elif kind == 'K':
 			# Got keys from the plugin
 			(req_id,) = struct.unpack('!L', message[1:5])
 			message = message[5:]
 			print("Keys for ID " + str(req_id) + " on " + client)
 			while message:
-				if message[0] == '\x04': # IPv4
-					print(socket.inet_ntop(socket.AF_INET, message[1:5]))
-				elif message[0] == '\x06': # IPv6
-					print(socket.inet_ntop(socket.AF_INET6, message[1:17]))
-				else:
-					print("Unknown address type " + message[0])
-				message = message[17:]
+				addr = ''
+				(port,) = struct.unpack('!H', message[:2])
+				message = message[2:]
+				if req_id == 0:
+					addr = "<unknown>:"
+					if message[0] == '\x04': # IPv4
+						addr = socket.inet_ntop(socket.AF_INET, message[1:5]) + ":"
+					elif message[0] == '\x06': # IPv6
+						addr = socket.inet_ntop(socket.AF_INET6, message[1:17]) + ":"
+					message = message[17:]
+				print(addr + str(port))
 		else:
 			print("Unkown data from Buckets plugin: " + message)
 
