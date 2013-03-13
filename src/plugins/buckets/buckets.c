@@ -281,6 +281,7 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 	uint32_t *indices = &request->key_indices[1];
 	struct key_candidates candidates = { .count = 0 };
 	size_t criterion = ntohl(request->criterion);
+	assert(criterion < u->criteria_count);
 	for (size_t i = 0; i < index_count; i ++)
 		LFOR(keys, key, &g->criteria[criterion].hashed_keys[indices[i]])
 			key_candidates_append_pool(&candidates, context->temp_pool)->key = key;
@@ -329,7 +330,9 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	assert(length);
 	switch (*data) {
 		case 'C': // Good, we got configuration
-			assert(!context->user_data->initialized);
+			if (context->user_data->initialized)
+				// We already have one and we are not able to replace it. Try again.
+				loop_plugin_reinit(context);
 			configure(context, data + 1, length - 1);
 			return;
 		case 'G': // We are asked to send the current generation and start a new one
