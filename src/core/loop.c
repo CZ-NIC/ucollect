@@ -351,10 +351,12 @@ static void loop_get_now(struct loop *loop) {
 }
 
 struct loop *loop_create(void) {
+#ifndef NO_SIGNAL_RESCUE
 	if (!sig_initialized) {
 		signal_initialize();
 		sig_initialized = true;
 	}
+#endif
 	ulog(LOG_INFO, "Creating a main loop\n");
 	/*
 	 * 42 is arbitrary choice. The man page says it is ignored except it must

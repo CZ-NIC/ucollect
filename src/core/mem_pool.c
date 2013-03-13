@@ -8,6 +8,71 @@
 #include <sys/mman.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+#ifdef MEM_POOL_DEBUG
+
+#define POOL_CANARY_BEGIN 0x783A7BF4
+#define POOL_CANARY_END   0x0F3B239A
+
+struct pool_chunk {
+	struct pool_chunk *next;
+	size_t length;
+	uint32_t canary;
+	uint8_t data[];
+};
+
+struct mem_pool {
+	struct pool_chunk *head, *tail;
+	char name[];
+};
+
+#define LIST_NODE struct pool_chunk
+#define LIST_BASE struct mem_pool
+#define LIST_NAME(X) pool_##X
+#define LIST_WANT_INSERT_AFTER
+#include "link_list.h"
+
+struct mem_pool *mem_pool_create(const char *name) {
+	struct mem_pool *pool = malloc(sizeof *pool + strlen(name) + 1);
+	*pool = (struct mem_pool) {
+		.head = NULL
+	};
+	strcpy(pool->name, name);
+	ulog(LOG_DEBUG, "Created pool %s\n", name);
+	return pool;
+}
+
+void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
+	struct pool_chunk *chunk = malloc(sizeof *chunk + size + sizeof(uint32_t));
+	chunk->canary = POOL_CANARY_BEGIN;
+	*(uint32_t *) (chunk->data + size) = POOL_CANARY_END;
+	chunk->length = size;
+	pool_insert_after(pool, chunk, NULL);
+	ulog(LOG_DEBUG_VERBOSE, "Allocated %zu bytes from %s at address %p\n", size, pool->name, (void *) chunk);
+	return chunk->data;
+}
+
+void mem_pool_reset(struct mem_pool *pool) {
+	while (pool->head) {
+		struct pool_chunk *current = pool->head;
+		pool->head = current->next;
+		assert(current->canary == POOL_CANARY_BEGIN);
+		assert(*(uint32_t *) (current->data + current->length) == POOL_CANARY_END);
+		ulog(LOG_DEBUG_VERBOSE, "Freeing %p of size %zu from %s\n", (void *) current, current->length, pool->name);
+		free(current);
+	}
+	pool->tail = NULL;
+}
+
+void mem_pool_destroy(struct mem_pool *pool) {
+	mem_pool_reset(pool);
+	ulog(LOG_DEBUG, "Destroyed pool %s\n", pool->name);
+	free(pool);
+}
+
+#else
 
 struct pool_page {
 	// Next page in linked list (for freeing them on reset or destroy).
@@ -181,6 +246,8 @@ void mem_pool_reset(struct mem_pool *pool) {
 	struct mem_pool *the_pool = page_alloc(&pool->pos, &pool->available, sizeof *pool + 1 + strlen(pool->name));
 	assert(pool == the_pool); // It should be the same pool.
 }
+
+#endif
 
 char *mem_pool_strdup(struct mem_pool *pool, const char *string) {
 	size_t length = strlen(string);
