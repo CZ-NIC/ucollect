@@ -373,7 +373,7 @@ static void packet(struct context *context, const struct packet_info *packet) {
 			continue; // This criteria is not applicable to the packet
 		g->criteria[i].packet_count ++;
 		// Hash it by each hashing function we have and increment the corresponding counts
-		size_t key_index;
+		size_t key_index = 0;
 		for (size_t j = 0; j < u->hash_count; j ++) {
 			// Pick the correct hash_data to define the hash function
 			uint32_t index = hash(key, length, u->hash_data + j * u->hash_line_size);
