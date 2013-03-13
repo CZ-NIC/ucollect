@@ -16,7 +16,7 @@ class BucketsPlugin(plugin.Plugin):
 		self.__criteria = ['B', 'P']
 		self.__history_size = 1
 		self.__config_version = 1
-		self.__max_key_count = 102400
+		self.__max_key_count = 1000
 		# Just an arbitrary number
 		self.__seed = 872945724987
 		self.__downloader = LoopingCall(self.__init_download)
@@ -43,6 +43,8 @@ class BucketsPlugin(plugin.Plugin):
 			deserialized = deserialized[2:]
 			criterion = 0
 			while deserialized:
+				if deserialized[0]:
+					print("Overflow!")
 				deserialized = deserialized[1:] # The overflow flag
 				local = deserialized[:self.__bucket_count * self.__hash_count]
 				deserialized = deserialized[self.__bucket_count * self.__hash_count:]
