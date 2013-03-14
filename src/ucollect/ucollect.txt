@@ -1,0 +1,56 @@
+The `ucollect` binary
+=====================
+
+The `ucollect` is the actual binary that watches some network
+interfaces and analyzes the packets by several plugins. It then sends
+the gathered data to the central server for processing.
+
+Invocation
+----------
+
+It takes exactly two parameters. The address (or DNS name) of the
+server and a port where it listens (or textual name of service).
+
+  ./bin/ucollect central.server.example.org 5678
+
+Configuration
+-------------
+
+The configuration is read from `/etc/config/ucollect`. It uses the
+http://wiki.openwrt.org/doc/uci[uci] system and syntax. An example
+config would look like this:
+
+  package 'ucollect'
+
+  config interface 'eth0'
+      option ifname 'eth0'
+      list localaddr '127.0.0.1/32'
+      list localaddr '192.0.2.1/24'
+      list localaddr '::1/128'
+      list localaddr '2001:db8::1/32'
+
+  config plugin 'Count'
+      option libname 'libplugin_count.so'
+
+  config plugin 'Buckets'
+      option libname 'libplugin_buckets.so'
+
+The `package 'ucollect'` is always the same and should not be changed.
+Then there are two kinds of sections.
+
+The `interface` section
+~~~~~~~~~~~~~~~~~~~~~~~
+
+This describes one interface to listen on. The option `ifname` specifies
+the name of the interface on the system.
+
+The `localaddr` list specifies address ranges to be considered on local
+network. This is used by the plugins to decide if a given packet is
+inbound or outbound.
+
+The `plugin` section
+~~~~~~~~~~~~~~~~~~~~
+
+Each such section describes one analysis plugin to load. The
+(currently only) option, `libname`, specifies the file name of the
+library to load as the plugin.
