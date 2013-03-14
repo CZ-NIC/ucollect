@@ -25,7 +25,10 @@ else
 	Q=@
 	M=@echo " "
 endif
-CFLAGS_ALL += $(CFLAGS) --std=gnu99 -pedantic -Wall -Wextra -DOUTPUT_DIRECTORY=$(abspath $(O)) -DSOURCE_DIRECTORY=$(abspath $(S)) -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(abspath $(O)) -DMAX_LOG_LEVEL=$(MAX_LOG_LEVEL)
+ifndef PLUGIN_PATH
+	PLUGIN_PATH := lib
+endif
+CFLAGS_ALL += $(CFLAGS) --std=gnu99 -pedantic -Wall -Wextra -DOUTPUT_DIRECTORY=\"$(abspath $(O))\" -DSOURCE_DIRECTORY=\"$(abspath $(S))\" -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(abspath $(O)) -DMAX_LOG_LEVEL=$(MAX_LOG_LEVEL) -DPLUGIN_PATH=\"$(PLUGIN_PATH)\"
 LDFLAGS_ALL += $(LDFLAGS)
 
 # Magic to track dependencies on header files. They are stored in the .d files
