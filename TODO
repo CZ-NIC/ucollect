@@ -1,3 +1,5 @@
 • Document the configuration & interface of ucollect
 • Document protocols used by count & bucket plugin
 • Why does the uplink reset when a plugin crashes?
+• Make the uplink address changeable at runtime? And put to configuration?
+• Revisit what is counted in the count plugin.
