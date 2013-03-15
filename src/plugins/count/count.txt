@@ -61,6 +61,17 @@ ICMP::
   Both ICMP and ICMPv6 packets.
 Low port::
   TCP or UDP packets with the remote port less or equal to 1024.
+SYN::
+  TCP packets with SYN flag set.
+FIN::
+  TCP packets with FIN flag set.
+SYN+ACK::
+  TCP packets with both SYN and ACK flags set. This may be a good
+  heuristics for number of created TCP connections.
+ACK::
+  TCP packets with ACK flag set.
+PUSH::
+  TCP packets with PUSH flag set.
 
 Note that the related categories don't necessarily form complements.
 There may be, for example, packets that are not considered In nor Out
