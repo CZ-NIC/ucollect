@@ -29,7 +29,7 @@ class CountPlugin(plugin.Plugin):
 
 	def __process(self):
 		print("Information about " + str(len(self.__data)) + " clients")
-		names = ("Any\t", "IPv4\t", "IPv6\t", "In\t", "Out\t", "TCP\t", "UDP\t", "ICMP\t", 'Low port')
+		names = ("Any\t", "IPv4\t", "IPv6\t", "In\t", "Out\t", "TCP\t", "UDP\t", "ICMP\t", 'Low port', "SYN\t", "FIN\t", "SYN+ACK\t", "ACK\t", "PUSH\t")
 		tcount = 0
 		tsize = 0
 		for i in range(0, len(names)):
