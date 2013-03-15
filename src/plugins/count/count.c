@@ -17,6 +17,7 @@ enum selector {
 	IN, OUT,
 	TCP, UDP, ICMP,
 	LOW_PORT,
+	SYN_FLAG, FIN_FLAG, SYN_ACK_FLAG, ACK_FLAG, PUSH_FLAG,
 	MAX
 };
 
@@ -63,6 +64,16 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 	switch (info->app_protocol) {
 		case 'T':
 			update(d, info, TCP);
+			if (info->tcp_flags & TCP_SYN)
+				update(d, info, SYN_FLAG);
+			if (info->tcp_flags & TCP_FIN)
+				update(d, info, FIN_FLAG);
+			if ((info->tcp_flags & TCP_FIN) && (info->tcp_flags & TCP_FIN))
+				update(d, info, SYN_ACK_FLAG);
+			if (info->tcp_flags & TCP_ACK)
+				update(d, info, ACK_FLAG);
+			if (info->tcp_flags & PUSH_FLAG)
+				update(d, info, PUSH_FLAG);
 			break;
 		case 'U':
 			update(d, info, UDP);
