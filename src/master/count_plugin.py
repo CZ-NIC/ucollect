@@ -2,6 +2,7 @@ from twisted.internet.task import LoopingCall
 from twisted.internet import reactor
 import struct
 import plugin
+import time
 
 class CountPlugin(plugin.Plugin):
 	"""
@@ -20,29 +21,30 @@ class CountPlugin(plugin.Plugin):
 		"""
 		Ask all the clients to send their statistics.
 		"""
-		self.broadcast('D')
-		self.broadcast('S')
+		# Send a request with current timestamp
+		self.broadcast(struct.pack('!Q', time.time()))
 		# Wait a short time, so they can send us some data and process it after that.
 		self.__data = {}
 		self.__stats = {}
 		reactor.callLater(1, self.__process)
 
 	def __process(self):
-		if set(self.__data.keys()) != set(self.__stats.keys()):
-			print("Warning: stats and data answers don't match")
 		print("Information about " + str(len(self.__data)) + " clients")
-		names = ('Count', 'IPv6', 'IPv4', 'In', 'Out', 'TCP', 'UDP', 'ICMP', 'LPort', 'SIn', 'SOut', 'Size')
-		sums = []
-		for i in range(0, 12):
-			value = sum(map(lambda d: d[i], self.__data.values()))
-			sums.append(value)
-			percent = ''
-			if i > 0 and i <= 8:
-				try:
-					percent = '\t' + str(100 * value / sums[0]) + '%'
-				except ZeroDivisionError:
-					pass
-			print(names[i] + ':\t\t\t\t' + str(value) + percent)
+		names = ("Any\t", "IPv4\t", "IPv6\t", "In\t", "Out\t", "TCP\t", "UDP\t", "ICMP\t", 'Low port')
+		tcount = 0
+		tsize = 0
+		for i in range(0, len(names)):
+			count = sum(map(lambda d: d[2 * i], self.__data.values()))
+			size = sum(map(lambda d: d[2 * i + 1], self.__data.values()))
+			if i == 0:
+				if count == 0:
+					print("No packets")
+					return
+				else:
+					print("\t\t\t\tCount\t\t%\t\tSize\t\t%")
+					tcount = count
+					tsize = size
+			print(names[i] + "\t\t\t" + str(count) + "\t\t" + str(100 * count / tcount) + "\t\t" + str(size) + "\t\t" + str(100 * size / tsize))
 		sums = [0, 0, 0]
 		print("\t\t\t\tCaptured\t\tDropped\t\tLost in driver\t\tPercent lost")
 		def format(name, output):
@@ -75,9 +77,8 @@ class CountPlugin(plugin.Plugin):
 		return 'Count'
 
 	def message_from_client(self, message, client):
-		count = len(message) / 4
-		data = struct.unpack('!' + str(count) + 'L', message)
-		if len(data) == 12: # The 'D'ata answer.
-			self.__data[client] = data
-		else:
-			self.__stats[client] = data[1:] # Strip the number of interfaces, uninteresting
+		count = len(message) / 4 - 2 # 2 for the timestamp
+		data = struct.unpack('!Q' + str(count) + 'L', message)
+		if_count = data[1]
+		self.__stats[client] = data[2:2 + 3 * if_count]
+		self.__data[client] = data[2 + 3 * if_count:]
