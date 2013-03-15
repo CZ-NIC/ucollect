@@ -140,6 +140,8 @@ CFLAGS::
 It overrides whatever is set by the `TARGET` variable and `RELEASE`
 variable.
 
+EXTRA_DEFINES::
+  Additional defines that will be passed to the compiler.
 LDFLAGS::
   Flags passed to the linker. Other flags will be appended by the
   build system.
@@ -158,6 +160,9 @@ PAGE_SIZE::
   The page size to be passed as a define to the compiled code. It is
   attempted to be auto-detected, but can be redefined to something
   else.
+PLUGIN_PATH::
+  Path where the plugin libraries should be found in the target
+  system. May be absolute or relative. Defaults to ``lib''.
 RELEASE::
   By default, it compiles with debug flags (eg. `-O0 -ggdb3`). With
   this set, it uses optimisation flags (`-O2`).
@@ -200,11 +205,16 @@ currently passed ones.
 
 DEBUG::
   Defined if the RELEASE is not turned on.
+MAX_LOG_LEVEL::
+  Maximum level of log messages to be output. It has the value of
+  MAX_LOG_LEVEL variable in make.
 OUTPUT_DIRECTORY::
   Value of the `O` variable.
 PAGE_SIZE::
   The size of the memory page. It has the value set in PAGE_SIZE
   variable in make.
+PLUGIN_PATH::
+  Where the plugin libraries should be found at runtime.
 PREFIX::
   Currently, value of the `O` variable. It is expected to contain
   whatever prefix the project will be installed into, but since
@@ -213,9 +223,6 @@ SOURCE_DIRECTORY::
   Value of the `S` variable.
 STATIC::
   Defined if STATIC is turned on in build system.
-MAX_LOG_LEVEL::
-  Maximum level of log messages to be output. It has the value of
-  MAX_LOG_LEVEL variable in make.
 
 Missing bits
 ------------

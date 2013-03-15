@@ -1,0 +1,209 @@
+The buckets plugin
+==================
+
+The idea behind this plugin is statistical detection of anomalies.
+It's loosely based on the method from Guillaume Dewaele, Kensuke
+Fukuda, Pierre Borgnat, Patrice Abry and Kenjiro Cho.
+
+We have several independent hash functions and a set of buckets for
+each of the functions. The buckets keep counts of packets that belong
+into the bucket according to the hash function (just like a hash
+table, but not holding the actual packets, only their counts).
+
+Each time a packet comes, we extract some interesting part (let's say
+an IP address) and hash it by each hash function. Then we increment
+the number in each of the buckets.
+
+Once in a while, the server asks for the counts. We send the counts
+for the server to analyze them. The server aggregates the counts from
+several clients and keeps history of them. When it sees the counts
+don't look statistically right, it identifies the outstanding buckets
+(one or more buckets in each of the hash functions). It then asks the
+client for keys for the buckets.
+
+The client resets the count to 0 on each send of the counts, but it
+keeps one older snapshot, so it can answer the query for keys from
+server. When the query comes, it unifies keys for buckets in the same
+hash functions and intersects the hash functions. What is outstanding
+in each hash function is probably an anomaly. The set of keys is sent
+to the server.
+
+Communication protocol
+----------------------
+
+The messages sent between the server plugin and client plugin all
+begin with an opcode byte, similarly to the main protocol.
+
+The configuration message
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When the client connects, it asks for configuration. It sends a
+message with the `C` opcode, without any parameters. The server
+answers with current configuration.
+
+Also, the server can send a configuration update without being asked.
+Currently, the plugin doesn't handle that gracefully, and restarts
+itself (asking for the configuration again), but it is considered only
+small annoyance to fix.
+
+The configuration looks like this (all encoded in network byte order,
+without any paddings):
+
+`C`::
+  single byte opcode.
+seed::
+  `uint64_t`. Seed used to initialize the random hash
+  functions.
+timestamp::
+  `uint64_t`. Current server time. Will be used as a
+  start mark of the current snapshot of data.
+bucket count::
+  `uint32_t`. Number of buckets per hash function.
+hash count::
+  `uint32_t`. Number of hash functions to use.
+criteria count::
+  `uint32_t`. Number of different ``pieces'' of the
+  packet to hash by. The client supports analysing different aspects
+  of the packets at once, this is the number of aspects that should be
+  analysed.
+history size::
+  `uint32_t`. How much older versions to keep for
+  requests from server. If this is set to 2, for example, then
+  there'll be three copies of the data. One is the current one that is
+  being incremented by each packet that comes, and two last snapshots
+  which we already sent to the server.
+config version::
+  `uint32_t`. Version of the config, can be used by
+  the server to recognize the counts sent are for different version of
+  configuration that the server is using, detecting inconsistencies.
+max_key_count::
+  `uint32_t`. The maximum number of keys stored per one criterion and
+  generation. This is to limit memory consumption.
+List of criteria to use::
+  Each one is single character, from the list below, specifying one
+  criterion.
+
+Sending the counts
+~~~~~~~~~~~~~~~~~~
+
+When the server wants to get the new counts, it sends the `G` opcode
+(stands for next Generation), followed by `uint64_t` timestamp. The
+timestamp is server time and it identifies the start of next
+generation.
+
+The client answers with the message looking like this:
+
+`G`::
+  single byte opcode
+timestamp::
+  `uint64_t`. Starting time of the generation being sent,
+  as specified in previous request or configuration. The server can
+  check that the data is really from the desired time period.
+config version::
+  `uint32_t`. The version used by the client, for
+  detecting inconsistencies on server.
+The data of criteria::
+  The criteria are listed in the same order as they were in the
+  config, one by one.
+
+One criterion is:
+
+overflow flag::
+  `uint32_t`. When there's an overflow on that
+  criterion, this is set to non-zero. See below for details about the
+  overflow.
+counts::
+  Bucket count * hash count `uint32_t`. Each hash is together.
+  If we had 4 buckets and 2 hashes, it would look like (the
+  parentheses are just for orientation):
++
+  (h1-b1, h1-b2, h1-b3, h1-b4), (h2-b1, h2-b2, h2-b3, h2-b4)
+
+Sending the keys
+~~~~~~~~~~~~~~~~
+
+When the server wants to know a set of keys for some identified
+buckets, it sends following message. All indices are 0-based:
+
+`K`::
+  Single byte opcode.
+timestamp::
+  `uint64_t`. The timestamp at which the generation the server is
+  interested in started. The client searches the available generations
+  and identifies the one that matches.
+req_id::
+  `uint_32_t`. This is opaque data which will be included with the
+  answer, so the server can match the answer with the query.
+criterion::
+  `uint32_t`. The index of criterion to consider.
+indices of the buckets::
+  Bunch of `uint32_t`s. There's one number saying how many buckets are
+  interesting in the given hash, then so many indices are present.
+  Then, the same repeats for the next hash. Therefore, if we had 2
+  hashes and 4 buckets and were interested in 1, 3, 4 in the first
+  hash and 2 in the second, it would look like this (parentheses again
+  just for readability):
++
+  (3, 1, 3, 3), (1, 2)
+
+If the generation with requested timestamp isn't found, the client
+sends a message containing only `M` and the `req_id`.
+
+If it is found, a message with this format is sent:
+
+`K`::
+  Single byte opcode.
+req_id::
+  `uint32_t`. The request id, copied from the request message.
+key set::
+  One key after another. Type (and length) of each key depends on the
+  criterion used.
+
+Available criteria
+------------------
+
+The plugin supports several criteria to hash by. They are identified
+by single character each:
+
+`P`::
+  The port (UDP or TCP) of the remote side. Encoded as 2-byte unsigned
+  integer in network byte order.
+`I`::
+  The IP address of the remote side. Encoded as 17 bytes. The first
+  byte is version used (`0x04` or `0x06` for IPv4 or IPv6). Then in
+  case of IPv6 address, there are 16 bytes of the address, as
+  transmitted on the network. In case of IPv4, it is only 4 bytes of
+  the address and the rest is padded with zeroes.
+`B`::
+  Both the remote port and IP address. It is encoded as 19 bytes,
+  first 2 bytes for the port, than 17 bytes for the address.
+
+The hashes used
+---------------
+
+For each hash, we generate bunch of random data. We then index the
+data by the bytes in the key and xor them together.
+
+With independent random data, they should be independent hash
+functions. The only problem is, we need the same random data on all
+the clients.
+
+We have our own random number generator implementation, so we can be
+sure it computes the same random data. We also provide the same seed
+from the server.
+
+The overflow handling
+---------------------
+
+Each unique key seen is stored in the current generation. But, if the
+maximum number of keys in that criterion is reached, the criterion
+does not store any more keys (until new generation is started) and the
+overflow flag is set to 1.
+
+This way, the server can know the set would be incomplete. The counts
+are still complete, though.
+
+This is needed to prevent the analyzer to eat all available memory,
+while it should happen only rarely with usual use, since the limit
+would be large enough and users usually communicate with only few end
+points.

@@ -6,3 +6,5 @@ BINARIES += src/plugins/buckets/hash_test
 hash_test_MODULES := hash_test
 hash_test_LOCAL_LIBS := plugin_buckets ucollect_core
 hash_test_SYSTEM_LIBS := pcap rt dl uci
+
+DOCS += src/plugins/buckets/buckets

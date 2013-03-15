@@ -268,7 +268,10 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 		}
 	if (!g) {
 		// Say we are missing this generation
-		uplink_plugin_send_message(context, "M", 1);
+		uint8_t *message = mem_pool_alloc(context->temp_pool, 1 + sizeof request->req_id);
+		*message = 'M';
+		memcpy(message + 1, &request->req_id, sizeof request->req_id);
+		uplink_plugin_send_message(context, message, 1 + sizeof request->req_id);
 		return;
 	}
 	// Walk the data and extract the keys for 0th hash function (directly stored)
