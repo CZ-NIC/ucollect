@@ -1,2 +1,1 @@
-include $(S)/src/plugins/count/Makefile.dir
-include $(S)/src/plugins/buckets/Makefile.dir
+include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,count buckets crash)

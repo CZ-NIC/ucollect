@@ -1,0 +1,2 @@
+LIBRARIES += src/plugins/crash/libplugin_crash
+libplugin_crash_MODULES := crash
