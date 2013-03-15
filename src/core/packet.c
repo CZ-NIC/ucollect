@@ -30,6 +30,7 @@ struct tcp_ports {
 	uint32_t seq_num;
 	uint32_t ack_num;
 	uint8_t offset;
+	uint8_t flags;
 };
 
 static void parse_internal(struct packet_info *packet, const struct address_list *local_addresses, struct mem_pool *pool) {
@@ -131,6 +132,7 @@ static void parse_internal(struct packet_info *packet, const struct address_list
 				return;
 			packet->app_protocol = 'T';
 			packet->hdr_length += HEADER_SIZE_UNIT * ((tcp_ports->offset & OFFSET_MASK) >> OFFSET_SHIFT);
+			packet->tcp_flags = tcp_ports->flags;
 			break;
 		case 17: // UDP
 			packet->app_protocol = 'U';
@@ -170,6 +172,8 @@ static void postprocess(struct packet_info *packet) {
 	if (!is_encapsulation) {
 		packet->next = NULL;
 	}
+	if (packet->app_protocol != 'T')
+		packet->tcp_flags = 0;
 }
 
 void parse_packet(struct packet_info *packet, const struct address_list *local_addresses, struct mem_pool *pool) {

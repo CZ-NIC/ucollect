@@ -23,6 +23,15 @@ enum direction {
 	DIR_COUNT       // Not a real direction, a stop-mark.
 };
 
+enum tcp_flags {
+	TCP_FIN = 1 << 0,
+	TCP_SYN = 1 << 1,
+	TCP_RESET = 1 << 2,
+	TCP_PUSH = 1 << 3,
+	TCP_ACK = 1 << 4,
+	TCP_URG = 1 << 5
+};
+
 struct packet_info {
 	// The parsed embedded packet, in case of app_protocol == '4' || '6'
 	const struct packet_info *next;
@@ -77,6 +86,11 @@ struct packet_info {
 	unsigned char addr_len;
 	// Direction of the packet.
 	enum direction direction;
+	/*
+	 * The flag byte from TCP packets. The Nonce is not included here.
+	 * If the packet isn't IP/TCP, it is left zero.
+	 */
+	uint8_t tcp_flags;
 };
 
 /*
