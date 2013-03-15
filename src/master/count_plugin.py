@@ -15,7 +15,6 @@ class CountPlugin(plugin.Plugin):
 		self.__downloader.start(5, False)
 		self.__data = {}
 		self.__stats = {}
-		self.__last = {}
 
 	def __init_download(self):
 		"""
@@ -53,7 +52,6 @@ class CountPlugin(plugin.Plugin):
 				print(name + '\t' + str(output[0]) + '\t\t\t' + str(output[1]) + '\t\t\t' + str(output[2]) + '\t\t\t' + str(percent) + "%")
 			except ZeroDivisionError:
 				print(name + "\t---------------------------------------------------------------------------")
-		new_last = {}
 		for stat in self.__stats:
 			value = self.__stats[stat]
 			i = 0
@@ -61,17 +59,13 @@ class CountPlugin(plugin.Plugin):
 				v = list(value[:3])
 				value = value[3:]
 				name = stat + '[' + str(i) + ']'
-				new_last[name] = list(v)
-				last = self.__last.get(name, [0, 0, 0])
 				while len(name) < 24:
 					name += ' '
 				i += 1
 				for j in range(0, 3):
-					v[j] -= last[j]
 					sums[j] += v[j]
 				format(name, v)
 		format("Total\t\t\t", sums)
-		self.__last = new_last
 
 	def name(self):
 		return 'Count'
