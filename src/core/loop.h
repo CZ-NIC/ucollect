@@ -31,6 +31,8 @@ void loop_destroy(struct loop *loop) __attribute__((nonnull));
  *
  * In case the statistics for an interface fail, all the three items of it
  * are set to maximum value.
+ *
+ * The statistics are diff from the last time this function was called.
  */
 size_t *loop_pcap_stats(struct context *context) __attribute__((nonnull)) __attribute__((malloc));
 /*

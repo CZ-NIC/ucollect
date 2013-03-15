@@ -148,6 +148,8 @@ struct pcap_interface {
 	size_t watchdog_missed;
 	struct pcap_interface *next;
 	bool mark; // Mark for configurator.
+	// Statistics from the last time, so we can return just the diffs
+	size_t captured, dropped, if_dropped;
 };
 
 struct pcap_list {
@@ -705,9 +707,12 @@ size_t *loop_pcap_stats(struct context *context) {
 		if (error)
 			memset(result + 1 + 3 * i, 0xff, 3 * sizeof *result);
 		else {
-			result[i ++] = ps.ps_recv;
-			result[i ++] = ps.ps_drop;
-			result[i ++] = ps.ps_ifdrop;
+			result[i ++] = ps.ps_recv - interface->captured;
+			interface->captured = ps.ps_recv;
+			result[i ++] = ps.ps_drop - interface->dropped;
+			interface->dropped = ps.ps_drop;
+			result[i ++] = ps.ps_ifdrop - interface->if_dropped;
+			interface->if_dropped = ps.ps_ifdrop;
 		}
 	}
 	return result;
