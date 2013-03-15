@@ -1,0 +1,69 @@
+The `count` plugin
+==================
+
+It is a very simple plugin, that just counts packets of various
+properties and their total sizes. Aside from having this basic
+information available, it can also serve as example implementation of
+plugin.
+
+From time to time, the server requests the statistics and they are
+reset to zeroes.
+
+The protocol
+------------
+
+All data are encoded in network byte order.
+
+The server requests data by sending its timestamp (`uint64_t`).
+
+The client answers with the data. There are four parts to the message:
+
+Timestamp::
+  Encoded as `uint64_t`, it is the timestamp sent by server in the
+  previous request, or 0 on the first request. This can be used to
+  guess the length of interval.
+Number of interfaces::
+  The number of interfaces being captured in the client, encoded as
+  `uint32_t`.
+Interface statistics::
+  For each interface, there is a triple of `uint32_t` numbers, meaning
+  number of packets captured on the interface, dropped by PCAP because
+  the software didn't keep up and dropped by the interface driver.
+Property statistics::
+  For each property, there's a pair of `uint32_t` numbers, meaning the
+  count of packets with the property and the total size of these
+  packets.
+
+The properties counted
+----------------------
+
+These are the kinds of packets counted, in order they appear in the
+message. More kinds are expected to appear, but they'll be appended to
+the list, so the beginning of the list is fixed.
+
+All::
+  Any packet is included in this category.
+IPv4::
+  Packets sent over the IPv4 protocol.
+IPv6::
+  Packets sent over the IPv6 protocol.
+In::
+  Packets sent over either IPv4 or IPv6 that have the source address
+  outside of the local network and the destination inside.
+Out::
+  Similar as In, but with the destination and source locations
+  reversed.
+TCP::
+  IPv4/TCP and IPv6/TCP packets.
+UDP::
+  IPv4/UDP and IPv6/UDP packets.
+ICMP::
+  Both ICMP and ICMPv6 packets.
+Low port::
+  TCP or UDP packets with the remote port less or equal to 1024.
+
+Note that the related categories don't necessarily form complements.
+There may be, for example, packets that are not considered In nor Out
+-- packets that are not sent over any IP protocol, or packets that
+have both addresses outside or both addresses inside the local
+network.
