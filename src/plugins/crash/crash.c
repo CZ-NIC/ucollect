@@ -20,10 +20,17 @@ static void prepare_crash(struct context *context) {
 	loop_timeout_add(context->loop, 2000, context, NULL, crash);
 }
 
+static void packet_crash(struct context *context_unused, const struct packet_info *info_unused) {
+	(void) context_unused;
+	(void) info_unused;
+	abort();
+}
+
 struct plugin *plugin_info(void) {
 	static struct plugin plugin = {
 		.name = "Crash",
-		.init_callback = prepare_crash
+		.init_callback = prepare_crash,
+		.packet_callback = packet_crash
 	};
 	return &plugin;
 }
