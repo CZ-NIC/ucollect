@@ -34,7 +34,6 @@ class BucketsPlugin(plugin.Plugin):
 		elif kind == 'G':
 			# Generation data.
 			# Parse it. Something less error-prone when confused config?
-			# FIXME: Part of this won't work with more than 1 criterion
 			per_criterion = self.__bucket_count * self.__hash_count + 1
 			count = len(self.__criteria) * per_criterion
 			deserialized = struct.unpack('!QL' + str(count) + 'L', message[1:])
