@@ -60,6 +60,7 @@ static bool load_uplink(struct loop_configurator *configurator, struct uci_secti
 
 static bool load_package(struct loop_configurator *configurator, struct uci_context *ctx, struct uci_package *p) {
 	struct uci_element *section;
+	bool seen_uplink = false;
 	uci_foreach_element(&p->sections, section) {
 		struct uci_section *s = uci_to_section(section);
 		if (strcmp(s->type, "interface") == 0) {
@@ -69,10 +70,19 @@ static bool load_package(struct loop_configurator *configurator, struct uci_cont
 			if (!load_plugin(configurator, s, ctx))
 				return false;
 		} else if (strcmp(s->type, "uplink") == 0) {
+			if (seen_uplink) {
+				ulog(LOG_ERROR, "Multiple uplinks in configuration\n");
+				return false;
+			}
+			seen_uplink = true;
 			if (!load_uplink(configurator, s, ctx))
 				return false;
 		} else
 			ulog(LOG_WARN, "Ignoring config section '%s' of unknown type '%s'\n", s->e.name, s->type);
+	}
+	if (!seen_uplink) {
+		ulog(LOG_ERROR, "No uplink configuration found\n");
+		return false;
 	}
 	return true;
 }
