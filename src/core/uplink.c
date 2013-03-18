@@ -181,7 +181,20 @@ static void handle_buffer(struct uplink *uplink) {
 			switch (command) {
 				case 'R': { // Route data to given plugin
 					const char *plugin_name = uplink_parse_string(uplink->buffer_pool, &uplink->buffer, &uplink->buffer_size);
-					if (!loop_plugin_send_data(uplink->loop, plugin_name, uplink->buffer, uplink->buffer_size)) {
+					/*
+					 * The loop_plugin_send_data contains call to plugin callback.
+					 * Such callback can fail and we would like to recover. That is done
+					 * by a longjump directly to the loop. That'd mean this function is not
+					 * completed, therefore we make sure it works well even in such case -
+					 * we create a copy of the buffer and then reset the buffer before
+					 * going to the plugin (resetting it again below doesn't hurt anything).
+					 */
+					struct mem_pool *pool = loop_temp_pool(uplink->loop);
+					uint8_t *buffer = mem_pool_alloc(pool, uplink->buffer_size);
+					memcpy(buffer, uplink->buffer, uplink->buffer_size);
+					size_t length = uplink->buffer_size;
+					buffer_reset(uplink);
+					if (!loop_plugin_send_data(uplink->loop, plugin_name, buffer, length)) {
 						ulog(LOG_ERROR, "Plugin %s referenced by uplink does not exist\n", plugin_name);
 						// TODO: Create some function for formatting messages
 						size_t pname_len = strlen(plugin_name);
