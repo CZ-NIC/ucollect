@@ -44,7 +44,8 @@ int main(int argc, const char* argv[]) {
 	loop = loop_create();
 
 	// Connect upstream
-	uplink = uplink_create(loop, argv[1], argv[2]);
+	uplink = uplink_create(loop);
+	uplink_configure(uplink, argv[1], argv[2], loop_permanent_pool(loop));
 
 	// Register all stop signals.
 	for (size_t i = 0; i < sizeof stop_signals / sizeof *stop_signals; i ++) {

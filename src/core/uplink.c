@@ -291,21 +291,28 @@ CLOSED:
 	}
 }
 
-struct uplink *uplink_create(struct loop *loop, const char *remote_name, const char *service) {
-	ulog(LOG_INFO, "Creating uplink to %s:%s\n", remote_name, service);
+struct uplink *uplink_create(struct loop *loop) {
+	ulog(LOG_INFO, "Creating uplink\n");
 	struct mem_pool *permanent_pool = loop_permanent_pool(loop);
 	struct uplink *result = mem_pool_alloc(permanent_pool, sizeof *result);
 	*result = (struct uplink) {
 		.uplink_read = uplink_read,
 		.loop = loop,
-		.buffer_pool = loop_pool_create(loop, NULL, mem_pool_printf(loop_temp_pool(loop), "Buffer pool for uplink to %s:%s", remote_name, service)),
-		.remote_name = mem_pool_strdup(permanent_pool, remote_name),
-		.service = mem_pool_strdup(permanent_pool, service),
+		.buffer_pool = loop_pool_create(loop, NULL, mem_pool_printf(loop_temp_pool(loop), "Buffer pool for uplink")),
 		.fd = -1
 	};
-	uplink_connect(result);
 	loop_uplink_set(loop, result);
 	return result;
+}
+
+void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, struct mem_pool *config_pool) {
+	ulog(LOG_INFO, "Changing remote uplink address to %s:%s\n", remote_name, service);
+	// Set the new remote endpoint
+	uplink->remote_name = mem_pool_strdup(config_pool, remote_name);
+	uplink->service = mem_pool_strdup(config_pool, service);
+	// Reconnect
+	loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
+	uplink_disconnect(uplink);
 }
 
 void uplink_destroy(struct uplink *uplink) {

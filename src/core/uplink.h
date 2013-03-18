@@ -11,12 +11,16 @@ struct mem_pool;
 struct context;
 
 /*
- * Create and connect an uplink. It is expected to be called only once on a given loop.
+ * Create an uplink. It is expected to be called only once on a given loop.
+ */
+struct uplink *uplink_create(struct loop *loop) __attribute__((malloc)) __attribute__((nonnull));
+/*
+ * Set or change the remote endpoint of the uplink. It'll (re)connect.
  *
  * The remote_name and service represent the machine and port to connect to. It can
  * be numerical address and port, or DNS and service name.
  */
-struct uplink *uplink_create(struct loop *loop, const char *remote_name, const char *service) __attribute__((malloc)) __attribute__((nonnull));
+void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, struct mem_pool *config_pool) __attribute__((nonnull));
 /*
  * Disconnect and destroy an uplink. It is expected to be called just before the loop
  * is destroyed.
