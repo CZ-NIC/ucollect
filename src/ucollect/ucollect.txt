@@ -8,10 +8,8 @@ the gathered data to the central server for processing.
 Invocation
 ----------
 
-It takes exactly two parameters. The address (or DNS name) of the
-server and a port where it listens (or textual name of service).
-
-  ./bin/ucollect central.server.example.org 5678
+It takes no parameters. All configuration is done through the
+configuration file.
 
 Configuration
 -------------
