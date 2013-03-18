@@ -191,6 +191,7 @@ struct plugin_list {
 #define LIST_NODE struct plugin_holder
 #define LIST_BASE struct plugin_list
 #define LIST_NAME(X) plugin_##X
+#define LIST_WANT_INSERT_AFTER
 #define LIST_WANT_APPEND_POOL
 #define LIST_WANT_LFOR
 #include "link_list.h"
@@ -755,7 +756,8 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	 * Each plugin gets its own permanent pool (since we'd delete that one with the plugin),
 	 * but we can reuse the temporary pool.
 	 */
-	struct plugin_holder new = {
+	struct plugin_holder *new = mem_pool_alloc(configurator->config_pool, sizeof *new);
+	*new = (struct plugin_holder) {
 		.context = {
 			.temp_pool = configurator->loop->temp_pool,
 			.permanent_pool = permanent_pool,
@@ -771,11 +773,11 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 		.mark = true
 	};
 	// Copy the name (it may be temporary), from the plugin's own pool
-	new.plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
-	plugin_init(&new);
+	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
+	plugin_init(new);
 	jump_ready = 0;
 	// Store the plugin structure.
-	*plugin_append_pool(&configurator->plugins, configurator->config_pool) = new;
+	plugin_insert_after(&configurator->plugins, new, configurator->plugins.tail);
 	return true;
 }
 
