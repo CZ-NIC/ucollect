@@ -25,18 +25,16 @@ static const int stop_signals[] = {
 
 // Data used from the cleanup handler
 static struct uplink *uplink;
-static struct loop_configurator *configurator;
 
 static void cleanup(void) {
-	// TODO: Release all the plugins here.
 	if (uplink)
 		uplink_destroy(uplink);
-	if (configurator)
-		loop_config_abort(configurator);
 	loop_destroy(loop);
 }
 
 int main(int argc, const char* argv[]) {
+	(void) argc;
+	(void) argv;
 	// Create the loop.
 	loop = loop_create();
 
