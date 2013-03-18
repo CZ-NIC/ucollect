@@ -65,3 +65,17 @@ It describes the server it should connect to. It contains the dns name
 in the `service` option.
 
 There should be exactly one instance of this config section.
+
+Signals
+-------
+
+Apart from normal signal handling (like terminanig on `SIGINT`), these
+two work with configuration:
+
+SIGHUP::
+  Re-reads the configuration and applies the changes.
+SIGUSR1::
+  Reinitialize all the plugins and interfaces according to current
+  configuration. The difference from `SIGHUP` is that `SIGHUP` does
+  not change a plugin or interface that is the same in the old and new
+  versions. This one unloads it first and then loads again.
