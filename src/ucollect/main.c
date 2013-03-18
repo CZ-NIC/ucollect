@@ -37,17 +37,11 @@ static void cleanup(void) {
 }
 
 int main(int argc, const char* argv[]) {
-	if (argc < 3)
-		die("usage: %s <server name> <server port>\n", argv[0]);
-
 	// Create the loop.
 	loop = loop_create();
 
 	// Connect upstream
 	uplink = uplink_create(loop);
-	configurator = loop_config_start(loop);
-	loop_uplink_configure(configurator, argv[1], argv[2]);
-	loop_config_commit(configurator);
 
 	// Register all stop signals.
 	for (size_t i = 0; i < sizeof stop_signals / sizeof *stop_signals; i ++) {

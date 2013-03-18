@@ -46,6 +46,18 @@ static bool load_plugin(struct loop_configurator *configurator, struct uci_secti
 	return loop_add_plugin(configurator, libpath);
 }
 
+static bool load_uplink(struct loop_configurator *configurator, struct uci_section *section, struct uci_context *ctx) {
+	ulog(LOG_DEBUG, "Processing uplink %s\n", section->e.name);
+	const char *name = uci_lookup_option_string(ctx, section, "name");
+	const char *service = uci_lookup_option_string(ctx, section, "service");
+	if (!name || !service) {
+		ulog(LOG_ERROR, "Incomplete configuration of uplink\n");
+		return false;
+	}
+	loop_uplink_configure(configurator, name, service);
+	return true;
+}
+
 static bool load_package(struct loop_configurator *configurator, struct uci_context *ctx, struct uci_package *p) {
 	struct uci_element *section;
 	uci_foreach_element(&p->sections, section) {
@@ -55,6 +67,9 @@ static bool load_package(struct loop_configurator *configurator, struct uci_cont
 				return false;
 		} else if (strcmp(s->type, "plugin") == 0) {
 			if (!load_plugin(configurator, s, ctx))
+				return false;
+		} else if (strcmp(s->type, "uplink") == 0) {
+			if (!load_uplink(configurator, s, ctx))
 				return false;
 		} else
 			ulog(LOG_WARN, "Ignoring config section '%s' of unknown type '%s'\n", s->e.name, s->type);
