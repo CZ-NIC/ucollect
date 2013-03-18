@@ -22,21 +22,25 @@ config would look like this:
 
   package 'ucollect'
 
-  config interface 'eth0'
+  config interface
       option ifname 'eth0'
       list localaddr '127.0.0.1/32'
       list localaddr '192.0.2.1/24'
       list localaddr '::1/128'
       list localaddr '2001:db8::1/32'
 
-  config plugin 'Count'
+  config plugin
       option libname 'libplugin_count.so'
 
-  config plugin 'Buckets'
+  config plugin
       option libname 'libplugin_buckets.so'
 
+  config uplink
+      option name localhost
+      option service 5678
+
 The `package 'ucollect'` is always the same and should not be changed.
-Then there are two kinds of sections.
+Then there are three kinds of sections.
 
 The `interface` section
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -54,3 +58,12 @@ The `plugin` section
 Each such section describes one analysis plugin to load. The
 (currently only) option, `libname`, specifies the file name of the
 library to load as the plugin.
+
+The `uplink` section
+~~~~~~~~~~~~~~~~~~~~
+
+It describes the server it should connect to. It contains the dns name
+(or ip address) in the `name` option and the port or service name in
+in the `service` option.
+
+There should be exactly one instance of this config section.
