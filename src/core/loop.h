@@ -60,6 +60,8 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 bool loop_pcap_add_address(struct loop_configurator *configurator, const char *address) __attribute__((nonnull));
 // Add a plugin. Provide the name of the library to load.
 bool loop_add_plugin(struct loop_configurator *configurator, const char *plugin) __attribute__((nonnull));
+// Set the remote endpoint of the uplink
+void loop_uplink_configure(struct loop_configurator *configurator, const char *remote, const char *service) __attribute__((nonnull));
 /*
  * Reinitialize the current plugin. Must not be called from outside of a plugin.
  *

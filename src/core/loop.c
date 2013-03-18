@@ -8,6 +8,7 @@
 #include "tunable.h"
 #include "loader.h"
 #include "configure.h"
+#include "uplink.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -290,6 +291,7 @@ struct loop_configurator {
 	struct mem_pool *config_pool;
 	struct pcap_list pcap_interfaces;
 	struct plugin_list plugins;
+	const char *remote_name, *remote_service;
 };
 
 // Handle one packet.
@@ -980,6 +982,11 @@ void loop_config_commit(struct loop_configurator *configurator) {
 		interface->watchdog_timer = loop_timeout_add(loop, PCAP_WATCHDOG_TIME, NULL, interface, pcap_watchdog);
 		interface->watchdog_initialized = true;
 	}
+	// Change the uplink config or copy it
+	if (configurator->remote_name)
+		uplink_configure(loop->uplink, configurator->remote_name, configurator->remote_service);
+	else
+		uplink_realloc_config(loop->uplink, configurator->config_pool);
 	// Destroy the old configuration and merge the new one
 	if (loop->config_pool)
 		mem_pool_destroy(configurator->loop->config_pool);
@@ -1002,4 +1009,9 @@ void loop_plugin_reinit(struct context *context) {
 	context->loop->reinitialize_plugin = context;
 	assert(jump_ready);
 	longjmp(jump_env, 1);
+}
+
+void loop_uplink_configure(struct loop_configurator *configurator, const char *remote, const char *service) {
+	configurator->remote_name = mem_pool_strdup(configurator->config_pool, remote);
+	configurator->remote_service = mem_pool_strdup(configurator->config_pool, service);
 }

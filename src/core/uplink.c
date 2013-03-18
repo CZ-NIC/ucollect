@@ -305,11 +305,11 @@ struct uplink *uplink_create(struct loop *loop) {
 	return result;
 }
 
-void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, struct mem_pool *config_pool) {
+void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service) {
 	ulog(LOG_INFO, "Changing remote uplink address to %s:%s\n", remote_name, service);
 	// Set the new remote endpoint
-	uplink->remote_name = mem_pool_strdup(config_pool, remote_name);
-	uplink->service = mem_pool_strdup(config_pool, service);
+	uplink->remote_name = remote_name;
+	uplink->service = service;
 	// Reconnect
 	loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
 	uplink_disconnect(uplink);
@@ -372,4 +372,11 @@ bool uplink_plugin_send_message(struct context *context, const void *data, size_
 	memcpy(buffer + sizeof name_length, name, name_length);
 	memcpy(buffer + sizeof name_length + name_length, data, size);
 	return uplink_send_message(context->uplink, 'R', buffer, length);
+}
+
+void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) {
+	if (uplink->remote_name)
+		uplink->remote_name = mem_pool_strdup(pool, uplink->remote_name);
+	if (uplink->service)
+		uplink->service = mem_pool_strdup(pool, uplink->service);
 }

@@ -19,8 +19,13 @@ struct uplink *uplink_create(struct loop *loop) __attribute__((malloc)) __attrib
  *
  * The remote_name and service represent the machine and port to connect to. It can
  * be numerical address and port, or DNS and service name.
+ *
+ * The remote_name and service must be allocated so it lasts until destroy or next configure.
+ * It is not copied.
  */
-void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, struct mem_pool *config_pool) __attribute__((nonnull));
+void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service) __attribute__((nonnull));
+// Move configuration to the provided pool (so the old may be reset)
+void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) __attribute__((nonnull));
 /*
  * Disconnect and destroy an uplink. It is expected to be called just before the loop
  * is destroyed.
