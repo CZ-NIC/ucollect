@@ -321,10 +321,9 @@ void uplink_destroy(struct uplink *uplink) {
 	uplink_disconnect(uplink);
 }
 
-static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size) {
+static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
 	while (size > 0) {
-		// TODO: Do we want to play with the MSG_MORE?
-		ssize_t amount = send(uplink->fd, buffer, size, MSG_NOSIGNAL);
+		ssize_t amount = send(uplink->fd, buffer, size, MSG_NOSIGNAL | flags);
 		if (amount == -1) {
 			switch (errno) {
 				case EINTR:
@@ -358,7 +357,7 @@ bool uplink_send_message(struct uplink *uplink, char type, const void *data, siz
 	uint32_t head_size = htonl(size + 1);
 	memcpy(head_buffer, &head_size, sizeof head_size);
 	head_buffer[head_len - 1] = type;
-	return buffer_send(uplink, head_buffer, head_len) && buffer_send(uplink, data, size);
+	return buffer_send(uplink, head_buffer, head_len, MSG_MORE) && buffer_send(uplink, data, size, 0);
 }
 
 bool uplink_plugin_send_message(struct context *context, const void *data, size_t size) {
