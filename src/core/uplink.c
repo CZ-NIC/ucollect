@@ -141,8 +141,9 @@ static void send_ping(struct context *context_unused, void *data, size_t id_unus
 	// How long does it not answer pings?
 	if (uplink->pings_unanswered >= PING_COUNT) {
 		ulog(LOG_ERROR, "Too many pings not answered on %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
+		// Let the connect be called from the loop, so it works even if uplink_disconnect makes a plugin crash
+		loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
 		uplink_disconnect(uplink);
-		uplink_connect(uplink);
 		return;
 	}
 	ulog(LOG_DEBUG, "Sending ping to %s:%s\n", uplink->remote_name, uplink->service);
@@ -278,8 +279,8 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 		} else if (amount == 0) { // 0 means socket closed
 			ulog(LOG_WARN, "Remote closed the uplink %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
 CLOSED:
+			loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
 			uplink_disconnect(uplink);
-			uplink_connect(uplink);
 			return; // We are done with this socket.
 		} else {
 			uplink->buffer_pos += amount;
@@ -326,8 +327,8 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 				case ECONNRESET:
 				case EPIPE:
 					// Lost connection. Reconnect.
+					loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
 					uplink_disconnect(uplink);
-					uplink_connect(uplink);
 					return false;
 				default:
 					// Fatal errors
