@@ -26,9 +26,17 @@ static void packet_crash(struct context *context_unused, const struct packet_inf
 	abort();
 }
 
+static void data_crash(struct context *context_unused, const uint8_t *data_unused, size_t length_unused) {
+	(void) context_unused;
+	(void) data_unused;
+	(void) length_unused;
+	abort();
+}
+
 struct plugin *plugin_info(void) {
 	static struct plugin plugin = {
 		.name = "Crash",
+		.uplink_data_callback = data_crash,
 		.init_callback = prepare_crash,
 		.packet_callback = packet_crash
 	};
