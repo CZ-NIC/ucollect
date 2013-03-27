@@ -415,7 +415,11 @@ static void packet(struct context *context, const struct packet_info *packet) {
 	}
 }
 
+#ifdef STATIC
+struct plugin *plugin_info_buckets(void) {
+#else
 struct plugin *plugin_info(void) {
+#endif
 	static struct plugin plugin = {
 		.name = "Buckets",
 		.init_callback = initialize,

@@ -136,7 +136,11 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	};
 }
 
+#ifdef STATIC
+struct plugin *plugin_info_count(void) {
+#else
 struct plugin *plugin_info(void) {
+#endif
 	static struct plugin plugin = {
 		.name = "Count",
 		.packet_callback = packet_handle,

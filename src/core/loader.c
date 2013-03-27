@@ -2,9 +2,41 @@
 #include "util.h"
 #include "plugin.h"
 
-#include <dlfcn.h>
 #include <limits.h>
 #include <stdio.h>
+
+#ifdef STATIC
+
+#include <string.h>
+/*
+ * The loader does not work with static linkage. We provide a stub here with
+ * hard-coded plugins.
+ */
+struct plugin *plugin_info_count(void);
+struct plugin *plugin_info_buckets(void);
+
+static int dummy;
+
+void *plugin_load(const char *libname, struct plugin *target) {
+	ulog(LOG_INFO, "Want plugin %s\n", libname);
+	if (strcmp(libname, "libplugin_count.so") == 0) {
+		*target = *plugin_info_count();
+		return &dummy;
+	} else if (strcmp(libname, "libplugin_buckets.so") == 0) {
+		*target = *plugin_info_buckets();
+		return &dummy;
+	}
+	ulog(LOG_ERROR, "Dynamic loading not allowed\n");
+	return NULL;
+}
+
+void plugin_unload(void *library) {
+	(void) library;
+}
+
+#else
+
+#include <dlfcn.h>
 
 void *plugin_load(const char *libname, struct plugin *target) {
 	ulog(LOG_INFO, "Loading plugin library %s\n", libname);
@@ -44,3 +76,4 @@ void plugin_unload(void *library) {
 	ulog(LOG_INFO, "Unloading plugin library\n");
 	dlclose(library);
 }
+#endif
