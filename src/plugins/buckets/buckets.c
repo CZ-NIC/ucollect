@@ -201,6 +201,7 @@ struct generation_data {
 	char code; // Send from here onwards
 	uint64_t timestamp;
 	uint32_t config_version;
+	uint32_t timeslots; // Number of time slots. May be 0 in case of overflow ("aborted")
 	uint8_t data[];
 } __attribute__((packed));
 
@@ -218,19 +219,25 @@ static void provide_generation(struct context *context, const uint8_t *data, siz
 	memcpy(&timestamp, data, length); // Copy, to ensure correct alignment
 	timestamp = be64toh(timestamp);
 	// Compute the size of the message to send
-	size_t criterion_size = sizeof(struct criterion_data) + u->hash_count * u->bucket_count * sizeof(uint32_t);
+	bool global_overflow = false;
+	if (++ u->biggest_timeslot > u->max_timeslots) {
+		u->biggest_timeslot = 0;
+		global_overflow = true;
+	}
+	size_t criterion_size = sizeof(struct criterion_data) + u->hash_count * u->bucket_count * u->biggest_timeslot * sizeof(uint32_t);
 	struct generation_data *msg = mem_pool_alloc(context->temp_pool, sizeof *msg + criterion_size * u->criteria_count);
 	struct generation *g = &u->generations[u->current_generation];
 	// Build the message
 	msg->code = 'G';
 	msg->timestamp = htobe64(g->timestamp);
 	msg->config_version = htonl(u->config_version);
+	msg->timeslots = htonl(u->biggest_timeslot);
 	for (size_t i = 0; i < u->criteria_count; i ++) {
 		struct criterion *src = &g->criteria[i];
 		struct criterion_data *dst = (struct criterion_data *) &msg->data[i * criterion_size];
-		dst->overflow = htonl(src->overflow);
+		dst->overflow = htonl(src->overflow || global_overflow);
 		size_t total_count = 0;
-		for (size_t j = 0; j < u->hash_count * u->bucket_count; j ++) {
+		for (size_t j = 0; j < u->hash_count * u->bucket_count * u->biggest_timeslot; j ++) {
 			dst->counts[j] = htonl(src->counts[j]);
 			total_count += src->counts[j];
 		}

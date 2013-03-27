@@ -38,10 +38,10 @@ class BucketsPlugin(plugin.Plugin):
 			# Parse it. Something less error-prone when confused config?
 			per_criterion = self.__bucket_count * self.__hash_count + 1
 			count = len(self.__criteria) * per_criterion
-			deserialized = struct.unpack('!QL' + str(count) + 'L', message[1:])
-			(timestamp, version) = deserialized[:2]
+			deserialized = struct.unpack('!QLL' + str(count) + 'L', message[1:])
+			(timestamp, version, timeslots) = deserialized[:3]
 			print("Hash buckets from " + client + " since " + time.ctime(timestamp) + " on version " + str(version))
-			deserialized = deserialized[2:]
+			deserialized = deserialized[3:]
 			criterion = 0
 			while deserialized:
 				if deserialized[0]:
