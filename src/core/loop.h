@@ -113,5 +113,7 @@ bool loop_plugin_send_data(struct loop *loop, const char *plugin, const uint8_t 
 size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *context, void *data, void (*callback)(struct context *context, void *data, size_t id)) __attribute__((nonnull(1)));
 // Cancel a timeout. It must not have been called yet.
 void loop_timeout_cancel(struct loop *loop, size_t id) __attribute__((nonnull));
+// Return number of milliseconds since some unspecified time in the past
+uint64_t loop_now(struct loop *loop);
 
 #endif

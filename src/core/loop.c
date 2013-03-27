@@ -1015,3 +1015,7 @@ void loop_uplink_configure(struct loop_configurator *configurator, const char *r
 	configurator->remote_name = mem_pool_strdup(configurator->config_pool, remote);
 	configurator->remote_service = mem_pool_strdup(configurator->config_pool, service);
 }
+
+uint64_t loop_now(struct loop *loop) {
+	return loop->now;
+}
