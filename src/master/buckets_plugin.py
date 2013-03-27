@@ -17,11 +17,13 @@ class BucketsPlugin(plugin.Plugin):
 		self.__history_size = 1
 		self.__config_version = 1
 		self.__max_key_count = 1000
+		self.__granularity = 2000 # A timeslot of 2 seconds, for testing
+		self.__max_timeslots = 10 # Twice as much as needed, just to make sure
 		# Just an arbitrary number
 		self.__seed = 872945724987
 		self.__downloader = LoopingCall(self.__init_download)
 		# FIXME: Adjust the time to something reasonable after the testing.
-		self.__downloader.start(5, False)
+		self.__downloader.start(10, False)
 
 	def name(self):
 		return "Buckets"
@@ -88,7 +90,7 @@ class BucketsPlugin(plugin.Plugin):
 			print("Unkown data from Buckets plugin: " + message)
 
 	def __config(self):
-		header = struct.pack('!2Q6L' + str(len(self.__criteria)) + 'c', self.__seed, int(time.time()), self.__bucket_count, self.__hash_count, len(self.__criteria), self.__history_size , self.__config_version, self.__max_key_count, *self.__criteria)
+		header = struct.pack('!2Q8L' + str(len(self.__criteria)) + 'c', self.__seed, int(time.time()), self.__bucket_count, self.__hash_count, len(self.__criteria), self.__history_size , self.__config_version, self.__max_key_count, self.__max_timeslots, self.__granularity, *self.__criteria)
 		return header
 
 	def __init_download(self):

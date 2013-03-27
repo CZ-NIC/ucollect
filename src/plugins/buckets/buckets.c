@@ -72,6 +72,10 @@ struct user_data {
 	size_t hash_line_size; // Number of bytes in hash_data per hash.
 	size_t history_size; // How many old snapshots we keep, for the server to ask details about
 	size_t max_key_count; // Maximum number of unique keys stored per generation and criterion.
+	size_t max_timeslots; // Maximum number of timeslots in the current hash counts
+	size_t biggest_timeslot; // The biggest used time slot
+	uint64_t timeslot_start; // The time of start of the first timeslot
+	uint32_t time_granularity; // Number of milliseconds per one timeslot
 	uint32_t config_version;
 	bool initialized; // Were we initialized already by the server?
 	size_t criteria_count; // Count of criteria hashed
@@ -111,10 +115,12 @@ struct config_header {
 	uint32_t history_size;
 	uint32_t config_version;
 	uint32_t max_key_count;
+	uint32_t max_timeslots;
+	uint32_t time_granularity;
 	char criteria[];
 } __attribute__((__packed__));
 
-static void generation_activate(struct user_data *u, size_t generation, uint64_t timestamp) {
+static void generation_activate(struct user_data *u, size_t generation, uint64_t timestamp, uint64_t loop_now) {
 	struct generation *g = &u->generations[generation];
 	for (size_t i = 0; i < u->criteria_count; i ++) {
 		// Reset the lists and the counts
@@ -122,11 +128,13 @@ static void generation_activate(struct user_data *u, size_t generation, uint64_t
 		g->criteria[i].packet_count = 0;
 		g->criteria[i].overflow = false;
 		memset(g->criteria[i].hashed_keys, 0, u->bucket_count * sizeof *g->criteria[i].hashed_keys);
-		memset(g->criteria[i].counts, 0, u->bucket_count * u->hash_count * sizeof *g->criteria[i].counts);
+		memset(g->criteria[i].counts, 0, u->bucket_count * u->hash_count * u->max_timeslots * sizeof *g->criteria[i].counts);
 	}
 	mem_pool_reset(g->pool);
 	g->timestamp = timestamp;
 	u->current_generation = generation;
+	u->timeslot_start = loop_now;
+	u->biggest_timeslot = 0;
 }
 
 static void configure(struct context *context, const uint8_t *data, size_t length) {
@@ -143,6 +151,8 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 	u->history_size = ntohl(header->history_size);
 	u->config_version = ntohl(header->config_version);
 	u->max_key_count = htonl(header->max_key_count);
+	u->max_timeslots = htonl(header->max_timeslots);
+	u->time_granularity = htonl(header->time_granularity);
 	u->criteria = mem_pool_alloc(context->permanent_pool, u->criteria_count * sizeof *u->criteria);
 	// Find the criteria to hash by
 	size_t max_keysize = 0;
@@ -156,7 +166,7 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 					max_keysize = criteria[j].key_size;
 			}
 		if (!found)
-			die("Bucket riterion of name '%c' not known\n", header->criteria[i]);
+			die("Bucket criterion of name '%c' not known\n", header->criteria[i]);
 	}
 	// Generate the random hash data
 	u->hash_line_size = 256 * max_keysize;
@@ -174,11 +184,11 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 				// Single line for the keys
 				.hashed_keys = mem_pool_alloc(context->permanent_pool, u->bucket_count * sizeof *g->criteria[j].hashed_keys),
 				// hash_count lines for the hashed counts
-				.counts = mem_pool_alloc(context->permanent_pool, u->bucket_count * u->hash_count * sizeof *g->criteria[j].counts)
+				.counts = mem_pool_alloc(context->permanent_pool, u->bucket_count * u->hash_count * u->max_timeslots * sizeof *g->criteria[j].counts)
 			};
 			// We don't care about the values in newly-allocated data. We reset it at the start of generation
 	}
-	generation_activate(u, 0, be64toh(header->timestamp));
+	generation_activate(u, 0, be64toh(header->timestamp), loop_now(context->loop));
 	assert(u->criteria_count && u->hash_count && u->bucket_count);
 	ulog(LOG_INFO, "Received bucket information version %u (%u buckets, %u hashes)\n", (unsigned) u->config_version, (unsigned) u->bucket_count, (unsigned) u->hash_count);
 	u->initialized = true;
@@ -231,7 +241,7 @@ static void provide_generation(struct context *context, const uint8_t *data, siz
 	uplink_plugin_send_message(context, &msg->code, sizeof *msg + criterion_size * u->criteria_count - sizeof msg->padding);
 	size_t next_generation = u->current_generation + 1;
 	next_generation %= (u->history_size + 1);
-	generation_activate(u, next_generation, timestamp);
+	generation_activate(u, next_generation, timestamp, loop_now(context->loop));
 }
 
 // A request to provide some filtered keys by the server
