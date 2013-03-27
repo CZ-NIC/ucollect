@@ -36,23 +36,27 @@ class BucketsPlugin(plugin.Plugin):
 		elif kind == 'G':
 			# Generation data.
 			# Parse it. Something less error-prone when confused config?
-			per_criterion = self.__bucket_count * self.__hash_count + 1
-			count = len(self.__criteria) * per_criterion
+			count = (len(message) - 17) / 4
 			deserialized = struct.unpack('!QLL' + str(count) + 'L', message[1:])
 			(timestamp, version, timeslots) = deserialized[:3]
 			print("Hash buckets from " + client + " since " + time.ctime(timestamp) + " on version " + str(version))
 			deserialized = deserialized[3:]
 			criterion = 0
+			print(deserialized)
+			print(timeslots)
 			while deserialized:
 				if deserialized[0]:
 					print("Overflow!")
 				deserialized = deserialized[1:] # The overflow flag
-				local = deserialized[:self.__bucket_count * self.__hash_count]
-				deserialized = deserialized[self.__bucket_count * self.__hash_count:]
+				local = deserialized[:self.__bucket_count * self.__hash_count * timeslots]
+				deserialized = deserialized[self.__bucket_count * self.__hash_count * timeslots:]
+				print((local, deserialized))
 				total = sum(local)
 				print("Total " + str(total / self.__hash_count))
 				examine = [criterion, criterion]
 				criterion += 1
+				tslot = 0
+				lnum = 0
 				while local:
 					line = local[:self.__bucket_count]
 					i = 0
@@ -65,7 +69,12 @@ class BucketsPlugin(plugin.Plugin):
 						i += 1
 					print(line)
 					local = local[self.__bucket_count:]
-					examine.extend([1, maxindex]) # One index in this hash
+					if tslot == 0:
+						examine.extend([1, maxindex]) # One index in this hash
+					lnum += 1
+					if lnum % self.__hash_count == 0:
+						print('###############')
+						tslot += 1
 				msg = struct.pack('!Q' + str(len(examine)) + 'L', timestamp, *examine)
 				# Ask for the keys to examine
 				self.send('K' + msg, client)

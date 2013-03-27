@@ -388,6 +388,15 @@ static void packet(struct context *context, const struct packet_info *packet) {
 	// Get the real packet, if it is in some tunnel
 	while (packet->next)
 		packet = packet->next;
+	// Into which timeslot does the packet belong?
+	size_t slot = (loop_now(context->loop) - u->timeslot_start) / u->time_granularity;
+	if (slot < u->biggest_timeslot)
+		ulog(LOG_WARN, "Time went backwards?\n");
+	else if (slot > u->biggest_timeslot)
+		u->biggest_timeslot = slot;
+	if (u->biggest_timeslot >= u->max_timeslots)
+		// Nobody asked for data for way too long. The data will be unusable anyway..
+		return;
 	for (size_t i = 0; i < u->criteria_count; i ++) {
 		// Extract the key first
 		const uint8_t *key = u->criteria[i]->extract_key(packet, context->temp_pool);
@@ -405,7 +414,7 @@ static void packet(struct context *context, const struct packet_info *packet) {
 			// We index the key hash table by the first hash
 			if (j == 0)
 				key_index = index;
-			g->criteria[i].counts[j * u->bucket_count + index] ++;
+			g->criteria[i].counts[u->bucket_count * u->hash_count * u->biggest_timeslot + j * u->bucket_count + index] ++;
 		}
 		// Store the key, if it is not there already
 		if (g->criteria[i].overflow)
