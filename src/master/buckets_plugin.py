@@ -51,7 +51,16 @@ class BucketsPlugin(plugin.Plugin):
 		Process the gathered data.
 		"""
 		self.__gather_history.append(self.__gather_counts)
-		pprint.pprint(self.__gather_history)
+		for crit in self.__criteria:
+			# Extract the relevant batches
+			history = map(lambda batch: batch[crit], self.__gather_history)
+			# Concatenate the batches together.
+			batch = map(lambda hnum:
+				map(lambda bnum:
+					reduce(lambda a, b: a + b, map(lambda hist: hist[hnum][bnum], history)),
+				range(0, self.__bucket_count)),
+			range(0, self.__hash_count))
+			pprint.pprint(batch, width=150)
 		# Clean old history.
 		if len(self.__gather_history) > self.__gather_history_max:
 			self.__gather_history = self.__gather_history[1:]
