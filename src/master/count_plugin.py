@@ -12,7 +12,7 @@ class CountPlugin(plugin.Plugin):
 	def __init__(self, plugins):
 		plugin.Plugin.__init__(self, plugins)
 		self.__downloader = LoopingCall(self.__init_download)
-		self.__downloader.start(5, False)
+		self.__downloader.start(10, False)
 		self.__data = {}
 		self.__stats = {}
 
@@ -25,7 +25,7 @@ class CountPlugin(plugin.Plugin):
 		# Wait a short time, so they can send us some data and process it after that.
 		self.__data = {}
 		self.__stats = {}
-		reactor.callLater(1, self.__process)
+		reactor.callLater(5, self.__process)
 
 	def __process(self):
 		print("Information about " + str(len(self.__data)) + " clients")

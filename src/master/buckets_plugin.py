@@ -1,8 +1,10 @@
 from twisted.internet.task import LoopingCall
+from twisted.internet import reactor
 import time
 import struct
 import plugin
 import socket
+import pprint
 
 class BucketsPlugin(plugin.Plugin):
 	"""
@@ -11,19 +13,48 @@ class BucketsPlugin(plugin.Plugin):
 	"""
 	def __init__(self, plugins):
 		plugin.Plugin.__init__(self, plugins)
-		self.__bucket_count = 2
-		self.__hash_count = 2
+		self.__bucket_count = 13
+		self.__hash_count = 5
 		self.__criteria = ['B', 'P']
-		self.__history_size = 1
+		self.__history_size = 2
 		self.__config_version = 1
 		self.__max_key_count = 1000
 		self.__granularity = 2000 # A timeslot of 2 seconds, for testing
-		self.__max_timeslots = 10 # Twice as much as needed, just to make sure
+		self.__max_timeslots = 30 # Twice as much as needed, just to make sure
 		# Just an arbitrary number
 		self.__seed = 872945724987
 		self.__downloader = LoopingCall(self.__init_download)
 		# FIXME: Adjust the time to something reasonable after the testing.
-		self.__downloader.start(10, False)
+		self.__downloader.start(30, False)
+		# We are just gathering data between these two time stamps
+		self.__lower_time = 0
+		self.__upper_time = 0
+		self.__gather_history = []
+		self.__gather_history_max = 3
+		self.__process_delay = 5
+
+	def __gather_start(self, now):
+		"""
+		Start gathering of data
+		"""
+		# Move to the next window to gather
+		self.__lower_time = self.__upper_time
+		self.__upper_time = now
+		# Provide empty data
+		self.__gather_counts = {}
+		for crit in self.__criteria:
+			self.__gather_counts[crit] = map(lambda hnum: map(lambda bnum: [], range(0, self.__bucket_count)), range(0, self.__hash_count))
+		reactor.callLater(self.__process_delay, self.__process)
+
+	def __process(self):
+		"""
+		Process the gathered data.
+		"""
+		self.__gather_history.append(self.__gather_counts)
+		pprint.pprint(self.__gather_history)
+		# Clean old history.
+		if len(self.__gather_history) > self.__gather_history_max:
+			self.__gather_history = self.__gather_history[1:]
 
 	def name(self):
 		return "Buckets"
@@ -42,21 +73,20 @@ class BucketsPlugin(plugin.Plugin):
 			print("Hash buckets from " + client + " since " + time.ctime(timestamp) + " on version " + str(version))
 			deserialized = deserialized[3:]
 			criterion = 0
-			print(deserialized)
-			print(timeslots)
-			while deserialized:
+			for crit in self.__criteria:
 				if deserialized[0]:
 					print("Overflow!")
 				deserialized = deserialized[1:] # The overflow flag
 				local = deserialized[:self.__bucket_count * self.__hash_count * timeslots]
 				deserialized = deserialized[self.__bucket_count * self.__hash_count * timeslots:]
-				print((local, deserialized))
 				total = sum(local)
 				print("Total " + str(total / self.__hash_count))
 				examine = [criterion, criterion]
 				criterion += 1
 				tslot = 0
 				lnum = 0
+				to_merge = []
+				tslot_data = []
 				while local:
 					line = local[:self.__bucket_count]
 					i = 0
@@ -68,6 +98,7 @@ class BucketsPlugin(plugin.Plugin):
 							maxval = v
 						i += 1
 					print(line)
+					tslot_data.append(line)
 					local = local[self.__bucket_count:]
 					if tslot == 0:
 						examine.extend([1, maxindex]) # One index in this hash
@@ -75,6 +106,9 @@ class BucketsPlugin(plugin.Plugin):
 					if lnum % self.__hash_count == 0:
 						print('###############')
 						tslot += 1
+						to_merge.append(tslot_data)
+						tslot_data = []
+				self.__merge(timestamp, crit, to_merge)
 				msg = struct.pack('!Q' + str(len(examine)) + 'L', timestamp, *examine)
 				# Ask for the keys to examine
 				self.send('K' + msg, client)
@@ -106,5 +140,39 @@ class BucketsPlugin(plugin.Plugin):
 		"""
 		Ask the clients to provide some data.
 		"""
-		data = struct.pack('!Q', int(time.time()))
+		now = int(time.time())
+		self.__gather_start(now)
+		data = struct.pack('!Q', now)
 		self.broadcast('G' + data)
+
+	def __merge(self, timestamp, criterion, data):
+		"""
+		Merge data to the current set.
+		"""
+		if timestamp < self.__lower_time:
+			print("Too old data")
+			return
+		if self.__upper_time <= timestamp:
+			print("Too new data") # Can that happen at all?
+			return
+		gathered = self.__gather_counts[criterion]
+		# We have the data as [timeslot = [hash = [value in bucket]]] and want
+		# [hash = [bucket = [value in timeslot]]]. Transpose that.
+		new = map(lambda hnum:
+			map(lambda bnum:
+				map(lambda tslot: tslot[hnum][bnum], data),
+			range(0, self.__bucket_count)),
+		range(0, self.__hash_count))
+		assert(len(gathered) == len(new) and len(gathered) == self.__hash_count)
+		for (ghash, nhash) in zip(gathered, new):
+			assert(len(ghash) == len(nhash) and len(ghash) == self.__bucket_count)
+			for (gbucket, nbucket) in zip(ghash, nhash):
+				# Extend them so they are of the same length. As new clients start
+				# later, we extend with zeroes on the left side.
+				mlen = max(len(gbucket), len(nbucket))
+				gbucket[:0] = [0] * (mlen - len(gbucket))
+				nbucket[:0] = [0] * (mlen - len(nbucket))
+				assert(len(gbucket) == len(nbucket) and len(gbucket) == mlen)
+
+				for i in range(0, len(gbucket)):
+					gbucket[i] += nbucket[i]
