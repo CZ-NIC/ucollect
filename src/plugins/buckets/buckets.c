@@ -242,7 +242,7 @@ static void provide_generation(struct context *context, const uint8_t *data, siz
 			total_count += src->counts[j];
 		}
 		// Every packet should be once in each hash
-		assert(total_count == src->packet_count * u->hash_count);
+		assert(global_overflow || total_count == src->packet_count * u->hash_count);
 	}
 	// Send it (skip the padding)
 	uplink_plugin_send_message(context, &msg->code, sizeof *msg + criterion_size * u->criteria_count - sizeof msg->padding);
