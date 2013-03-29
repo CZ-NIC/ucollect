@@ -1,7 +1,10 @@
 import numbers
+import math
 
 """
 Statisticts for detecting anomalies in gathered data.
+
+TODO: Handle the case when some of the parameters turn out to be invalid by accident.
 """
 
 def mean_variance(what):
@@ -128,3 +131,52 @@ def reference(bucket_params):
 	(mean, variance) = mean_variance(valid)
 	covar = sum(map(lambda par: par.shape() * par.scale(), valid)) * 1.0 / len(valid)
 	return (mean, variance, covar)
+
+def distance_one(bucket_params, reference_params):
+	# First get a matrix of the reference parameters:
+	# | var(shape),		covar(sh,sc) |
+	# | covar(sh, sc),	var(scale)   |
+	m = [
+		[ reference_params[1].shape(), reference_params[2] ],
+		[ reference_params[2], reference_params[1].scale() ]
+	]
+	# Compute inverse of m (using determinant)
+	# FIXME: This determinant is taken from the dns-anomaly project. But it looks
+	# somewhat different than the usual determinant - shouldn't there be - instead
+	# of +?
+	det = m[0][0] * m[1][1] + m[1][0] * m[0][1]
+	(m[0][0], m[1][1]) = (m[1][1], m[0][0])
+	m[1][0] *= 1
+	m[0][1] *= 1
+	m = map(lambda l: map(lambda val: val / det, l), m)
+	# The per-part distance
+	dist = bucket_params - reference_params[0]
+	# (dist(shape), dist(scale)) * m * (dist(shape), dist(scale))^T
+	return (dist.shape() * m[0][0] + dist.scale() * m[1][0]) * dist.shape() + \
+		(dist.shape() * m[0][1] + dist.scale() * m[1][1]) * dist.scale()
+
+def distance(bucket_params, reference_params):
+	"""
+	Compute the mahalanobis distance between the bucket parameters and reference
+	parameters.
+	"""
+	return math.sqrt(sum(map(distance_one, bucket_params, reference_params)) / len(bucket_params))
+
+def anomalies(buckets, treshold):
+	"""
+	Given the data of buckets in one hash, find anomalous buckets. Each bucket is represented
+	by a count of packets in each time slot.
+
+	An anomalous bucket is such whose distance (mahalonobis distance, some statistical magic)
+	is bigger than treshold.
+	"""
+	# Get the statistical parameters for each bucket. Each parameter is a GammaParams object
+	# for each aggregation level.
+	bucket_params = map(params, buckets)
+	# Now, we want the rerefence mean/variance/covariance for each aggregation level. We
+	# first transpose the array, generate the refernces and transpose back.
+	ref_means = zip(*map(reference, zip(*bucket_params)))
+	# Take each item from the buckets, compute the distance and compare it with the treshold.
+	# Take the index and anomality of each. Then filter based on the anomality and drop
+	# the anomality.
+	return map(lambda (index, anomality): anomality, filter(lambda (index, anomality): anomality, map(lambda index, bucket: (index, distance(bucket, ref_means) > treshold), zip(bucket_params, range(0, len(bucket_params))))))
