@@ -2,9 +2,11 @@ from twisted.internet.task import LoopingCall
 from twisted.internet import reactor
 import time
 import struct
-import plugin
 import socket
 import pprint
+
+import plugin
+import stats
 
 class BucketsPlugin(plugin.Plugin):
 	"""
@@ -19,19 +21,20 @@ class BucketsPlugin(plugin.Plugin):
 		self.__history_size = 2
 		self.__config_version = 1
 		self.__max_key_count = 1000
-		self.__granularity = 2000 # A timeslot of 2 seconds, for testing
+		self.__granularity = 500 # A timeslot of 2 seconds, for testing
 		self.__max_timeslots = 30 # Twice as much as needed, just to make sure
 		# Just an arbitrary number
 		self.__seed = 872945724987
 		self.__downloader = LoopingCall(self.__init_download)
 		# FIXME: Adjust the time to something reasonable after the testing.
-		self.__downloader.start(30, False)
+		self.__downloader.start(5, False)
 		# We are just gathering data between these two time stamps
 		self.__lower_time = 0
 		self.__upper_time = 0
 		self.__gather_history = []
 		self.__gather_history_max = 3
-		self.__process_delay = 5
+		self.__process_delay = 1
+		self.__treshold = 1.8
 
 	def __gather_start(self, now):
 		"""
@@ -61,6 +64,8 @@ class BucketsPlugin(plugin.Plugin):
 				range(0, self.__bucket_count)),
 			range(0, self.__hash_count))
 			pprint.pprint(batch, width=150)
+			anomalies = map(lambda bucket: stats.anomalies(bucket, self.__treshold), batch)
+			print("Anomalies: " + str(anomalies))
 		# Clean old history.
 		if len(self.__gather_history) > self.__gather_history_max:
 			self.__gather_history = self.__gather_history[1:]

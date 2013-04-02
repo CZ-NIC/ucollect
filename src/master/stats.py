@@ -130,7 +130,7 @@ def reference(bucket_params):
 	# The averages
 	(mean, variance) = mean_variance(valid)
 	covar = sum(map(lambda par: par.shape() * par.scale(), valid)) * 1.0 / len(valid)
-	return (mean, variance, covar)
+	return (mean, variance, covar - mean.shape() * mean.scale())
 
 def distance_one(bucket_params, reference_params):
 	# First get a matrix of the reference parameters:
@@ -141,16 +141,21 @@ def distance_one(bucket_params, reference_params):
 		[ reference_params[2], reference_params[1].scale() ]
 	]
 	# Compute inverse of m (using determinant)
-	# FIXME: This determinant is taken from the dns-anomaly project. But it looks
-	# somewhat different than the usual determinant - shouldn't there be - instead
-	# of +?
-	det = m[0][0] * m[1][1] + m[1][0] * m[0][1]
+	det = m[0][0] * m[1][1] - m[1][0] * m[0][1]
+	if not det:
+		# If things are too similar, it may turn out the matrix is singular :-(.
+		return 0;
 	(m[0][0], m[1][1]) = (m[1][1], m[0][0])
-	m[1][0] *= 1
-	m[0][1] *= 1
+	# Not swapping the 0-1 with 1-0, they are the same
+	m[1][0] *= -1
+	m[0][1] *= -1
 	m = map(lambda l: map(lambda val: val / det, l), m)
 	# The per-part distance
 	dist = bucket_params - reference_params[0]
+	if not dist:
+		# If some of the parameters are invalid (for example because the whole
+		# bucket is zeroes), we just consider it OK and skip it.
+		return 0
 	# (dist(shape), dist(scale)) * m * (dist(shape), dist(scale))^T
 	return (dist.shape() * m[0][0] + dist.scale() * m[1][0]) * dist.shape() + \
 		(dist.shape() * m[0][1] + dist.scale() * m[1][1]) * dist.scale()
@@ -174,9 +179,9 @@ def anomalies(buckets, treshold):
 	# for each aggregation level.
 	bucket_params = map(params, buckets)
 	# Now, we want the rerefence mean/variance/covariance for each aggregation level. We
-	# first transpose the array, generate the refernces and transpose back.
-	ref_means = zip(*map(reference, zip(*bucket_params)))
+	# first transpose the array and generate the refernces.
+	ref_means = map(reference, zip(*bucket_params))
 	# Take each item from the buckets, compute the distance and compare it with the treshold.
 	# Take the index and anomality of each. Then filter based on the anomality and drop
 	# the anomality.
-	return map(lambda (index, anomality): anomality, filter(lambda (index, anomality): anomality, map(lambda index, bucket: (index, distance(bucket, ref_means) > treshold), zip(bucket_params, range(0, len(bucket_params))))))
+	return map(lambda (index, anomality): index, filter(lambda (index, anomality): anomality, map(lambda bucket, index: (index, distance(bucket, ref_means) > treshold), bucket_params, range(0, len(bucket_params)))))
