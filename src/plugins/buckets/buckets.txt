@@ -226,3 +226,32 @@ This is needed to prevent the analyzer to eat all available memory,
 while it should happen only rarely with usual use, since the limit
 would be large enough and users usually communicate with only few end
 points.
+
+The analysis
+------------
+
+This is a simplified version of the server does to find anomalies. See
+the code for exact implementation.
+
+We consider data of each hash function independently.
+
+First, it aggregates data from all the client answers in the
+generation, by summing the clients together. This simulates the
+situation if we gathered all the data at one point, not at many
+clients.
+
+We then concatenate the buckets with few older generations stored in
+the server, to produce longer interval.
+
+Then we form aggregation levels of the data. We group (sum) data in
+pairs of adjoining time slots, then quadruples, groups of 8, etc.
+
+In each aggregation level, we claim each bucket is a separate random
+variable with several samples and compute the parameters of gamma
+distribution on it. Then we compute ``average'' gamma parameters of
+all the buckets. Here, average means mean and variance.
+
+Then, we take all the aggregation levels together. We compute a
+distance of the list of parameters of each bucket from the list of
+average parameters. If that distance is too large, we say the bucket
+is anomalous.
