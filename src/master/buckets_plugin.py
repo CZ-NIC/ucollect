@@ -20,13 +20,13 @@ class BucketsPlugin(plugin.Plugin):
 		self.__history_size = 2
 		self.__config_version = 1
 		self.__max_key_count = 1000
-		self.__granularity = 500 # A timeslot of 2 seconds, for testing
+		self.__granularity = 2000 # A timeslot of 2 seconds, for testing
 		self.__max_timeslots = 30 # Twice as much as needed, just to make sure
 		# Just an arbitrary number
 		self.__seed = 872945724987
 		self.__downloader = LoopingCall(self.__init_download)
 		# FIXME: Adjust the time to something reasonable after the testing.
-		self.__downloader.start(5, False)
+		self.__downloader.start(15, False)
 		# We are just gathering data between these two time stamps
 		self.__lower_time = 0
 		self.__upper_time = 0
@@ -53,6 +53,7 @@ class BucketsPlugin(plugin.Plugin):
 		Process the gathered data.
 		"""
 		self.__gather_history.append(self.__gather_counts)
+		cindex = 0
 		for crit in self.__criteria:
 			# Extract the relevant batches
 			history = map(lambda batch: batch[crit], self.__gather_history)
@@ -63,7 +64,25 @@ class BucketsPlugin(plugin.Plugin):
 				range(0, self.__bucket_count)),
 			range(0, self.__hash_count))
 			anomalies = map(lambda bucket: stats.anomalies(bucket, self.__treshold), batch)
-			print("Anomalies: " + str(anomalies))
+			# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
+			print("Anomalous indices: " + str(anomalies))
+			examine = [cindex, cindex] # TODO: We'll need some tracking of IDs once we aggregate the answers of keys together.
+			do_send = True
+			for an in anomalies:
+				if not an:
+					# If there's no anomaly in at least one bucket, we would get nothing back anyway
+					do_send = False
+					break
+				examine.append(len(an))
+				examine.extend(an)
+			# The lower_time is the timestamp/ID of this batch. Or, with the clients that are connected
+			# for the time of the batch at least.
+			# We could try asking for the older ones too (we have them in local history).
+			if do_send:
+				message = struct.pack('!Q' + str(len(examine)) + 'L', self.__lower_time, *examine)
+				# Send it to all the clients.
+				self.broadcast('K' + message)
+			cindex += 1
 		# Clean old history.
 		if len(self.__gather_history) > self.__gather_history_max:
 			self.__gather_history = self.__gather_history[1:]
@@ -92,8 +111,7 @@ class BucketsPlugin(plugin.Plugin):
 				local = deserialized[:self.__bucket_count * self.__hash_count * timeslots]
 				deserialized = deserialized[self.__bucket_count * self.__hash_count * timeslots:]
 				total = sum(local)
-				print("Total " + str(total / self.__hash_count))
-				examine = [criterion, criterion]
+				#print("Total " + str(total / self.__hash_count))
 				criterion += 1
 				tslot = 0
 				lnum = 0
@@ -101,29 +119,16 @@ class BucketsPlugin(plugin.Plugin):
 				tslot_data = []
 				while local:
 					line = local[:self.__bucket_count]
-					i = 0
-					maxval = 0
-					maxindex = 0
-					for v in line:
-						if v > maxval:
-							maxindex = i
-							maxval = v
-						i += 1
-					print(line)
+					#print(line)
 					tslot_data.append(line)
 					local = local[self.__bucket_count:]
-					if tslot == 0:
-						examine.extend([1, maxindex]) # One index in this hash
 					lnum += 1
 					if lnum % self.__hash_count == 0:
-						print('###############')
+						#print('###############')
 						tslot += 1
 						to_merge.append(tslot_data)
 						tslot_data = []
 				self.__merge(timestamp, crit, to_merge)
-				msg = struct.pack('!Q' + str(len(examine)) + 'L', timestamp, *examine)
-				# Ask for the keys to examine
-				self.send('K' + msg, client)
 		elif kind == 'K':
 			# Got keys from the plugin
 			(req_id,) = struct.unpack('!L', message[1:5])
