@@ -14,16 +14,19 @@ Each time a packet comes, we extract some interesting part (let's say
 an IP address) and hash it by each hash function. Then we increment
 the number in each of the buckets.
 
+After a short time, we start with new set of empty buckets (and keep
+the old ones for now).
+
 Once in a while, the server asks for the counts. We send the counts
 for the server to analyze them. The server aggregates the counts from
 several clients and keeps history of them. When it sees the counts
-don't look statistically right, it identifies the outstanding buckets
-(one or more buckets in each of the hash functions). It then asks the
-client for keys for the buckets.
+don't look statistically right, it identifies the outstanding bucket
+indices (one or more index in each of the hash functions). It then
+asks the client for keys for the keys.
 
-The client resets the count to 0 on each send of the counts, but it
-keeps one older snapshot, so it can answer the query for keys from
-server. When the query comes, it unifies keys for buckets in the same
+The client drops the buckets on each send of the counts, but it
+keeps few snapshots of the keys, so it can answer the query for keys from
+server. When the query comes, it unifies keys for indices in the same
 hash functions and intersects the hash functions. What is outstanding
 in each hash function is probably an anomaly. The set of keys is sent
 to the server.
@@ -79,6 +82,13 @@ config version::
 max_key_count::
   `uint32_t`. The maximum number of keys stored per one criterion and
   generation. This is to limit memory consumption.
+max_timeslots::
+  `uint32_t`. The maximum number of buckets for each index between two
+  server requests for counts. This is to cap the limit of memory used
+  by the collector. If more are needed, it stops collecting.
+time_granularity::
+  `uint32_t`. How often to switch to empty buckets. After collecting
+  for so many milliseconds, new buckets are started.
 List of criteria to use::
   Each one is single character, from the list below, specifying one
   criterion.
@@ -102,6 +112,11 @@ timestamp::
 config version::
   `uint32_t`. The version used by the client, for
   detecting inconsistencies on server.
+timeslots::
+  `uint32_t`. Number of time slots actually used. This is how many
+  counts will be transmitted for each index & hash. In case the client
+  stopped gathering because it run out of empty buckets (eg.
+  `max_timeslots` has been reached), this is 0 and no data is sent.
 The data of criteria::
   The criteria are listed in the same order as they were in the
   config, one by one.
@@ -113,17 +128,21 @@ overflow flag::
   criterion, this is set to non-zero. See below for details about the
   overflow.
 counts::
-  Bucket count * hash count `uint32_t`. Each hash is together.
-  If we had 4 buckets and 2 hashes, it would look like (the
+  Bucket timeslots * count * hash count `uint32_t`. Each hash is
+  together.  If we had 4 buckets and 2 hashes, it would look like (the
   parentheses are just for orientation):
 +
   (h1-b1, h1-b2, h1-b3, h1-b4), (h2-b1, h2-b2, h2-b3, h2-b4)
++
+Each of the items there is an array of `timeslots` uint32_t
+integers, representing the number of gathered in that bucket in each
+of the times.
 
 Sending the keys
 ~~~~~~~~~~~~~~~~
 
 When the server wants to know a set of keys for some identified
-buckets, it sends following message. All indices are 0-based:
+indices, it sends following message. All indices are 0-based:
 
 `K`::
   Single byte opcode.
@@ -144,7 +163,7 @@ indices of the buckets::
   hash and 2 in the second, it would look like this (parentheses again
   just for readability):
 +
-  (3, 1, 3, 3), (1, 2)
+  (3, 1, 3, 4), (1, 2)
 
 If the generation with requested timestamp isn't found, the client
 sends a message containing only `M` and the `req_id`.
