@@ -2,6 +2,9 @@ from twisted.internet.task import LoopingCall
 import twisted.internet.protocol
 import twisted.protocols.basic
 from protocol import extract_string
+import logging
+
+logger = logging.getLogger(name='client')
 
 class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 	"""
@@ -27,18 +30,19 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.sendString('P')
 
 	def connectionMade(self):
-		print("Connection made from " + str(self.__addr))
+		logger.info("Connection made from %s", self.cid())
 		self.__pinger = LoopingCall(self.__ping)
 		self.__pinger.start(5, False)
 		self.__plugins.register_client(self)
 
 	def connectionLost(self, reason):
-		print("Connection lost from " + str(self.__addr))
+		logger.info("Connection lost from %s", self.cid())
 		self.__pinger.stop()
 		self.__plugins.unregister_client(self)
 
 	def stringReceived(self, string):
 		(msg, params) = (string[0], string[1:])
+		logger.debug("Received from %s: %s", self.cid(), repr(string))
 		if msg == 'H':
 			pass # No info on 'H'ello yet
 		elif msg == 'P': # Ping. Answer pong.
@@ -50,7 +54,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__plugins.route_to_plugin(plugin, data, self.cid())
 			# TODO: Handle the possibility the plugin doesn't exist somehow.
 		else:
-			print("Unknown message " + msg)
+			logger.warn("Unknown message from client %s: %s", self.cid(), msg)
 
 	def cid(self):
 		"""

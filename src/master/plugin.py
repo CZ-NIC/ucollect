@@ -1,4 +1,7 @@
 from protocol import format_string
+import logging
+
+logger = logging.getLogger(name='plugin')
 
 class Plugin:
 	"""
@@ -48,12 +51,14 @@ class Plugin:
 		Broadcast a message from this plugin to all the connected
 		clients.
 		"""
+		logger.debug('Broadcasting message to all clients: %s', repr(message))
 		self.__plugins.broadcast(self.__routed_message(message))
 
 	def send(self, message, to):
 		"""
 		Send a message from this plugin to the client given by name.
 		"""
+		logger.debug('Sending message to %s: %s', to, repr(message))
 		self.__plugins.send(self.__routed_message(message), to)
 
 	def __routed_message(self, message):
@@ -72,12 +77,14 @@ class Plugins:
 		"""
 		Add a plugin to be used.
 		"""
+		logger.info('New plugin %s', name)
 		self.__plugins[name] = plugin
 
 	def unregister_plugin(self, name):
 		"""
 		Remove a plugin.
 		"""
+		logger.info('Remove plugin %s', name)
 		del self.__plugins[name]
 
 	def register_client(self, client):
