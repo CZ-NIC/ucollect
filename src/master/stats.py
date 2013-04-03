@@ -127,6 +127,8 @@ def reference(bucket_params):
 	"""
 	# Skip the invalid ones (eg. buckets with all zeroes)
 	valid = filter(None, bucket_params)
+	if not valid:
+		return (GammaParams([]), GammaParams([]), 0)
 	# The averages
 	(mean, variance) = mean_variance(valid)
 	covar = sum(map(lambda par: par.shape() * par.scale(), valid)) * 1.0 / len(valid)
@@ -136,6 +138,9 @@ def distance_one(bucket_params, reference_params):
 	# First get a matrix of the reference parameters:
 	# | var(shape),		covar(sh,sc) |
 	# | covar(sh, sc),	var(scale)   |
+	if not reference_params[0] or not reference_params[1]:
+		# Probably no data at all if these things are not valid
+		return 0
 	m = [
 		[ reference_params[1].shape(), reference_params[2] ],
 		[ reference_params[2], reference_params[1].scale() ]
@@ -144,7 +149,7 @@ def distance_one(bucket_params, reference_params):
 	det = m[0][0] * m[1][1] - m[1][0] * m[0][1]
 	if not det:
 		# If things are too similar, it may turn out the matrix is singular :-(.
-		return 0;
+		return 0
 	(m[0][0], m[1][1]) = (m[1][1], m[0][0])
 	# Not swapping the 0-1 with 1-0, they are the same
 	m[1][0] *= -1

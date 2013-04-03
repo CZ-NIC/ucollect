@@ -3,7 +3,6 @@ from twisted.internet import reactor
 import time
 import struct
 import socket
-import pprint
 
 import plugin
 import stats
@@ -63,7 +62,6 @@ class BucketsPlugin(plugin.Plugin):
 					reduce(lambda a, b: a + b, map(lambda hist: hist[hnum][bnum], history)),
 				range(0, self.__bucket_count)),
 			range(0, self.__hash_count))
-			pprint.pprint(batch, width=150)
 			anomalies = map(lambda bucket: stats.anomalies(bucket, self.__treshold), batch)
 			print("Anomalies: " + str(anomalies))
 		# Clean old history.
