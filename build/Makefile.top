@@ -108,6 +108,24 @@ $(O)/$(1).html: $(O)/docs/$$(notdir $(1)).html
 
 endef
 
+define REGISTER_SCRIPT
+
+ifneq (,$(findstring ^$(RESTRICT),^$(1)))
+TARGETS += $(O)/$(1)
+endif
+
+$(O)/$(1): $(O)/bin/$$(notdir $(1))
+	$(M) LN $$@
+	$(Q)mkdir -p $$(dir $(O)/$(1))
+	$(Q)ln -sf $$(abspath $$<) $$@
+
+$(O)/bin/$$(notdir $(1)): $$(dir $(1))/$$($$(notdir $(1))_SOURCE)
+	$(M) LN $$@
+	$(Q)mkdir -p $(O)/bin/
+	$(Q)ln -sf $$(abspath $$<) $$@
+
+endef
+
 # Generic rules to compile and link
 $(O)/.objs/%.o: $(S)/%.c
 	$(M) CC $@
