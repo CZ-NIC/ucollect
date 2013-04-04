@@ -3,9 +3,12 @@ from twisted.internet import reactor
 import time
 import struct
 import socket
+import logging
 
 import plugin
 import stats
+
+logger = logging.getLogger(name='buckets')
 
 class BucketsPlugin(plugin.Plugin):
 	"""
@@ -54,7 +57,12 @@ class BucketsPlugin(plugin.Plugin):
 		"""
 		self.__gather_history.append(self.__gather_counts)
 		cindex = 0
+		if not self.__lower_time:
+			# We are not yet fully initialized and filled up (for example, the lower_time is wrong, so
+			# we couldn't request the keys)
+			logger.info('Starting up, waiting for at least one more generation')
 		for crit in self.__criteria:
+			logger.info('Processing criterion %s', crit)
 			# Extract the relevant batches
 			history = map(lambda batch: batch[crit], self.__gather_history)
 			# Concatenate the batches together.
@@ -65,7 +73,7 @@ class BucketsPlugin(plugin.Plugin):
 			range(0, self.__hash_count))
 			anomalies = map(lambda bucket: stats.anomalies(bucket, self.__treshold), batch)
 			# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
-			print("Anomalous indices: " + str(anomalies))
+			logger.debug('Anomalous indices: %s', anomalies)
 			examine = [cindex, cindex] # TODO: We'll need some tracking of IDs once we aggregate the answers of keys together.
 			do_send = True
 			for an in anomalies:
@@ -79,9 +87,12 @@ class BucketsPlugin(plugin.Plugin):
 			# for the time of the batch at least.
 			# We could try asking for the older ones too (we have them in local history).
 			if do_send:
+				logger.debug('Asking for keys %s on criterion %s at %s', examine[2:], crit, self.__lower_time)
 				message = struct.pack('!Q' + str(len(examine)) + 'L', self.__lower_time, *examine)
 				# Send it to all the clients.
 				self.broadcast('K' + message)
+			else:
+				logger.debug('No anomaly found on criterion %s at %s', crit, self.__lower_time)
 			cindex += 1
 		# Clean old history.
 		if len(self.__gather_history) > self.__gather_history_max:
@@ -93,6 +104,7 @@ class BucketsPlugin(plugin.Plugin):
 	def message_from_client(self, message, client):
 		kind = message[0]
 		if kind == 'C':
+			logger.debug('Config %s for client %s at %s', self.__config_version, client, int(time.time()))
 			# It asks for config. Send some.
 			self.send('C' + self.__config(), client)
 		elif kind == 'G':
@@ -101,17 +113,19 @@ class BucketsPlugin(plugin.Plugin):
 			count = (len(message) - 17) / 4
 			deserialized = struct.unpack('!QLL' + str(count) + 'L', message[1:])
 			(timestamp, version, timeslots) = deserialized[:3]
-			print("Hash buckets from " + client + " since " + time.ctime(timestamp) + " on version " + str(version))
+			logger.debug('Recevied generation from %s (timestamp = %s)', client, timestamp)
+			if timeslots == 0:
+				logger.warn('Timeslot overflow on client %s and timestamp %s', client, timestamp)
+				return
 			deserialized = deserialized[3:]
 			criterion = 0
 			for crit in self.__criteria:
 				if deserialized[0]:
-					print("Overflow!")
+					logger.warn('Overflow on client %s and criterion %c at %s', client, crit, timestamp)
 				deserialized = deserialized[1:] # The overflow flag
 				local = deserialized[:self.__bucket_count * self.__hash_count * timeslots]
 				deserialized = deserialized[self.__bucket_count * self.__hash_count * timeslots:]
 				total = sum(local)
-				#print("Total " + str(total / self.__hash_count))
 				criterion += 1
 				tslot = 0
 				lnum = 0
@@ -119,12 +133,10 @@ class BucketsPlugin(plugin.Plugin):
 				tslot_data = []
 				while local:
 					line = local[:self.__bucket_count]
-					#print(line)
 					tslot_data.append(line)
 					local = local[self.__bucket_count:]
 					lnum += 1
 					if lnum % self.__hash_count == 0:
-						#print('###############')
 						tslot += 1
 						to_merge.append(tslot_data)
 						tslot_data = []
@@ -133,6 +145,7 @@ class BucketsPlugin(plugin.Plugin):
 			# Got keys from the plugin
 			(req_id,) = struct.unpack('!L', message[1:5])
 			message = message[5:]
+			logger.info('Received keys from %s', client)
 			print("Keys for ID " + str(req_id) + " on " + client)
 			while message:
 				addr = ''
@@ -147,7 +160,7 @@ class BucketsPlugin(plugin.Plugin):
 					message = message[17:]
 				print(addr + str(port))
 		else:
-			print("Unkown data from Buckets plugin: " + message)
+			logger.error('Unknown data from plugin %s: %s', client, repr(message))
 
 	def __config(self):
 		header = struct.pack('!2Q8L' + str(len(self.__criteria)) + 'c', self.__seed, int(time.time()), self.__bucket_count, self.__hash_count, len(self.__criteria), self.__history_size , self.__config_version, self.__max_key_count, self.__max_timeslots, self.__granularity, *self.__criteria)
@@ -158,6 +171,7 @@ class BucketsPlugin(plugin.Plugin):
 		Ask the clients to provide some data.
 		"""
 		now = int(time.time())
+		logger.info('Asking for generation, starting new one at %s', now)
 		self.__gather_start(now)
 		data = struct.pack('!Q', now)
 		self.broadcast('G' + data)
@@ -167,10 +181,10 @@ class BucketsPlugin(plugin.Plugin):
 		Merge data to the current set.
 		"""
 		if timestamp < self.__lower_time:
-			print("Too old data")
+			logger.warn('Too old data (from %s, expected at least %s)', timestamp, self.__lower_time)
 			return
 		if self.__upper_time <= timestamp:
-			print("Too new data") # Can that happen at all?
+			logger.warn('Too new data (from %s, expected at most %s)', timestamp, self.__upper_time)
 			return
 		gathered = self.__gather_counts[criterion]
 		# We have the data as [timeslot = [hash = [value in bucket]]] and want
@@ -190,6 +204,5 @@ class BucketsPlugin(plugin.Plugin):
 				gbucket[:0] = [0] * (mlen - len(gbucket))
 				nbucket[:0] = [0] * (mlen - len(nbucket))
 				assert(len(gbucket) == len(nbucket) and len(gbucket) == mlen)
-
 				for i in range(0, len(gbucket)):
 					gbucket[i] += nbucket[i]
