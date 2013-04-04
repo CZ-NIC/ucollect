@@ -10,3 +10,4 @@ src/core/libucollect_core.*
 *.html
 *.pyc
 src/plugins/buckets/hash_test
+src/master/collectmaster
