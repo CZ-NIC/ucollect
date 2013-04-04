@@ -6,7 +6,7 @@ import socket
 import logging
 
 import plugin
-import stats
+import buckets.stats
 
 logger = logging.getLogger(name='buckets')
 
@@ -71,7 +71,7 @@ class BucketsPlugin(plugin.Plugin):
 					reduce(lambda a, b: a + b, map(lambda hist: hist[hnum][bnum], history)),
 				range(0, self.__bucket_count)),
 			range(0, self.__hash_count))
-			anomalies = map(lambda bucket: stats.anomalies(bucket, self.__treshold), batch)
+			anomalies = map(lambda bucket: buckets.stats.anomalies(bucket, self.__treshold), batch)
 			# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
 			logger.debug('Anomalous indices: %s', anomalies)
 			examine = [cindex, cindex] # TODO: We'll need some tracking of IDs once we aggregate the answers of keys together.

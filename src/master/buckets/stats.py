@@ -148,7 +148,7 @@ def distance_one(bucket_params, reference_params):
 	# Compute inverse of m (using determinant)
 	det = m[0][0] * m[1][1] - m[1][0] * m[0][1]
 	if not det:
-		logging.warn('Singular matrix for %s/%s', bucket_params, reference_params)
+		logger.warn('Singular matrix for %s/%s', bucket_params, reference_params)
 		# If things are too similar, it may turn out the matrix is singular :-(.
 		return 0
 	(m[0][0], m[1][1]) = (m[1][1], m[0][0])
@@ -159,7 +159,7 @@ def distance_one(bucket_params, reference_params):
 	# The per-part distance
 	dist = bucket_params - reference_params[0]
 	if not dist:
-		logging.debug('Skipping empty bucket')
+		logger.debug('Skipping empty bucket')
 		# If some of the parameters are invalid (for example because the whole
 		# bucket is zeroes), we just consider it OK and skip it.
 		return 0
@@ -173,10 +173,10 @@ def distance(bucket_params, reference_params):
 	parameters.
 	"""
 	if not reference_params:
-		logging.data('No data to have distance against')
+		logger.data('No data to have distance against')
 		return 0
 	if not reference_params[0][0] or not reference_params[0][1]:
-		logging.debug('Invalid reference parameters')
+		logger.debug('Invalid reference parameters')
 		# Probably no data at all if these things are not valid
 		return 0
 	return math.sqrt(sum(map(distance_one, bucket_params, reference_params)) / len(bucket_params))
