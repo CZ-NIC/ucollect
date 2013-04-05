@@ -6,7 +6,7 @@ import socket
 import logging
 
 import plugin
-import buckets.stats
+import buckets.group
 
 logger = logging.getLogger(name='buckets')
 
@@ -33,10 +33,12 @@ class BucketsPlugin(plugin.Plugin):
 		# We are just gathering data between these two time stamps
 		self.__lower_time = 0
 		self.__upper_time = 0
-		self.__gather_history = []
 		self.__gather_history_max = 3
 		self.__process_delay = 1
 		self.__treshold = 1.8
+		self.__groups = {}
+		for crit in self.__criteria:
+			self.__groups[crit] = buckets.group.Group(hash_count=self.__hash_count, bucket_count=self.__bucket_count, window_backlog=self.__gather_history_max, treshold=self.__treshold)
 
 	def __gather_start(self, now):
 		"""
@@ -46,36 +48,24 @@ class BucketsPlugin(plugin.Plugin):
 		self.__lower_time = self.__upper_time
 		self.__upper_time = now
 		# Provide empty data
-		self.__gather_counts = {}
-		for crit in self.__criteria:
-			self.__gather_counts[crit] = map(lambda hnum: map(lambda bnum: [], range(0, self.__bucket_count)), range(0, self.__hash_count))
 		reactor.callLater(self.__process_delay, self.__process)
 
 	def __process(self):
 		"""
 		Process the gathered data.
 		"""
-		self.__gather_history.append(self.__gather_counts)
-		cindex = 0
 		if not self.__lower_time:
 			# We are not yet fully initialized and filled up (for example, the lower_time is wrong, so
 			# we couldn't request the keys)
 			logger.info('Starting up, waiting for at least one more generation')
+		cindex = 0
 		for crit in self.__criteria:
 			logger.info('Processing criterion %s', crit)
-			# Extract the relevant batches
-			history = map(lambda batch: batch[crit], self.__gather_history)
-			# Concatenate the batches together.
-			batch = map(lambda hnum:
-				map(lambda bnum:
-					reduce(lambda a, b: a + b, map(lambda hist: hist[hnum][bnum], history)),
-				range(0, self.__bucket_count)),
-			range(0, self.__hash_count))
-			anomalies = map(lambda bucket: buckets.stats.anomalies(bucket, self.__treshold), batch)
+			anomalies = self.__groups[crit].anomalies()
 			# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
 			logger.debug('Anomalous indices: %s', anomalies)
 			examine = [cindex, cindex] # TODO: We'll need some tracking of IDs once we aggregate the answers of keys together.
-			do_send = True
+			do_send = self.__lower_time
 			for an in anomalies:
 				if not an:
 					# If there's no anomaly in at least one bucket, we would get nothing back anyway
@@ -92,11 +82,8 @@ class BucketsPlugin(plugin.Plugin):
 				# Send it to all the clients.
 				self.broadcast('K' + message)
 			else:
-				logger.debug('No anomaly found on criterion %s at %s', crit, self.__lower_time)
+				logger.debug('No anomaly asked on criterion %s at %s', crit, self.__lower_time)
 			cindex += 1
-		# Clean old history.
-		if len(self.__gather_history) > self.__gather_history_max:
-			self.__gather_history = self.__gather_history[1:]
 
 	def name(self):
 		return "Buckets"
@@ -186,23 +173,4 @@ class BucketsPlugin(plugin.Plugin):
 		if self.__upper_time <= timestamp:
 			logger.warn('Too new data (from %s, expected at most %s)', timestamp, self.__upper_time)
 			return
-		gathered = self.__gather_counts[criterion]
-		# We have the data as [timeslot = [hash = [value in bucket]]] and want
-		# [hash = [bucket = [value in timeslot]]]. Transpose that.
-		new = map(lambda hnum:
-			map(lambda bnum:
-				map(lambda tslot: tslot[hnum][bnum], data),
-			range(0, self.__bucket_count)),
-		range(0, self.__hash_count))
-		assert(len(gathered) == len(new) and len(gathered) == self.__hash_count)
-		for (ghash, nhash) in zip(gathered, new):
-			assert(len(ghash) == len(nhash) and len(ghash) == self.__bucket_count)
-			for (gbucket, nbucket) in zip(ghash, nhash):
-				# Extend them so they are of the same length. As new clients start
-				# later, we extend with zeroes on the left side.
-				mlen = max(len(gbucket), len(nbucket))
-				gbucket[:0] = [0] * (mlen - len(gbucket))
-				nbucket[:0] = [0] * (mlen - len(nbucket))
-				assert(len(gbucket) == len(nbucket) and len(gbucket) == mlen)
-				for i in range(0, len(gbucket)):
-					gbucket[i] += nbucket[i]
+		self.__groups[criterion].merge(data)
