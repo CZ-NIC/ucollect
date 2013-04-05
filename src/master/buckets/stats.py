@@ -159,7 +159,7 @@ def distance_one(bucket_params, reference_params):
 	# The per-part distance
 	dist = bucket_params - reference_params[0]
 	if not dist:
-		logger.debug('Skipping empty bucket')
+		logger.trace('Skipping empty bucket')
 		# If some of the parameters are invalid (for example because the whole
 		# bucket is zeroes), we just consider it OK and skip it.
 		return 0

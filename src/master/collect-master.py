@@ -1,6 +1,7 @@
 #!/usr/bin/python
 from twisted.internet import reactor
 from twisted.internet.endpoints import TCP6ServerEndpoint
+import log_extra
 import logging
 from client import ClientFactory
 from plugin import Plugins

@@ -58,7 +58,7 @@ class Plugin:
 		"""
 		Send a message from this plugin to the client given by name.
 		"""
-		logger.debug('Sending message to %s: %s', to, repr(message))
+		logger.trace('Sending message to %s: %s', to, repr(message))
 		self.__plugins.send(self.__routed_message(message), to)
 
 	def __routed_message(self, message):

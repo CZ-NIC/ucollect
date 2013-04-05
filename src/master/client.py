@@ -42,7 +42,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 
 	def stringReceived(self, string):
 		(msg, params) = (string[0], string[1:])
-		logger.debug("Received from %s: %s", self.cid(), repr(string))
+		logger.trace("Received from %s: %s", self.cid(), repr(string))
 		if msg == 'H':
 			pass # No info on 'H'ello yet
 		elif msg == 'P': # Ping. Answer pong.
