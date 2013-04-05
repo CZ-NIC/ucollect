@@ -7,6 +7,7 @@ import logging
 
 import plugin
 import buckets.group
+import buckets.criterion
 
 logger = logging.getLogger(name='buckets')
 
@@ -131,21 +132,14 @@ class BucketsPlugin(plugin.Plugin):
 		elif kind == 'K':
 			# Got keys from the plugin
 			(req_id,) = struct.unpack('!L', message[1:5])
-			message = message[5:]
 			logger.info('Received keys from %s', client)
 			print("Keys for ID " + str(req_id) + " on " + client)
-			while message:
-				addr = ''
-				(port,) = struct.unpack('!H', message[:2])
-				message = message[2:]
-				if req_id == 0:
-					addr = "<unknown>:"
-					if message[0] == '\x04': # IPv4
-						addr = socket.inet_ntop(socket.AF_INET, message[1:5]) + ":"
-					elif message[0] == '\x06': # IPv6
-						addr = socket.inet_ntop(socket.AF_INET6, message[1:17]) + ":"
-					message = message[17:]
-				print(addr + str(port))
+			if req_id:
+				criterion = buckets.criterion.Port()
+			else:
+				criterion = buckets.criterion.AddressAndPort()
+			for k in criterion.decode_multiple(message[5:]):
+				print(k)
 		else:
 			logger.error('Unknown data from plugin %s: %s', client, repr(message))
 
