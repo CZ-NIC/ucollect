@@ -8,6 +8,7 @@ import logging
 import plugin
 import buckets.group
 import buckets.criterion
+import buckets.client
 
 logger = logging.getLogger(name='buckets')
 
@@ -40,6 +41,16 @@ class BucketsPlugin(plugin.Plugin):
 		self.__groups = {}
 		for crit in self.__criteria:
 			self.__groups[crit] = buckets.group.Group(hash_count=self.__hash_count, bucket_count=self.__bucket_count, window_backlog=self.__gather_history_max, treshold=self.__treshold)
+		self.__clients = {}
+
+	def client_connected(self, client):
+		name = client.cid()
+		self.__clients[name] = buckets.client.Client(name, ['/', '/singleton/'+name], lambda message: self.send(message, name))
+		# TODO: Groups
+
+	def client_disconnected(self, client):
+		# TODO: Groups
+		del self.__clients[client.cid()]
 
 	def __gather_start(self, now):
 		"""
@@ -65,7 +76,7 @@ class BucketsPlugin(plugin.Plugin):
 			anomalies = self.__groups[crit].anomalies()
 			# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
 			logger.debug('Anomalous indices: %s', anomalies)
-			examine = [cindex, cindex] # TODO: We'll need some tracking of IDs once we aggregate the answers of keys together.
+			examine = []
 			do_send = self.__lower_time
 			for an in anomalies:
 				if not an:
@@ -78,10 +89,24 @@ class BucketsPlugin(plugin.Plugin):
 			# for the time of the batch at least.
 			# We could try asking for the older ones too (we have them in local history).
 			if do_send:
-				logger.debug('Asking for keys %s on criterion %s at %s', examine[2:], crit, self.__lower_time)
-				message = struct.pack('!Q' + str(len(examine)) + 'L', self.__lower_time, *examine)
+				logger.debug('Asking for keys %s on criterion %s at %s', examine, crit, self.__lower_time)
 				# Send it to all the clients.
-				self.broadcast('K' + message)
+				if cindex:
+					critparser = buckets.criterion.Port()
+				else:
+					critparser = buckets.criterion.AddressAndPort()
+				def ask_client(crit, client, parser):
+					# Separate function, so the variables are copied to the parameters.
+					# Otherwise, the value in both criterions were for the second one,
+					# as the function remembered the variable here, which got changed.
+					def callback(message, success):
+						if success:
+							print("Keys for %s on %s:" % (crit, client.name()))
+							for k in parser.decode_multiple(message):
+								print(k)
+					client.get_keys(cindex, self.__lower_time, examine, callback)
+				for client in self.__clients.values():
+					ask_client(crit, client, critparser)
 			else:
 				logger.debug('No anomaly asked on criterion %s at %s', crit, self.__lower_time)
 			cindex += 1
@@ -133,13 +158,7 @@ class BucketsPlugin(plugin.Plugin):
 			# Got keys from the plugin
 			(req_id,) = struct.unpack('!L', message[1:5])
 			logger.info('Received keys from %s', client)
-			print("Keys for ID " + str(req_id) + " on " + client)
-			if req_id:
-				criterion = buckets.criterion.Port()
-			else:
-				criterion = buckets.criterion.AddressAndPort()
-			for k in criterion.decode_multiple(message[5:]):
-				print(k)
+			buckets.client.manager.response(req_id, message[5:])
 		else:
 			logger.error('Unknown data from plugin %s: %s', client, repr(message))
 
@@ -156,6 +175,7 @@ class BucketsPlugin(plugin.Plugin):
 		self.__gather_start(now)
 		data = struct.pack('!Q', now)
 		self.broadcast('G' + data)
+		buckets.client.manager.trim()
 
 	def __merge(self, timestamp, criterion, data):
 		"""
