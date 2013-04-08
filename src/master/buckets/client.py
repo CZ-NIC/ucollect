@@ -27,13 +27,19 @@ class RequestManager:
 		for k in to_del:
 			del self.__requests[k]
 
-	def response(self, rid, data):
+	def __route(self, rid, data, success):
 		if rid in self.__requests:
 			# Call the callback
-			self.__requests[rid][1](data, True)
+			self.__requests[rid][1](data, success)
 			del self.__requests[rid]
 		else:
 			logging.warn("Response for unknown request %s received, ignoring", rid)
+
+	def response(self, rid, data):
+		self.__route(rid, data, True)
+
+	def missing(self, rid):
+		self.__route(rid, None, False)
 
 manager = RequestManager()
 

@@ -70,6 +70,7 @@ class BucketsPlugin(plugin.Plugin):
 			# We are not yet fully initialized and filled up (for example, the lower_time is wrong, so
 			# we couldn't request the keys)
 			logger.info('Starting up, waiting for at least one more generation')
+		generation = self.__lower_time
 		cindex = 0
 		for crit in self.__criteria:
 			logger.info('Processing criterion %s', crit.code())
@@ -77,7 +78,7 @@ class BucketsPlugin(plugin.Plugin):
 			# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
 			logger.debug('Anomalous indices: %s', anomalies)
 			examine = []
-			do_send = self.__lower_time
+			do_send = generation
 			for an in anomalies:
 				if not an:
 					# If there's no anomaly in at least one bucket, we would get nothing back anyway
@@ -89,7 +90,7 @@ class BucketsPlugin(plugin.Plugin):
 			# for the time of the batch at least.
 			# We could try asking for the older ones too (we have them in local history).
 			if do_send:
-				logger.debug('Asking for keys %s on criterion %s at %s', examine, crit.code(), self.__lower_time)
+				logger.debug('Asking for keys %s on criterion %s at %s', examine, crit.code(), generation)
 				def ask_client(criterion, client):
 					# Separate function, so the variables are copied to the parameters.
 					# Otherwise, the value in both criterions were for the second one,
@@ -99,12 +100,14 @@ class BucketsPlugin(plugin.Plugin):
 							print("Keys for %s on %s:" % (criterion.code(), client.name()))
 							for k in criterion.decode_multiple(message):
 								print(k)
-					client.get_keys(cindex, self.__lower_time, examine, callback)
+						else:
+							logger.warn("Client %s doesn't have keys for generation %s on criterion %s", client.name(), generation)
+					client.get_keys(cindex, generation, examine, callback)
 				# Send it to all the clients.
 				for client in self.__clients.values():
 					ask_client(crit, client)
 			else:
-				logger.debug('No anomaly asked on criterion %s at %s', crit.code, self.__lower_time)
+				logger.debug('No anomaly asked on criterion %s at %s', crit.code, generation)
 			cindex += 1
 
 	def name(self):
@@ -153,6 +156,9 @@ class BucketsPlugin(plugin.Plugin):
 			(req_id,) = struct.unpack('!L', message[1:5])
 			logger.info('Received keys from %s', client)
 			buckets.client.manager.response(req_id, message[5:])
+		elif kind == 'M':
+			(req_id,) = struct.unpack('!L', message[1:5])
+			buckets.client.manager.missing(req_id, message[5:])
 		else:
 			logger.error('Unknown data from plugin %s: %s', client, repr(message))
 
