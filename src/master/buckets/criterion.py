@@ -57,7 +57,7 @@ class Address(Criterion):
 		"""
 		The on-wire code of this criterion.
 		"""
-		return 'A'
+		return 'I'
 
 	def decode(self, data):
 		"""
