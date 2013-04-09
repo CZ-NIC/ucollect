@@ -95,11 +95,12 @@ static void initialize(struct context *context) {
 
 static void connected(struct context *context) {
 	/*
-	 * If we weren't connected on our initialization, ask for the
-	 * configuration now.
+	 * Ask for configuration on connect.
+	 *
+	 * Even if we are already configured, because it might have changed while we were
+	 * gone.
 	 */
-	if (!context->user_data->initialized)
-		uplink_plugin_send_message(context, "C", 1);
+	uplink_plugin_send_message(context, "C", 1);
 }
 
 /*
@@ -144,6 +145,12 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 	memcpy(header, data, length);
 	// Extract the elements of the header
 	struct user_data *u = context->user_data;
+	if (u->initialized && u->config_version != ntohl(header->config_version)) {
+		// We can't switch the configuration at runtime, so restart. But only
+		// if the configuration is different.
+		loop_plugin_reinit(context);
+		return;
+	}
 	u->bucket_count = ntohl(header->bucket_count);
 	u->hash_count = ntohl(header->hash_count);
 	u->criteria_count = ntohl(header->criteria_count);
@@ -351,9 +358,6 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	assert(length);
 	switch (*data) {
 		case 'C': // Good, we got configuration
-			if (context->user_data->initialized)
-				// We already have one and we are not able to replace it. Try again.
-				loop_plugin_reinit(context);
 			configure(context, data + 1, length - 1);
 			return;
 		case 'G': // We are asked to send the current generation and start a new one
