@@ -218,7 +218,7 @@ static void provide_generation(struct context *context, const uint8_t *data, siz
 	assert(length == sizeof timestamp);
 	memcpy(&timestamp, data, length); // Copy, to ensure correct alignment
 	timestamp = be64toh(timestamp);
-	ulog(LOG_DEBUG, "Old generation is %zu, new %zu\n", u->generations[u->current_generation].timestamp, timestamp);
+	ulog(LOG_DEBUG, "Old generation is %zu, new %zu\n", (size_t) u->generations[u->current_generation].timestamp, (size_t) timestamp);
 	// Compute the size of the message to send
 	bool global_overflow = false;
 	if (++ u->biggest_timeslot > u->max_timeslots) {
