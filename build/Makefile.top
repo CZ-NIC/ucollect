@@ -119,7 +119,7 @@ $(O)/$(1): $(O)/bin/$$(notdir $(1))
 	$(Q)mkdir -p $$(dir $(O)/$(1))
 	$(Q)ln -sf $$(abspath $$<) $$@
 
-$(O)/bin/$$(notdir $(1)): $$(dir $(1))/$$($$(notdir $(1))_SOURCE)
+$(O)/bin/$$(notdir $(1)): $(S)/$$(dir $(1))/$$($$(notdir $(1))_SOURCE)
 	$(M) LN $$@
 	$(Q)mkdir -p $(O)/bin/
 	$(Q)ln -sf $$(abspath $$<) $$@
