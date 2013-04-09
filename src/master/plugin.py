@@ -51,7 +51,7 @@ class Plugin:
 		Broadcast a message from this plugin to all the connected
 		clients.
 		"""
-		logger.debug('Broadcasting message to all clients: %s', repr(message))
+		logger.trace('Broadcasting message to all clients: %s', repr(message))
 		self.__plugins.broadcast(self.__routed_message(message))
 
 	def send(self, message, to):
