@@ -140,6 +140,8 @@ class BucketsPlugin(plugin.Plugin):
 			logger.debug('Config %s for client %s at %s', self.__config_version, client, int(time.time()))
 			# It asks for config. Send some.
 			self.send('C' + self.__config(), client)
+			# And that makes it active.
+			self.__clients[client].activate()
 		elif kind == 'G':
 			# Generation data.
 			# Parse it. Something less error-prone when confused config?

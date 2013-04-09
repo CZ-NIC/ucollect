@@ -82,10 +82,13 @@ class Client:
 		Create the client. Store the name and list of groups the client belongs to.
 
 		The send is a callable which may be used to send message to the remote client.
+
+		The client starts in inactive state, needs to be activated first to work.
 		"""
 		self.__name = name
 		self.__groups = groups
 		self.__send = send
+		self.__active = False
 
 	def groups(self):
 		"""
@@ -109,6 +112,11 @@ class Client:
 		- callback: Called with the (raw) response from client when it comes. See
 		  the RequestManager to the format of the callback.
 		"""
+		if not self.__active:
+			# We can't ask the client if not active yet, and it doesn't have the
+			# data anyway.
+			callback(None, False)
+			return
 		# TODO: Caching of the results
 		rid = manager.register(callback, time.time() + 60) # One minute as a timeout is enough
 		message = struct.pack('!QLL' + str(len(keys)) + 'L', generation, rid, criterion, *keys)
@@ -120,5 +128,10 @@ class Client:
 		the answer comes (seems impossible, but with event-based application, who
 		knows).
 		"""
-		pass
-		# TODO: Cancel callbacks/make sure they are not propagated anywhere. Can the callbacks happen now at all?
+		self.__active = False
+
+	def activate(self):
+		"""
+		Activate the client. Allows asking it for data.
+		"""
+		self.__active = True
