@@ -40,17 +40,34 @@ class BucketsPlugin(plugin.Plugin):
 		self.__treshold = 1.8
 		self.__groups = {}
 		for crit in self.__criteria:
-			self.__groups[crit.code()] = buckets.group.Group(hash_count=self.__hash_count, bucket_count=self.__bucket_count, window_backlog=self.__gather_history_max, treshold=self.__treshold)
+			self.__groups[crit.code()] = {}
 		self.__clients = {}
+		self.__gathering = False
 
 	def client_connected(self, client):
 		name = client.cid()
 		self.__clients[name] = buckets.client.Client(name, ['/', '/singleton/'+name], lambda message: self.send(message, name))
-		# TODO: Groups
+		# Add the client to all the groups in each criterion
+		for g in self.__clients[name].groups():
+			for crit in self.__criteria:
+				# Does the group exist, or create an empty one?
+				if g not in self.__groups[crit.code()]:
+					logger.debug("Creating group %s in criterion %s", g, crit.code());
+					self.__groups[crit.code()][g] = buckets.group.Group(hash_count=self.__hash_count, bucket_count=self.__bucket_count, window_backlog=self.__gather_history_max, treshold=self.__treshold)
+				self.__groups[crit.code()][g].add(name)
 
 	def client_disconnected(self, client):
-		# TODO: Groups
-		del self.__clients[client.cid()]
+		name = client.cid()
+		cobj = self.__clients[name]
+		# Remove the client from all the groups
+		for g in cobj.groups():
+			for crit in self.__criteria:
+				self.__groups[crit.code()][g].remove(name)
+				if not self.__groups[crit.code()][g].members():
+					# Remove an empty group
+					del self.__groups[crit.code()][g]
+		self.__clients[name].deactivate()
+		del self.__clients[name]
 
 	def __gather_start(self, now):
 		"""
@@ -59,6 +76,7 @@ class BucketsPlugin(plugin.Plugin):
 		# Move to the next window to gather
 		self.__lower_time = self.__upper_time
 		self.__upper_time = now
+		self.__gathering = True
 		# Provide empty data
 		reactor.callLater(self.__process_delay, self.__process)
 
@@ -66,6 +84,7 @@ class BucketsPlugin(plugin.Plugin):
 		"""
 		Process the gathered data.
 		"""
+		self.__gathering = False
 		if not self.__lower_time:
 			# We are not yet fully initialized and filled up (for example, the lower_time is wrong, so
 			# we couldn't request the keys)
@@ -73,41 +92,43 @@ class BucketsPlugin(plugin.Plugin):
 		generation = self.__lower_time
 		cindex = 0
 		for crit in self.__criteria:
-			logger.info('Processing criterion %s', crit.code())
-			anomalies = self.__groups[crit.code()].anomalies()
-			# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
-			logger.debug('Anomalous indices: %s', anomalies)
-			examine = []
-			do_send = generation
-			for an in anomalies:
-				if not an:
-					# If there's no anomaly in at least one bucket, we would get nothing back anyway
-					do_send = False
-					break
-				examine.append(len(an))
-				examine.extend(an)
-			# The lower_time is the timestamp/ID of this batch. Or, with the clients that are connected
-			# for the time of the batch at least.
-			# We could try asking for the older ones too (we have them in local history).
-			if do_send:
-				logger.debug('Asking for keys %s on criterion %s at %s', examine, crit.code(), generation)
-				def ask_client(criterion, client):
-					# Separate function, so the variables are copied to the parameters.
-					# Otherwise, the value in both criterions were for the second one,
-					# as the function remembered the variable here, which got changed.
-					def callback(message, success):
-						if success:
-							print("Keys for %s on %s:" % (criterion.code(), client.name()))
-							for k in criterion.decode_multiple(message):
-								print(k)
-						else:
-							logger.warn("Client %s doesn't have keys for generation %s on criterion %s", client.name(), generation)
-					client.get_keys(cindex, generation, examine, callback)
-				# Send it to all the clients.
-				for client in self.__clients.values():
-					ask_client(crit, client)
-			else:
-				logger.debug('No anomaly asked on criterion %s at %s', crit.code, generation)
+			for g in self.__groups[crit.code()]:
+				group = self.__groups[crit.code()][g]
+				logger.info('Processing criterion %s', crit.code())
+				anomalies = group.anomalies()
+				# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
+				logger.debug('Anomalous indices: %s', anomalies)
+				examine = []
+				do_send = generation
+				for an in anomalies:
+					if not an:
+						# If there's no anomaly in at least one bucket, we would get nothing back anyway
+						do_send = False
+						break
+					examine.append(len(an))
+					examine.extend(an)
+				# The lower_time is the timestamp/ID of this batch. Or, with the clients that are connected
+				# for the time of the batch at least.
+				# We could try asking for the older ones too (we have them in local history).
+				if do_send:
+					logger.debug('Asking for keys %s on criterion %s and group %s at %s', examine, crit.code(), g, generation)
+					def ask_client(criterion, client, g):
+						# Separate function, so the variables are copied to the parameters.
+						# Otherwise, the value in both criterions were for the second one,
+						# as the function remembered the variable here, which got changed.
+						def callback(message, success):
+							if success:
+								print("Keys for %s on %s@%s:" % (criterion.code(), client.name(), g))
+								for k in criterion.decode_multiple(message):
+									print(k)
+							else:
+								logger.warn("Client %s doesn't have keys for generation %s on criterion %s", client.name(), generation, criterion.code())
+						client.get_keys(cindex, generation, examine, callback)
+					# Send it to all the clients.
+					for client in group.members():
+						ask_client(crit, self.__clients[client], g)
+				else:
+					logger.debug('No anomaly asked on criterion %s and group %s at %s', crit.code(), g, generation)
 			cindex += 1
 
 	def name(self):
@@ -150,7 +171,7 @@ class BucketsPlugin(plugin.Plugin):
 						tslot += 1
 						to_merge.append(tslot_data)
 						tslot_data = []
-				self.__merge(timestamp, self.__groups[crit.code()], to_merge)
+				self.__merge(timestamp, map(lambda g: self.__groups[crit.code()][g], self.__clients[client].groups()), to_merge)
 		elif kind == 'K':
 			# Got keys from the plugin
 			(req_id,) = struct.unpack('!L', message[1:5])
@@ -158,7 +179,7 @@ class BucketsPlugin(plugin.Plugin):
 			buckets.client.manager.response(req_id, message[5:])
 		elif kind == 'M':
 			(req_id,) = struct.unpack('!L', message[1:5])
-			buckets.client.manager.missing(req_id, message[5:])
+			buckets.client.manager.missing(req_id)
 		else:
 			logger.error('Unknown data from plugin %s: %s', client, repr(message))
 
@@ -187,4 +208,8 @@ class BucketsPlugin(plugin.Plugin):
 		if self.__upper_time <= timestamp:
 			logger.warn('Too new data (from %s, expected at most %s)', timestamp, self.__upper_time)
 			return
-		cgroups.merge(data)
+		if not self.__gathering:
+			logger.warn('Not gathering now')
+			return
+		for g in cgroups:
+			g.merge(data)

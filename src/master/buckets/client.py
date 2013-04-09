@@ -64,3 +64,7 @@ class Client:
 		rid = manager.register(callback, time.time() + 60) # One minute as a timeout is enough
 		message = struct.pack('!QLL' + str(len(keys)) + 'L', generation, rid, criterion, *keys)
 		self.__send('K' + message)
+
+	def deactivate(self):
+		pass
+		# TODO: Cancel callbacks/make sure they are not propagated anywhere. Can the callbacks happen now at all?
