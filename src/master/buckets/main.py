@@ -43,6 +43,7 @@ class BucketsPlugin(plugin.Plugin):
 			self.__groups[crit.code()] = {}
 		self.__clients = {}
 		self.__gathering = False
+		self.__aggregating_keys = False
 
 	def client_connected(self, client):
 		name = client.cid()
@@ -80,6 +81,21 @@ class BucketsPlugin(plugin.Plugin):
 		# Provide empty data
 		reactor.callLater(self.__process_delay, self.__process)
 
+	def __process_keys(self):
+		"""
+		Extract the keys aggregated in groups and send them to storage.
+		"""
+		self.__aggregating_keys = False
+		for crit in self.__criteria:
+			for g in self.__groups[crit.code()]:
+				group = self.__groups[crit.code()][g]
+				(keys, count) = group.keys_extract()
+				if keys:
+					print("Anomalies for group %s and criterion %s" % (g, crit.code()))
+				for key in keys:
+					relevance = len(keys[key])
+					print("* %s (%s/%s)" % (key, relevance, count))
+
 	def __process(self):
 		"""
 		Process the gathered data.
@@ -91,6 +107,9 @@ class BucketsPlugin(plugin.Plugin):
 			logger.info('Starting up, waiting for at least one more generation')
 		generation = self.__lower_time
 		cindex = 0
+		# Start aggregating the keys
+		self.__aggregating_keys = True
+		reactor.callLater(self.__process_delay, self.__process_keys)
 		for crit in self.__criteria:
 			for g in self.__groups[crit.code()]:
 				group = self.__groups[crit.code()][g]
@@ -112,21 +131,22 @@ class BucketsPlugin(plugin.Plugin):
 				# We could try asking for the older ones too (we have them in local history).
 				if do_send:
 					logger.debug('Asking for keys %s on criterion %s and group %s at %s', examine, crit.code(), g, generation)
-					def ask_client(criterion, client, g):
+					def ask_client(criterion, client, group):
 						# Separate function, so the variables are copied to the parameters.
-						# Otherwise, the value in both criterions were for the second one,
+						# Otherwise, the value in all criteria were for the last one,
 						# as the function remembered the variable here, which got changed.
 						def callback(message, success):
 							if success:
-								print("Keys for %s on %s@%s:" % (criterion.code(), client.name(), g))
-								for k in criterion.decode_multiple(message):
-									print(k)
+								if self.__aggregating_keys:
+									group.keys_aggregate(client.name(), criterion.decode_multiple(message))
+								else:
+									logger.debug("Late reply for keys ignored")
 							else:
 								logger.warn("Client %s doesn't have keys for generation %s on criterion %s", client.name(), generation, criterion.code())
 						client.get_keys(cindex, generation, examine, callback)
 					# Send it to all the clients.
 					for client in group.members():
-						ask_client(crit, self.__clients[client], g)
+						ask_client(crit, self.__clients[client], group)
 				else:
 					logger.debug('No anomaly asked on criterion %s and group %s at %s', crit.code(), g, generation)
 			cindex += 1

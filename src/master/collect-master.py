@@ -8,7 +8,7 @@ from plugin import Plugins
 import count_plugin
 import buckets.main
 
-logging.basicConfig(level=log_extra.TRACE_LEVEL, format='%(name)s@%(module)s:%(lineno)s\t%(asctime)s\t%(levelname)s\t%(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(name)s@%(module)s:%(lineno)s\t%(asctime)s\t%(levelname)s\t%(message)s')
 plugins = Plugins()
 count_plugin.CountPlugin(plugins)
 buckets.main.BucketsPlugin(plugins)
