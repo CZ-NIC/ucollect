@@ -89,6 +89,7 @@ class Client:
 		self.__groups = groups
 		self.__send = send
 		self.__active = False
+		self.__cache = {}
 
 	def groups(self):
 		"""
@@ -117,10 +118,49 @@ class Client:
 			# data anyway.
 			callback(None, False)
 			return
-		# TODO: Caching of the results
-		rid = manager.register(callback, time.time() + 60) # One minute as a timeout is enough
-		message = struct.pack('!QLL' + str(len(keys)) + 'L', generation, rid, criterion, *keys)
-		self.__send('K' + message)
+		# Any of the levels in the cache dicts may be missing. Asking for exists in each
+		# is too long, if there's one missing, it'll raise a key error.
+		knames = str(keys)
+		try:
+			cached = self.__cache[generation][criterion][knames]
+		except KeyError:
+			logger.trace("Not in cache %s/%s/%s", generation, criterion, knames)
+			# Make sure the value is there, waiting with the current callback
+			if not generation in self.__cache:
+				# if there are too many generations already, erase the oldest one.
+				while len(self.__cache) > 3:
+					logger.trace("Dropping generation from cache")
+					del self.__cache[min(self.__cache.keys())]
+				self.__cache[generation] = {}
+			if not criterion in self.__cache[generation]:
+				self.__cache[generation][criterion] = {}
+			ccache = self.__cache[generation][criterion]
+			ccache[knames] = (False, [callback])
+			# This will be done once the data comes
+			def mycallback(data, success):
+				if not self.__active:
+					logger.warn("Data (%s/%s/%s) for inactive client %s received", generation, criterion, knames, client.name())
+					return
+				logger.trace("Executing callbacks for %s/%s/%s", generation, criterion, knames)
+				callbacks = ccache[knames][1]
+				ccache[knames] = (True, (data, success))
+				for c in callbacks:
+					c(data, success)
+			# And send the request
+			rid = manager.register(mycallback, time.time() + 60) # One minute as a timeout is enough
+			message = struct.pack('!QLL' + str(len(keys)) + 'L', generation, rid, criterion, *keys)
+			self.__send('K' + message)
+		else:
+			logger.trace("Found in cache %s/%s/%s", generation, criterion, knames)
+			# We get the cached data. Call the callback (outside of the try block), or
+			# add the callback to waiting list.
+			(received, data) = cached
+			if received:
+				logger.trace("Calling from cache")
+				(reply, success) = data
+				callback(reply, success)
+			else:
+				data.append(callback)
 
 	def deactivate(self):
 		"""
