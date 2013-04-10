@@ -132,9 +132,7 @@ class Client:
 					logger.trace("Dropping generation from cache")
 					del self.__cache[min(self.__cache.keys())]
 				self.__cache[generation] = {}
-			if not criterion in self.__cache[generation]:
-				self.__cache[generation][criterion] = {}
-			ccache = self.__cache[generation][criterion]
+			ccache = self.__cache[generation].setdefault(criterion, {})
 			ccache[knames] = (False, [callback])
 			# This will be done once the data comes
 			def mycallback(data, success):
