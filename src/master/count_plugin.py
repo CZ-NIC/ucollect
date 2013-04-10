@@ -3,6 +3,9 @@ from twisted.internet import reactor
 import struct
 import plugin
 import time
+import logging
+
+logger = logging.getLogger(name='count')
 
 class CountPlugin(plugin.Plugin):
 	"""
@@ -15,13 +18,17 @@ class CountPlugin(plugin.Plugin):
 		self.__downloader.start(10, False)
 		self.__data = {}
 		self.__stats = {}
+		self.__last = time.time()
+		self.__current = time.time()
 
 	def __init_download(self):
 		"""
 		Ask all the clients to send their statistics.
 		"""
 		# Send a request with current timestamp
-		self.broadcast(struct.pack('!Q', time.time()))
+		t = time.time()
+		self.__current = t
+		self.broadcast(struct.pack('!Q', t))
 		# Wait a short time, so they can send us some data and process it after that.
 		self.__data = {}
 		self.__stats = {}
@@ -66,6 +73,7 @@ class CountPlugin(plugin.Plugin):
 					sums[j] += v[j]
 				format(name, v)
 		format("Total\t\t\t", sums)
+		self.__last = self.__current
 
 	def name(self):
 		return 'Count'
@@ -73,6 +81,9 @@ class CountPlugin(plugin.Plugin):
 	def message_from_client(self, message, client):
 		count = len(message) / 4 - 2 # 2 for the timestamp
 		data = struct.unpack('!Q' + str(count) + 'L', message)
+		if (data[0] < self.__last):
+			logger.info("Data snapshot on %s too old, ignoring", client)
+			return
 		if_count = data[1]
 		self.__stats[client] = data[2:2 + 3 * if_count]
 		self.__data[client] = data[2 + 3 * if_count:]
