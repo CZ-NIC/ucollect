@@ -28,6 +28,8 @@ class Group:
 		self.__treshold = treshold
 		self.__history = []
 		self.__current = self.__empty_data()
+		self.__keys = {}
+		self.__key_submitted_cnt = 0
 
 	def __empty_data(self):
 		"""
@@ -98,3 +100,23 @@ class Group:
 			self.__history = self.__history[len(self.__history) - self.__window_backlog:]
 		self.__current = self.__empty_data()
 		return anomalies
+
+	def keys_extract(self):
+		"""
+		Extract the gathered keys (dict key->[clients returning this key]) and count of clients
+		submitting the keys. Reset the keys inside this group.
+
+		The order of clients is arbitrary.
+		"""
+		result = (self.__keys, self.__key_submitted_cnt)
+		self.__keys = {}
+		self.__key_submitted_cnt = 0
+		return result
+
+	def keys_aggregate(self, client, keys):
+		"""
+		Add list of keys received from the client to the current gathered set.
+		"""
+		for k in keys:
+			self.__keys.setdefault(k, []).append(client)
+		self.__key_submitted_cnt += 1
