@@ -1,0 +1,48 @@
+#!/bin/sh
+
+mysql -p123456 -u ucollect ucollect <<ENDSQL
+SET NAMES utf8;
+DROP TABLE IF EXISTS anomalies;
+DROP TABLE IF EXISTS anomaly_types;
+DROP TABLE IF EXISTS group_members;
+DROP TABLE IF EXISTS groups;
+DROP TABLE IF EXISTS clients;
+CREATE TABLE clients (
+	id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY NOT NULL,
+	name VARCHAR(50) UNIQUE KEY NOT NULL
+) ENGINE=InnoDB;
+CREATE TABLE groups (
+	id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY NOT NULL,
+	name VARCHAR(50) UNIQUE KEY NOT NULL
+) ENGINE=InnoDB;
+CREATE TABLE group_members (
+	client INT UNSIGNED NOT NULL,
+	in_group INT UNSIGNED NOT NULL,
+	UNIQUE (client, in_group),
+	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
+	FOREIGN KEY (in_group) REFERENCES groups(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+CREATE TABLE anomaly_types (
+	code CHAR PRIMARY KEY NOT NULL,
+	description VARCHAR(512) NOT NULL
+) ENGINE=InnoDB;
+CREATE TABLE anomalies (
+	from_group INT UNSIGNED NOT NULL,
+	type CHAR NOT NULL,
+	timestamp DATETIME NOT NULL,
+	value VARCHAR(50) NOT NULL,
+	relevance_count SMALLINT UNSIGNED NOT NULL,
+	relevance_of SMALLINT UNSIGNED NOT NULL,
+	FOREIGN KEY (from_group) REFERENCES groups(id),
+	FOREIGN KEY (type) REFERENCES anomaly_types(code),
+	KEY main (from_group, type, timestamp),
+	CHECK(relevance_count <= relevance_of)
+) ENGINE=InnoDB;
+INSERT INTO clients (name) VALUES ("::1"), ("2001:1488:ac14:1400:224:1dff:fec3:f602"), ("::ffff:172.20.20.196");
+INSERT INTO groups (name) VALUES ("all"), ("ruth"), ("dragonfly"), ("spider");
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "all";
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "ruth" AND clients.name = "::1";
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "dragonfly" AND clients.name = "2001:1488:ac14:1400:224:1dff:fec3:f602";
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "spider" AND clients.name = "::ffff:172.20.20.196";
+INSERT INTO anomaly_types (code, description) VALUES ("I", "Remote IP address"), ("P", "Remote port"), ("B", "Remote IP address and port")
+ENDSQL
