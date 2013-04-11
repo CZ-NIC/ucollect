@@ -18,15 +18,16 @@ class CountPlugin(plugin.Plugin):
 		self.__downloader.start(10, False)
 		self.__data = {}
 		self.__stats = {}
-		self.__last = time.time()
-		self.__current = time.time()
+		self.__last = int(time.time())
+		self.__current = int(time.time())
 
 	def __init_download(self):
 		"""
 		Ask all the clients to send their statistics.
 		"""
 		# Send a request with current timestamp
-		t = time.time()
+		t = int(time.time())
+		self.__last = self.__current
 		self.__current = t
 		self.broadcast(struct.pack('!Q', t))
 		# Wait a short time, so they can send us some data and process it after that.
@@ -73,7 +74,6 @@ class CountPlugin(plugin.Plugin):
 					sums[j] += v[j]
 				format(name, v)
 		format("Total\t\t\t", sums)
-		self.__last = self.__current
 
 	def name(self):
 		return 'Count'
@@ -82,7 +82,7 @@ class CountPlugin(plugin.Plugin):
 		count = len(message) / 4 - 2 # 2 for the timestamp
 		data = struct.unpack('!Q' + str(count) + 'L', message)
 		if (data[0] < self.__last):
-			logger.info("Data snapshot on %s too old, ignoring", client)
+			logger.info("Data snapshot on %s too old, ignoring (%s vs. %s)", client, data[0], self.__last)
 			return
 		if_count = data[1]
 		self.__stats[client] = data[2:2 + 3 * if_count]
