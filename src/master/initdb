@@ -2,15 +2,39 @@
 
 mysql -p123456 -u ucollect ucollect <<ENDSQL
 SET NAMES utf8;
+
+BEGIN;
+
+DROP TABLE IF EXISTS counts;
+DROP TABLE IF EXISTS count_types;
+DROP TABLE IF EXISTS count_times;
+DROP TABLE IF EXISTS activities;
+DROP TABLE IF EXISTS activity_types;
 DROP TABLE IF EXISTS anomalies;
 DROP TABLE IF EXISTS anomaly_types;
 DROP TABLE IF EXISTS group_members;
 DROP TABLE IF EXISTS groups;
 DROP TABLE IF EXISTS clients;
+
 CREATE TABLE clients (
 	id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY NOT NULL,
 	name VARCHAR(50) UNIQUE KEY NOT NULL
 ) ENGINE=InnoDB;
+CREATE TABLE activity_types (
+	id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY NOT NULL,
+	name VARCHAR(50) UNIQUE KEY NOT NULL
+) ENGINE=InnoDB;
+CREATE TABLE activities (
+	client INT UNSIGNED NOT NULL,
+	timestamp DATETIME NOT NULL,
+	activity SMALLINT UNSIGNED NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id),
+	FOREIGN KEY (activity) REFERENCES activity_types(id),
+	KEY client_activity (client, activity)
+) ENGINE=InnoDB;
+INSERT INTO clients (name) VALUES ("::1"), ("2001:1488:ac14:1400:224:1dff:fec3:f602"), ("::ffff:172.20.20.196");
+INSERT INTO activity_types (name) VALUES ("login"), ("logout"), ("buckets"), ("counts");
+
 CREATE TABLE groups (
 	id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY NOT NULL,
 	name VARCHAR(50) UNIQUE KEY NOT NULL
@@ -38,11 +62,46 @@ CREATE TABLE anomalies (
 	KEY main (from_group, type, timestamp),
 	CHECK(relevance_count <= relevance_of)
 ) ENGINE=InnoDB;
-INSERT INTO clients (name) VALUES ("::1"), ("2001:1488:ac14:1400:224:1dff:fec3:f602"), ("::ffff:172.20.20.196");
 INSERT INTO groups (name) VALUES ("all"), ("ruth"), ("dragonfly"), ("spider");
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "all";
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "ruth" AND clients.name = "::1";
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "dragonfly" AND clients.name = "2001:1488:ac14:1400:224:1dff:fec3:f602";
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "spider" AND clients.name = "::ffff:172.20.20.196";
-INSERT INTO anomaly_types (code, description) VALUES ("I", "Remote IP address"), ("P", "Remote port"), ("B", "Remote IP address and port")
+INSERT INTO anomaly_types (code, description) VALUES ("I", "Remote IP address"), ("P", "Remote port"), ("B", "Remote IP address and port");
+
+CREATE TABLE count_types (
+	id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY NOT NULL,
+	name VARCHAR(50) UNIQUE KEY NOT NULL,
+	description VARCHAR(512) NOT NULL
+);
+CREATE TABLE count_times (
+	timestamp DATETIME NOT NULL PRIMARY KEY,
+	client_count INT UNSIGNED NOT NULL
+) ENGINE=InnoDB;
+CREATE TABLE counts (
+	timestamp DATETIME NOT NULL,
+	type SMALLINT UNSIGNED NOT NULL,
+	count INT UNSIGNED NOT NULL,
+	size INT UNSIGNED NOT NULL,
+	FOREIGN KEY (timestamp) REFERENCES count_times(timestamp),
+	FOREIGN KEY (type) REFERENCES count_types(id),
+	UNIQUE (timestamp, type)
+) ENGINE=InnoDB;
+INSERT INTO count_types (name, description) VALUES
+	("All", "Any packet is included in this category"),
+	("IPv4", "Packets sent over the IPv4 protocol."),
+	("IPv6", "Packets sent over the IPv6 protocol."),
+	("In", "Packets sent over either IPv4 or IPv6 that have source address outside of the local network and destination inside."),
+	("Out", "Packets sent over either IPv4 or IPv6 that have source address inside of the local network and destination outside."),
+	("TCP", "Packets sent over IPv4/TCP and IPv6/TCP"),
+	("UDP", "Packets sent over IPv4/UDP and IPv6/UDP"),
+	("ICMP", "Both ICMP and ICMPv6 packets"),
+	("Low port", "TCP or UDP packets with the remote port <= 1024"),
+	("SYN", "TCP packets with the SYN flag set"),
+	("FIN", "TCP packets with the FIN flag set"),
+	("SYN+ACK", "TCP packets with both SYN and ACK flags set. This may be a good heuristics for number of created TCP connections."),
+	("ACK", "TCP packets with ACK flag set."),
+	("PUSH", "TCP packets with the PUSH flag set.");
+
+COMMIT;
 ENDSQL
