@@ -4,6 +4,7 @@ import time
 import struct
 import socket
 import logging
+import database
 
 import plugin
 import buckets.group
@@ -194,6 +195,7 @@ class BucketsPlugin(plugin.Plugin):
 						to_merge.append(tslot_data)
 						tslot_data = []
 				self.__merge(timestamp, map(lambda g: self.__groups[crit.code()][g], self.__clients[client].groups()), to_merge)
+			database.log_activity(client, "buckets")
 		elif kind == 'K':
 			# Got keys from the plugin
 			(req_id,) = struct.unpack('!L', message[1:5])

@@ -4,6 +4,7 @@ import struct
 import plugin
 import time
 import logging
+import database
 
 logger = logging.getLogger(name='count')
 
@@ -87,3 +88,4 @@ class CountPlugin(plugin.Plugin):
 		if_count = data[1]
 		self.__stats[client] = data[2:2 + 3 * if_count]
 		self.__data[client] = data[2 + 3 * if_count:]
+		database.log_activity(client, "counts")

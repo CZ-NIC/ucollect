@@ -1,0 +1,3 @@
+#!/bin/sh
+
+echo 'SELECT clients.name, activities.timestamp, activity_types.name FROM activities JOIN clients ON activities.client = clients.id JOIN activity_types ON activities.activity = activity_types.id ORDER BY timestamp;' | mysql -p123456 -u ucollect ucollect

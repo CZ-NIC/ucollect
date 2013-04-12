@@ -50,3 +50,10 @@ def transaction(reuse=True):
 	else:
 		return __CursorContext(__connection)
 
+def log_activity(client, activity):
+	"""
+	Log activity of a client. Pass name of the client (.cid()) and name
+	of the activity (eg. "login").
+	"""
+	with transaction() as t:
+		t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, NOW(), activity_types.id FROM clients JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))

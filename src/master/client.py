@@ -3,6 +3,7 @@ import twisted.internet.protocol
 import twisted.protocols.basic
 from protocol import extract_string
 import logging
+import database
 
 logger = logging.getLogger(name='client')
 
@@ -17,6 +18,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__plugins = plugins
 		self.__addr = addr
 		self.__pings_outstanding = 0
+		self.__logged_in = False
 
 	def __ping(self):
 		"""
@@ -31,6 +33,8 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 
 	def connectionMade(self):
 		logger.info("Connection made from %s", self.cid())
+		database.log_activity(self.cid(), "login")
+		self.__logged_in = True
 		self.__pinger = LoopingCall(self.__ping)
 		self.__pinger.start(5, False)
 		self.__plugins.register_client(self)
@@ -39,6 +43,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		logger.info("Connection lost from %s", self.cid())
 		self.__pinger.stop()
 		self.__plugins.unregister_client(self)
+		database.log_activity(self.cid(), "logout")
 
 	def stringReceived(self, string):
 		(msg, params) = (string[0], string[1:])
