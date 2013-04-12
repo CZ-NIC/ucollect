@@ -7,7 +7,7 @@ BEGIN;
 
 DROP TABLE IF EXISTS counts;
 DROP TABLE IF EXISTS count_types;
-DROP TABLE IF EXISTS count_times;
+DROP TABLE IF EXISTS count_snapshots;
 DROP TABLE IF EXISTS activities;
 DROP TABLE IF EXISTS activity_types;
 DROP TABLE IF EXISTS anomalies;
@@ -74,18 +74,21 @@ CREATE TABLE count_types (
 	name VARCHAR(50) UNIQUE KEY NOT NULL,
 	description VARCHAR(512) NOT NULL
 );
-CREATE TABLE count_times (
-	timestamp DATETIME NOT NULL PRIMARY KEY,
-	client_count INT UNSIGNED NOT NULL
+CREATE TABLE count_snapshots (
+	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	timestamp DATETIME NOT NULL,
+	client INT UNSIGNED NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id),
+	UNIQUE (timestamp, client)
 ) ENGINE=InnoDB;
 CREATE TABLE counts (
-	timestamp DATETIME NOT NULL,
+	snapshot INT UNSIGNED NOT NULL,
 	type SMALLINT UNSIGNED NOT NULL,
 	count INT UNSIGNED NOT NULL,
 	size INT UNSIGNED NOT NULL,
-	FOREIGN KEY (timestamp) REFERENCES count_times(timestamp),
+	FOREIGN KEY (snapshot) REFERENCES count_snapshots(id),
 	FOREIGN KEY (type) REFERENCES count_types(id),
-	UNIQUE (timestamp, type)
+	UNIQUE (snapshot, type)
 ) ENGINE=InnoDB;
 INSERT INTO count_types (name, description) VALUES
 	("All", "Any packet is included in this category"),

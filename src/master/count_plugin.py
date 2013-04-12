@@ -21,6 +21,10 @@ class CountPlugin(plugin.Plugin):
 		self.__stats = {}
 		self.__last = int(time.time())
 		self.__current = int(time.time())
+		with database.transaction() as t:
+			t.execute('SELECT name, id FROM count_types')
+			self.__names = dict(t.fetchall())
+		self.__name_order = ("All", "IPv4", "IPv6", "In", "Out", "TCP", "UDP", "ICMP", 'Low port', "SYN", "FIN", "SYN+ACK", "ACK", "PUSH")
 
 	def __init_download(self):
 		"""
@@ -37,44 +41,31 @@ class CountPlugin(plugin.Plugin):
 		reactor.callLater(5, self.__process)
 
 	def __process(self):
-		print("Information about " + str(len(self.__data)) + " clients")
-		names = ("Any\t", "IPv4\t", "IPv6\t", "In\t", "Out\t", "TCP\t", "UDP\t", "ICMP\t", 'Low port', "SYN\t", "FIN\t", "SYN+ACK\t", "ACK\t", "PUSH\t")
-		tcount = 0
-		tsize = 0
-		for i in range(0, len(names)):
-			count = sum(map(lambda d: d[2 * i], self.__data.values()))
-			size = sum(map(lambda d: d[2 * i + 1], self.__data.values()))
-			if i == 0:
-				if count == 0:
-					print("No packets")
-					return
-				else:
-					print("\t\t\t\tCount\t\t%\t\tSize\t\t%")
-					tcount = count
-					tsize = size
-			print(names[i] + "\t\t\t" + str(count) + "\t\t" + str(100 * count / tcount) + "\t\t" + str(size) + "\t\t" + str(100 * size / tsize))
-		sums = [0, 0, 0]
-		print("\t\t\t\tCaptured\t\tDropped\t\tLost in driver\t\tPercent lost")
-		def format(name, output):
-			try:
-				percent = 100 * (output[1] + output[2]) / output[0]
-				print(name + '\t' + str(output[0]) + '\t\t\t' + str(output[1]) + '\t\t\t' + str(output[2]) + '\t\t\t' + str(percent) + "%")
-			except ZeroDivisionError:
-				print(name + "\t---------------------------------------------------------------------------")
-		for stat in self.__stats:
-			value = self.__stats[stat]
-			i = 0
-			while value:
-				v = list(value[:3])
-				value = value[3:]
-				name = stat + '[' + str(i) + ']'
-				while len(name) < 24:
-					name += ' '
-				i += 1
-				for j in range(0, 3):
-					sums[j] += v[j]
-				format(name, v)
-		format("Total\t\t\t", sums)
+		if not self.__data:
+			return # No data to store.
+		logger.info('Storing count snapshot')
+		with database.transaction() as t:
+			# Store the timestamp here, so all the clients have the same value.
+			t.execute('SELECT NOW()')
+			(now,) = t.fetchone()
+			# FIXME
+			# It seems MySQL complains with insert ... select in some cases.
+			# So we do some insert-select-insert magic here. That is probably
+			# slower, but no idea how to help that.
+			t.execute('SELECT name, id FROM clients WHERE name IN (' + (','.join(['%s'] * len(self.__data))) + ')', self.__data.keys())
+			clients = dict(t.fetchall())
+			# Create a snapshot for each client
+			t.executemany('INSERT INTO count_snapshots (timestamp, client) VALUES(%s, %s)', map(lambda client: (now, client), clients.values()))
+			t.execute('SELECT client, id FROM count_snapshots WHERE timestamp = %s', (now,))
+			snapshots = dict(t.fetchall())
+			# Push all the data in
+			def clientdata(client):
+				snapshot = snapshots[clients[client]]
+				return map(lambda name, index: (snapshot, self.__names[name], self.__data[client][index * 2], self.__data[client][index * 2 + 1]), self.__name_order, range(0, len(self.__name_order)))
+			def join_clients(c1, c2):
+				c1.extend(c2)
+				return c1
+			t.executemany('INSERT INTO counts(snapshot, type, count, size) VALUES(%s, %s, %s, %s)', reduce(join_clients, map(clientdata, self.__data.keys())))
 
 	def name(self):
 		return 'Count'
