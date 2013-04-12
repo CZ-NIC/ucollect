@@ -45,10 +45,14 @@ class BucketsPlugin(plugin.Plugin):
 		self.__clients = {}
 		self.__gathering = False
 		self.__aggregating_keys = False
+		self.__have_keys = False
 
 	def client_connected(self, client):
 		name = client.cid()
-		self.__clients[name] = buckets.client.Client(name, ['/', '/singleton/'+name], lambda message: self.send(message, name))
+		with database.transaction() as t:
+			t.execute('SELECT groups.name FROM groups JOIN group_members ON groups.id = group_members.in_group JOIN clients ON group_members.client = clients.id WHERE clients.name = %s', (name,))
+			groups = map(lambda g: g[0], t.fetchall())
+		self.__clients[name] = buckets.client.Client(name, groups, lambda message: self.send(message, name))
 		# Add the client to all the groups in each criterion
 		for g in self.__clients[name].groups():
 			for crit in self.__criteria:
@@ -87,15 +91,23 @@ class BucketsPlugin(plugin.Plugin):
 		Extract the keys aggregated in groups and send them to storage.
 		"""
 		self.__aggregating_keys = False
-		for crit in self.__criteria:
-			for g in self.__groups[crit.code()]:
-				group = self.__groups[crit.code()][g]
-				(keys, count) = group.keys_extract()
-				if keys:
-					print("Anomalies for group %s and criterion %s" % (g, crit.code()))
-				for key in keys:
-					relevance = len(keys[key])
-					print("* %s (%s/%s)" % (key, relevance, count))
+		if not self.__have_keys:
+			return
+		logger.debug("Storing bucket keys")
+		with database.transaction() as t:
+			t.execute('SELECT NOW()')
+			(now,) = t.fetchone()
+			def aggregate(l1, l2):
+				l1.extend(l2)
+				return l1
+			def cdata(crit):
+				def gdata(gname):
+					group = self.__groups[crit][gname]
+					(keys, count) = group.keys_extract()
+					return map(lambda key: (crit, now, key, len(keys[key]), count, gname), keys.keys())
+				return reduce(aggregate, map(gdata, self.__groups[crit].keys()))
+			data = reduce(aggregate, map(cdata, self.__groups.keys()))
+			t.executemany('INSERT INTO anomalies(from_group, type, timestamp, value, relevance_count, relevance_of) SELECT groups.id, %s, %s, %s, %s, %s FROM groups WHERE groups.name = %s', data)
 
 	def __process(self):
 		"""
@@ -110,6 +122,7 @@ class BucketsPlugin(plugin.Plugin):
 		cindex = 0
 		# Start aggregating the keys
 		self.__aggregating_keys = True
+		self.__have_keys = False
 		reactor.callLater(self.__process_delay, self.__process_keys)
 		for crit in self.__criteria:
 			for g in self.__groups[crit.code()]:
@@ -201,6 +214,7 @@ class BucketsPlugin(plugin.Plugin):
 			(req_id,) = struct.unpack('!L', message[1:5])
 			logger.info('Received keys from %s', client)
 			buckets.client.manager.response(req_id, message[5:])
+			self.__have_keys = True
 		elif kind == 'M':
 			(req_id,) = struct.unpack('!L', message[1:5])
 			buckets.client.manager.missing(req_id)
