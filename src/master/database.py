@@ -1,4 +1,7 @@
 import MySQLdb
+import logging
+
+logger = logging.getLogger(name='database')
 
 class __CursorContext:
 	"""
@@ -10,6 +13,8 @@ class __CursorContext:
 		self.__depth = 0
 
 	def __enter__(self):
+		if not self.__depth:
+			logger.debug('Entering transaction %s', self)
 		self.__depth += 1
 		return self.__cursor
 
@@ -18,8 +23,10 @@ class __CursorContext:
 		if self.__depth:
 			return # Didn't exit all the contexts yet
 		if exc_type:
+			logger.debug('Rollback of transaction %s', self)
 			self.__connection.rollback()
 		else:
+			logger.debug('Commit of transaction %s', self)
 			self.__connection.commit()
 
 __connection = None
@@ -55,5 +62,6 @@ def log_activity(client, activity):
 	Log activity of a client. Pass name of the client (.cid()) and name
 	of the activity (eg. "login").
 	"""
+	logger.debug("Logging %s activity of %s", activity, client)
 	with transaction() as t:
 		t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, NOW(), activity_types.id FROM clients JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
