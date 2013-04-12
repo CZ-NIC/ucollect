@@ -33,19 +33,32 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 
 	def connectionMade(self):
 		logger.info("Connection made from %s", self.cid())
-		database.log_activity(self.cid(), "login")
+		with database.transaction() as t:
+			t.execute("SELECT id FROM clients WHERE name = %s", (self.cid(),))
+			result = t.fetchone()
+			if result:
+				logger.info("Client %s logged in with ID %s", self.cid(), result[0])
+			else:
+				logger.info("Client from address %s failed to log in", self.__addr)
+				# Keep the connection open, but idle. Stops the client from reconnecting
+				# too fast. It will first time out the connection, then it'll reconnect.
+				return
+			database.log_activity(self.cid(), "login")
 		self.__logged_in = True
 		self.__pinger = LoopingCall(self.__ping)
 		self.__pinger.start(5, False)
 		self.__plugins.register_client(self)
 
 	def connectionLost(self, reason):
-		logger.info("Connection lost from %s", self.cid())
-		self.__pinger.stop()
-		self.__plugins.unregister_client(self)
-		database.log_activity(self.cid(), "logout")
+		if self.__logged_in:
+			logger.info("Connection lost from %s", self.cid())
+			self.__pinger.stop()
+			self.__plugins.unregister_client(self)
+			database.log_activity(self.cid(), "logout")
 
 	def stringReceived(self, string):
+		if not self.__logged_in:
+			return
 		(msg, params) = (string[0], string[1:])
 		logger.trace("Received from %s: %s", self.cid(), repr(string))
 		if msg == 'H':
