@@ -7,11 +7,16 @@ class __CursorContext:
 	def __init__(self, connection):
 		self.__connection = connection
 		self.__cursor = connection.cursor()
+		self.__depth = 0
 
 	def __enter__(self):
+		self.__depth += 1
 		return self.__cursor
 
 	def __exit__(self, exc_type, exc_val, exc_tb):
+		self.__depth -= 1
+		if self.__depth:
+			return # Didn't exit all the contexts yet
 		if exc_type:
 			self.__connection.rollback()
 		else:
