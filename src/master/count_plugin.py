@@ -62,10 +62,14 @@ class CountPlugin(plugin.Plugin):
 			def clientdata(client):
 				snapshot = snapshots[clients[client]]
 				return map(lambda name, index: (snapshot, self.__names[name], self.__data[client][index * 2], self.__data[client][index * 2 + 1]), self.__name_order, range(0, len(self.__name_order)))
+			def clientcaptures(client):
+				snapshot = snapshots[clients[client]]
+				return map(lambda i: (snapshot, i, self.__stats[client][3 * i], self.__stats[client][3 * i + 1], self.__stats[client][3 * i + 2]), range(0, len(self.__stats[client]) / 3))
 			def join_clients(c1, c2):
 				c1.extend(c2)
 				return c1
 			t.executemany('INSERT INTO counts(snapshot, type, count, size) VALUES(%s, %s, %s, %s)', reduce(join_clients, map(clientdata, self.__data.keys())))
+			t.executemany('INSERT INTO capture_stats(snapshot, interface, captured, dropped, dropped_driver) VALUES(%s, %s, %s, %s, %s)', reduce(join_clients, map(clientcaptures, self.__stats.keys())))
 
 	def name(self):
 		return 'Count'

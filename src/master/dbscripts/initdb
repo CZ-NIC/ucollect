@@ -5,6 +5,7 @@ SET NAMES utf8;
 
 BEGIN;
 
+DROP TABLE IF EXISTS capture_stats;
 DROP TABLE IF EXISTS counts;
 DROP TABLE IF EXISTS count_types;
 DROP TABLE IF EXISTS count_snapshots;
@@ -89,6 +90,15 @@ CREATE TABLE counts (
 	FOREIGN KEY (snapshot) REFERENCES count_snapshots(id),
 	FOREIGN KEY (type) REFERENCES count_types(id),
 	UNIQUE (snapshot, type)
+) ENGINE=InnoDB;
+CREATE TABLE capture_stats (
+	snapshot INT UNSIGNED NOT NULL,
+	interface SMALLINT UNSIGNED NOT NULL,
+	captured INT UNSIGNED NOT NULL,
+	dropped INT UNSIGNED NOT NULL,
+	dropped_driver INT UNSIGNED NOT NULL,
+	FOREIGN KEY (snapshot) REFERENCES count_snapshots(id),
+	UNIQUE(snapshot, interface)
 ) ENGINE=InnoDB;
 INSERT INTO count_types (name, description) VALUES
 	("All", "Any packet is included in this category"),
