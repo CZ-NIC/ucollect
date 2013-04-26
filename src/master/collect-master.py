@@ -8,9 +8,19 @@ from plugin import Plugins
 import master_config
 import importlib
 
-loaded_plugins = {}
 
-logging.basicConfig(level=logging.DEBUG, format='%(name)s@%(module)s:%(lineno)s\t%(asctime)s\t%(levelname)s\t%(message)s')
+severity = master_config.get('log_severity')
+if severity == 'TRACE':
+	severity = log_extra.TRACE_LEVEL
+else:
+	severity = getattr(logging, severity)
+dest = master_config.get('log_file')
+if log_file == '-':
+	logging.basicConfig(level=severity, format=master_config.get('log_format'))
+else:
+	logging.basicConfig(level=severity, format=master_config.get('log_format'), filename=log_file)
+
+loaded_plugins = {}
 plugins = Plugins()
 for (plugin, config) in master_config.plugins().items():
 	(modulename, classname) = plugin.rsplit('.', 1)
