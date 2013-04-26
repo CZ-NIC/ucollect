@@ -4,11 +4,12 @@ import time
 import struct
 import socket
 import logging
-import database
+import importlib
+import re
 
+import database
 import plugin
 import buckets.group
-import buckets.criterion
 import buckets.client
 
 logger = logging.getLogger(name='buckets')
@@ -20,25 +21,31 @@ class BucketsPlugin(plugin.Plugin):
 	"""
 	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
-		self.__bucket_count = 13
-		self.__hash_count = 5
-		self.__criteria = [buckets.criterion.AddressAndPort(), buckets.criterion.Port(), buckets.criterion.Address()]
-		self.__history_size = 2
-		self.__config_version = 1
-		self.__max_key_count = 1000
-		self.__granularity = 2000 # A timeslot of 2 seconds, for testing
-		self.__max_timeslots = 30 # Twice as much as needed, just to make sure
+		self.__bucket_count = int(config['bucket_count'])
+		self.__hash_count = int(config['hash_count'])
+		def getCriterion(name):
+			(modulename, classname) = name.rsplit('.', 1)
+			module = importlib.import_module(modulename)
+			result = getattr(module, classname)()
+			logger.info('Loaded criterion %s from %s', result.code(), name)
+			return result
+		self.__criteria = map(getCriterion, re.split('\s+', config['criteria']))
+		self.__history_size = int(config['history_size'])
+		self.__config_version = int(config['config_version'])
+		self.__max_key_count = int(config['max_key_count'])
+		self.__granularity = int(float(config['granularity']) * 1000)
+		self.__max_timeslots = int(float(config['max_timeslots']))
 		# Just an arbitrary number
 		self.__seed = 872945724987
 		self.__downloader = LoopingCall(self.__init_download)
 		# FIXME: Adjust the time to something reasonable after the testing.
-		self.__downloader.start(15, False)
+		self.__downloader.start(int(config['interval']), False)
 		# We are just gathering data between these two time stamps
 		self.__lower_time = 0
 		self.__upper_time = 0
-		self.__gather_history_max = 3
-		self.__process_delay = 1
-		self.__treshold = 1.8
+		self.__gather_history_max = int(config['gather_history_max'])
+		self.__process_delay = int(config['aggregate_delay'])
+		self.__treshold = float(config['anomaly_threshold'])
 		self.__groups = {}
 		for crit in self.__criteria:
 			self.__groups[crit.code()] = {}
