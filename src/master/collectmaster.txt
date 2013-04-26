@@ -45,3 +45,17 @@ port::
   The TCP port to use for incoming `ucollect` connections. It listens
   on IPv6 wildcard address, if you need to restrict it to some
   interface or so, use firewall.
+log_severity::
+  The severity at which log. The values are (with growing severity):
+  - TRACE
+  - DEBUG
+  - INFO
+  - WARN
+  - ERROR
+  - CRITICAL
+log_format::
+  The format of log messages. Follows the format described at
+  http://docs.python.org/2/library/logging.html.
+log_file::
+  If set to `-`, it logs to standard error output. If it is something
+  else, it logs to the given file.
