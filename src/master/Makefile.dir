@@ -1,3 +1,12 @@
 SCRIPTS += src/master/collectmaster
 
 collectmaster_SOURCE = collect-master.py
+
+ifneq (,$(findstring ^$(RESTRICT),^src/master))
+clean: clean-master
+endif
+
+.PHONY: clean-master
+
+clean-master:
+	rm -f $(wildcard $(S)/src/master/*.pyc $(S)/src/master/*/*.pyc)
