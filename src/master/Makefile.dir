@@ -1,4 +1,5 @@
 SCRIPTS += src/master/collectmaster
+DOCS += src/master/collectmaster
 
 collectmaster_SOURCE = collect-master.py
 

@@ -1,0 +1,47 @@
+The collection master
+=====================
+
+The collection master (`collectmaster`) is the server that listens for
+the `ucollect` clients and gathers data from them, saving them to a
+database (currently mysql). It consists of a core and several plugins.
+Generally, there's a matching plugin for each plugin in `ucollect`.
+
+The core provides some basic features, like listening for the clients,
+logging and connecting to the database.
+
+Execution
+---------
+
+The server takes exactly one parameter, path to the configuration
+file.
+
+  ./collectmaster collect-master.conf
+
+Configuration
+-------------
+
+The configuration file is simple ini file (see
+http://docs.python.org/2/library/configparser.html, the
+`RawConfigParser`). There's one section for the core (called `main`)
+and then a section for each plugin.
+
+You can find a default configuration file in
+`src/master/collect-master.conf`.
+
+All the options are mandatory.
+
+The `main` section
+~~~~~~~~~~~~~~~~~~
+
+There are option to configure the core of the collection master.
+
+dbuser::
+  User to connect to the database.
+dbpasswd::
+  Password to authenticate to the database.
+db::
+  The database name to use.
+port::
+  The TCP port to use for incoming `ucollect` connections. It listens
+  on IPv6 wildcard address, if you need to restrict it to some
+  interface or so, use firewall.
