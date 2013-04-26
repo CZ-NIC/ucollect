@@ -1,5 +1,6 @@
 import MySQLdb
 import logging
+from master_config import get
 
 logger = logging.getLogger(name='database')
 
@@ -48,7 +49,7 @@ def transaction(reuse=True):
 	global __context
 	if __connection is None:
 		# TODO: Read from configuration. Hardcoded for now.
-		__connection = MySQLdb.connect(user='ucollect', db='ucollect', passwd='123456')
+		__connection = MySQLdb.connect(user=get('dbuser'), db=get('db'), passwd=get('dbpasswd'))
 
 	if reuse:
 		if __context is None:
