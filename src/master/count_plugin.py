@@ -15,8 +15,10 @@ class CountPlugin(plugin.Plugin):
 	"""
 	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
+		self.__interval = int(config['interval'])
+		self.__aggregate_delay = int(config['aggregate_delay'])
 		self.__downloader = LoopingCall(self.__init_download)
-		self.__downloader.start(10, False)
+		self.__downloader.start(self.__interval, False)
 		self.__data = {}
 		self.__stats = {}
 		self.__last = int(time.time())
@@ -38,7 +40,7 @@ class CountPlugin(plugin.Plugin):
 		# Wait a short time, so they can send us some data and process it after that.
 		self.__data = {}
 		self.__stats = {}
-		reactor.callLater(5, self.__process)
+		reactor.callLater(self.__aggregate_delay, self.__process)
 
 	def __process(self):
 		if not self.__data:
