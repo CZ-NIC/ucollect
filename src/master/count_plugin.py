@@ -13,7 +13,7 @@ class CountPlugin(plugin.Plugin):
 	The plugin providing basic statisticts, like speed, number of
 	dropped packets, etc.
 	"""
-	def __init__(self, plugins):
+	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
 		self.__downloader = LoopingCall(self.__init_download)
 		self.__downloader.start(10, False)

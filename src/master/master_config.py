@@ -15,3 +15,9 @@ def get(name):
 def getint(name):
 	global config_data
 	return config_data.getint('main', name)
+
+def plugins():
+	global config_data
+	sections = set(config_data.sections())
+	sections.remove('main')
+	return dict(map(lambda plugin: (plugin, dict(config_data.items(plugin))), sections))

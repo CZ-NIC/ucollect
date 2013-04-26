@@ -18,7 +18,7 @@ class BucketsPlugin(plugin.Plugin):
 	Counterpart of the "buckets" plugin in the client. It does
 	analysis by hashing data into buckets by several statistics.
 	"""
-	def __init__(self, plugins):
+	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
 		self.__bucket_count = 13
 		self.__hash_count = 5

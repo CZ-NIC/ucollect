@@ -5,16 +5,23 @@ import log_extra
 import logging
 from client import ClientFactory
 from plugin import Plugins
-import count_plugin
-import buckets.main
 import master_config
+import importlib
+
+loaded_plugins = {}
 
 logging.basicConfig(level=logging.DEBUG, format='%(name)s@%(module)s:%(lineno)s\t%(asctime)s\t%(levelname)s\t%(message)s')
 plugins = Plugins()
-count_plugin.CountPlugin(plugins)
-buckets.main.BucketsPlugin(plugins)
+for (plugin, config) in master_config.plugins().items():
+	(modulename, classname) = plugin.rsplit('.', 1)
+	module = importlib.import_module(modulename)
+	constructor = getattr(module, classname)
+	loaded_plugins[plugin] = constructor(plugins, config)
+	logging.info('Loaded plugin %s from %s', loaded_plugins[plugin].name(), plugin)
 # Some configuration, to load the port from?
-endpoint = TCP6ServerEndpoint(reactor, master_config.getint('port'))
+port = master_config.getint('port')
+endpoint = TCP6ServerEndpoint(reactor, port)
+logging.info('Listening on port %s', port)
 endpoint.listen(ClientFactory(plugins))
 logging.info('Init done')
 reactor.run()
