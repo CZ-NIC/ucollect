@@ -21,7 +21,7 @@ Configuration
 -------------
 
 The configuration file is simple ini file (see
-http://docs.python.org/2/library/configparser.html, the
+http://docs.python.org/2/library/configparser.html), the
 `RawConfigParser`). There's one section for the core (called `main`)
 and then a section for each plugin. Each plugin section is named by
 the fully qualified class name of the plugin (for example
