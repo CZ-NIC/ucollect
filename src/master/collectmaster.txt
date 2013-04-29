@@ -153,3 +153,83 @@ anomaly_threshold::
 config_version::
   Increase this number every time you change the config of the plugin.
   This is used to synchronise config with the client.
+
+The database
+------------
+
+A mysql database is used by the server.
+
+There's a basic set of tables, and each plugin has it's own additional
+set of tables.
+
+Table marks
+~~~~~~~~~~~
+
+The tables are flagged to indicate how the server accesses them.
+
+RO::
+  Table is not modified by the server. The `SELECT` privilege is
+  enough.
+WO::
+  Table is inserted into, but not read by the server. The `INSERT`
+  privilege is enough.
+SI::
+  Table that is inserted into and selected from by the server. The
+  server needs `SELECT` and `INSERT` privileges.
+
+[NOTE]
+The current script does not fine-tune permissions. Currently, the
+server has full rights on the whole database.
+
+Basic tables
+~~~~~~~~~~~~
+
+clients [RO]::
+  This table holds existing clients and their login information. It is
+  used mostly as reference points from other tables, when they relate
+  to clients, but also when checking if a client can connect. This
+  table is considered read only for the server.
+activity_types [RO]::
+  This holds recognized activities of clients. While others are
+  expected to appear in future (with more plugins, for example), these
+  are currently available:
+  login;; Client connected and authenticated with the server.
+  logout;; Client disconnected.
+  buckets;; Activity on the buckets plugin (some data arrived).
+  counts;; Activity on the counts plugin (some data arrived);
+activities [WO]::
+  This holds records of when each client performed which activity. The
+  purpose is both debugging aids and detection of inactive/dead
+  routers.
+
+Tables of the `buckets` plugin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+groups [RO]::
+  List of groups to which clients are divided.
+group_members [RO]::
+  M-N mapping of users to groups (eg. group can contain multiple users
+  and user can be in multiple groups).
+anomaly_types [RO]::
+  This is table of the criteria by which the plugin detects the
+  anomalies.
+anomalies [WO]::
+  This table holds the found anomalies, one key & time per row.
+  There's relevance of the key in the table in how many clients of all
+  the ones which returned the keys have it.
+
+Tables of the `counts` plugin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+count_types [RO]::
+  List of packet properties being counted.
+count_snapshots [SI]::
+  A row is stored here for each time and client that sends data. It
+  represents one snapshot of the counts.
+counts [WO]::
+  The actual statistics. Each row are counts for single snapshot and
+  type, therefore there are multiple rows for each snapshot.
+capture_stats [WO]::
+  Statistics for number of captured and dropped packets on a given
+  network interface in a given snapshot. There may be multiple
+  interfaces in given snapshot.
