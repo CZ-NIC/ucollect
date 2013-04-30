@@ -1,3 +1,3 @@
 #!/bin/sh
 
-echo 'SELECT groups.name, anomalies.type, anomalies.timestamp, anomalies.value, anomalies.relevance_count, anomalies.relevance_of FROM anomalies JOIN groups ON groups.id = anomalies.from_group ORDER BY anomalies.timestamp, groups.name;' | mysql -p123456 -u ucollect ucollect
+echo 'SELECT groups.name, anomalies.type, anomalies.timestamp, anomalies.value, anomalies.relevance_count, anomalies.relevance_of FROM anomalies JOIN groups ON groups.id = anomalies.from_group ORDER BY anomalies.timestamp, groups.name;' | psql -U ucollect -d ucollect

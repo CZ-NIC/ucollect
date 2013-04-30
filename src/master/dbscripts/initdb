@@ -1,8 +1,6 @@
 #!/bin/sh
 
-mysql -p123456 -u ucollect ucollect <<ENDSQL
-SET NAMES utf8;
-
+psql -U ucollect -d ucollect <<'ENDSQL'
 BEGIN;
 
 DROP TABLE IF EXISTS capture_stats;
@@ -18,103 +16,109 @@ DROP TABLE IF EXISTS groups;
 DROP TABLE IF EXISTS clients;
 
 CREATE TABLE clients (
-	id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY NOT NULL,
-	name VARCHAR(50) UNIQUE KEY NOT NULL
-) ENGINE=InnoDB;
+	id SERIAL PRIMARY KEY NOT NULL,
+	name TEXT UNIQUE NOT NULL
+);
 CREATE TABLE activity_types (
-	id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY NOT NULL,
-	name VARCHAR(50) UNIQUE KEY NOT NULL
-) ENGINE=InnoDB;
+	id SMALLSERIAL PRIMARY KEY NOT NULL,
+	name TEXT UNIQUE NOT NULL
+);
 CREATE TABLE activities (
-	client INT UNSIGNED NOT NULL,
-	timestamp DATETIME NOT NULL,
-	activity SMALLINT UNSIGNED NOT NULL,
+	client INT NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	activity SMALLINT NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id),
-	FOREIGN KEY (activity) REFERENCES activity_types(id),
-	KEY client_activity (client, activity)
-) ENGINE=InnoDB;
-INSERT INTO clients (name) VALUES ("::1"), ("2001:1488:ac14:1400:224:1dff:fec3:f602"), ("::ffff:172.20.20.196");
-INSERT INTO activity_types (name) VALUES ("login"), ("logout"), ("buckets"), ("counts");
+	FOREIGN KEY (activity) REFERENCES activity_types(id)
+);
+CREATE INDEX ON activities (client, activity);
+INSERT INTO clients (name) VALUES ('::1'), ('2001:1488:ac14:1400:224:1dff:fec3:f602'), ('::ffff:172.20.20.196');
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts');
 
 CREATE TABLE groups (
-	id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY NOT NULL,
-	name VARCHAR(50) UNIQUE KEY NOT NULL
-) ENGINE=InnoDB;
+	id SERIAL PRIMARY KEY NOT NULL,
+	name TEXT UNIQUE NOT NULL
+);
 CREATE TABLE group_members (
-	client INT UNSIGNED NOT NULL,
-	in_group INT UNSIGNED NOT NULL,
+	client INT NOT NULL,
+	in_group INT NOT NULL,
 	UNIQUE (client, in_group),
 	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
 	FOREIGN KEY (in_group) REFERENCES groups(id) ON DELETE CASCADE
-) ENGINE=InnoDB;
+);
 CREATE TABLE anomaly_types (
 	code CHAR PRIMARY KEY NOT NULL,
-	description VARCHAR(512) NOT NULL
-) ENGINE=InnoDB;
+	description TEXT NOT NULL
+);
 CREATE TABLE anomalies (
-	from_group INT UNSIGNED NOT NULL,
+	from_group INT NOT NULL,
 	type CHAR NOT NULL,
-	timestamp DATETIME NOT NULL,
-	value VARCHAR(50) NOT NULL,
-	relevance_count SMALLINT UNSIGNED NOT NULL,
-	relevance_of SMALLINT UNSIGNED NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	value TEXT NOT NULL,
+	relevance_count SMALLINT NOT NULL,
+	relevance_of SMALLINT NOT NULL,
 	FOREIGN KEY (from_group) REFERENCES groups(id),
 	FOREIGN KEY (type) REFERENCES anomaly_types(code),
-	KEY main (from_group, type, timestamp),
 	CHECK(relevance_count <= relevance_of)
-) ENGINE=InnoDB;
-INSERT INTO groups (name) VALUES ("all"), ("ruth"), ("dragonfly"), ("spider");
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "all";
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "ruth" AND clients.name = "::1";
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "dragonfly" AND clients.name = "2001:1488:ac14:1400:224:1dff:fec3:f602";
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups WHERE groups.name = "spider" AND clients.name = "::ffff:172.20.20.196";
-INSERT INTO anomaly_types (code, description) VALUES ("I", "Remote IP address"), ("P", "Remote port"), ("B", "Remote IP address and port");
+);
+CREATE INDEX ON anomalies (from_group, type, timestamp);
+INSERT INTO groups (name) VALUES ('all'), ('ruth'), ('dragonfly'), ('spider');
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'ruth' AND clients.name = '::1';
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'dragonfly' AND clients.name = '2001:1488:ac14:1400:224:1dff:fec3:f602';
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'spider' AND clients.name = '::ffff:172.20.20.196';
+INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port');
 
 CREATE TABLE count_types (
-	id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY NOT NULL,
-	name VARCHAR(50) UNIQUE KEY NOT NULL,
-	description VARCHAR(512) NOT NULL
+	id SMALLSERIAL PRIMARY KEY NOT NULL,
+	name TEXT UNIQUE NOT NULL,
+	description TEXT NOT NULL
 );
 CREATE TABLE count_snapshots (
-	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
-	timestamp DATETIME NOT NULL,
-	client INT UNSIGNED NOT NULL,
+	id BIGSERIAL PRIMARY KEY NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	client INT NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id),
 	UNIQUE (timestamp, client)
-) ENGINE=InnoDB;
+);
 CREATE TABLE counts (
-	snapshot INT UNSIGNED NOT NULL,
-	type SMALLINT UNSIGNED NOT NULL,
-	count INT UNSIGNED NOT NULL,
-	size INT UNSIGNED NOT NULL,
+	snapshot BIGINT NOT NULL,
+	type SMALLINT NOT NULL,
+	count INT NOT NULL,
+	size INT NOT NULL,
 	FOREIGN KEY (snapshot) REFERENCES count_snapshots(id),
 	FOREIGN KEY (type) REFERENCES count_types(id),
+	CHECK(count >= 0),
+	CHECK(size >= 0),
 	UNIQUE (snapshot, type)
-) ENGINE=InnoDB;
+);
 CREATE TABLE capture_stats (
-	snapshot INT UNSIGNED NOT NULL,
-	interface SMALLINT UNSIGNED NOT NULL,
-	captured INT UNSIGNED NOT NULL,
-	dropped INT UNSIGNED NOT NULL,
-	dropped_driver INT UNSIGNED NOT NULL,
+	snapshot BIGINT NOT NULL,
+	interface SMALLINT NOT NULL,
+	captured INT NOT NULL,
+	dropped INT NOT NULL,
+	dropped_driver INT NOT NULL,
 	FOREIGN KEY (snapshot) REFERENCES count_snapshots(id),
+	CHECK(interface >= 0),
+	CHECK(captured >= 0),
+	CHECK(dropped >= 0),
+	CHECK(dropped_driver >= 0),
 	UNIQUE(snapshot, interface)
-) ENGINE=InnoDB;
+);
 INSERT INTO count_types (name, description) VALUES
-	("All", "Any packet is included in this category"),
-	("IPv4", "Packets sent over the IPv4 protocol."),
-	("IPv6", "Packets sent over the IPv6 protocol."),
-	("In", "Packets sent over either IPv4 or IPv6 that have source address outside of the local network and destination inside."),
-	("Out", "Packets sent over either IPv4 or IPv6 that have source address inside of the local network and destination outside."),
-	("TCP", "Packets sent over IPv4/TCP and IPv6/TCP"),
-	("UDP", "Packets sent over IPv4/UDP and IPv6/UDP"),
-	("ICMP", "Both ICMP and ICMPv6 packets"),
-	("Low port", "TCP or UDP packets with the remote port <= 1024"),
-	("SYN", "TCP packets with the SYN flag set"),
-	("FIN", "TCP packets with the FIN flag set"),
-	("SYN+ACK", "TCP packets with both SYN and ACK flags set. This may be a good heuristics for number of created TCP connections."),
-	("ACK", "TCP packets with ACK flag set."),
-	("PUSH", "TCP packets with the PUSH flag set.");
+	('All', 'Any packet is included in this category'),
+	('IPv4', 'Packets sent over the IPv4 protocol.'),
+	('IPv6', 'Packets sent over the IPv6 protocol.'),
+	('In', 'Packets sent over either IPv4 or IPv6 that have source address outside of the local network and destination inside.'),
+	('Out', 'Packets sent over either IPv4 or IPv6 that have source address inside of the local network and destination outside.'),
+	('TCP', 'Packets sent over IPv4/TCP and IPv6/TCP'),
+	('UDP', 'Packets sent over IPv4/UDP and IPv6/UDP'),
+	('ICMP', 'Both ICMP and ICMPv6 packets'),
+	('Low port', 'TCP or UDP packets with the remote port <= 1024'),
+	('SYN', 'TCP packets with the SYN flag set'),
+	('FIN', 'TCP packets with the FIN flag set'),
+	('SYN+ACK', 'TCP packets with both SYN and ACK flags set. This may be a good heuristics for number of created TCP connections.'),
+	('ACK', 'TCP packets with ACK flag set.'),
+	('PUSH', 'TCP packets with the PUSH flag set.');
 
 COMMIT;
 ENDSQL
