@@ -14,7 +14,7 @@ if severity == 'TRACE':
 	severity = log_extra.TRACE_LEVEL
 else:
 	severity = getattr(logging, severity)
-dest = master_config.get('log_file')
+log_file = master_config.get('log_file')
 if log_file == '-':
 	logging.basicConfig(level=severity, format=master_config.get('log_format'))
 else:
