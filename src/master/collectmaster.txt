@@ -17,6 +17,14 @@ file.
 
   ./collectmaster collect-master.conf
 
+Dependencies
+------------
+
+* Python 2 (tested with 2.7)
+* Twisted (http://www.twistedmatrix.com)
+* PostgresSQL server
+* PyGreSQL (pygresql.org)
+
 Configuration
 -------------
 
@@ -161,6 +169,12 @@ A mysql database is used by the server.
 
 There's a basic set of tables, and each plugin has it's own additional
 set of tables.
+
+The database can be initialized by the `initdb` shell script in the
+`src/master/dbscripts' directory. It expects the user `ucollect`
+exists and has access to the already-existing database `ucollect`. The
+scripts creates the necessary tables (and wipes out the old ones if
+already present).
 
 Table marks
 ~~~~~~~~~~~
