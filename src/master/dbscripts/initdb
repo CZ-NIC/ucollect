@@ -31,8 +31,6 @@ CREATE TABLE activities (
 	FOREIGN KEY (activity) REFERENCES activity_types(id)
 );
 CREATE INDEX ON activities (client, activity);
-INSERT INTO clients (name) VALUES ('::1'), ('2001:1488:ac14:1400:224:1dff:fec3:f602'), ('::ffff:172.20.20.196');
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts');
 
 CREATE TABLE groups (
 	id SERIAL PRIMARY KEY NOT NULL,
@@ -61,12 +59,6 @@ CREATE TABLE anomalies (
 	CHECK(relevance_count <= relevance_of)
 );
 CREATE INDEX ON anomalies (from_group, type, timestamp);
-INSERT INTO groups (name) VALUES ('all'), ('ruth'), ('dragonfly'), ('spider');
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'ruth' AND clients.name = '::1';
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'dragonfly' AND clients.name = '2001:1488:ac14:1400:224:1dff:fec3:f602';
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'spider' AND clients.name = '::ffff:172.20.20.196';
-INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port');
 
 CREATE TABLE count_types (
 	id SMALLSERIAL PRIMARY KEY NOT NULL,
@@ -104,6 +96,9 @@ CREATE TABLE capture_stats (
 	CHECK(dropped_driver >= 0),
 	UNIQUE(snapshot, interface)
 );
+
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts');
+INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port');
 INSERT INTO count_types (name, description) VALUES
 	('All', 'Any packet is included in this category'),
 	('IPv4', 'Packets sent over the IPv4 protocol.'),
@@ -119,6 +114,20 @@ INSERT INTO count_types (name, description) VALUES
 	('SYN+ACK', 'TCP packets with both SYN and ACK flags set. This may be a good heuristics for number of created TCP connections.'),
 	('ACK', 'TCP packets with ACK flag set.'),
 	('PUSH', 'TCP packets with the PUSH flag set.');
-
 COMMIT;
 ENDSQL
+
+if [ "$1" = "debug" ] ; then
+	#
+	psql -U ucollect -d ucollect <<'ENDSQL'
+BEGIN;
+INSERT INTO clients (name) VALUES ('::1'), ('2001:1488:ac14:1400:224:1dff:fec3:f602'), ('::ffff:172.20.20.196');
+
+INSERT INTO groups (name) VALUES ('all'), ('ruth'), ('dragonfly'), ('spider');
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'ruth' AND clients.name = '::1';
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'dragonfly' AND clients.name = '2001:1488:ac14:1400:224:1dff:fec3:f602';
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'spider' AND clients.name = '::ffff:172.20.20.196';
+COMMIT;
+ENDSQL
+fi
