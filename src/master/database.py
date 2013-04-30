@@ -1,4 +1,4 @@
-import MySQLdb
+import pgdb
 import logging
 from master_config import get
 
@@ -48,8 +48,7 @@ def transaction(reuse=True):
 	global __connection
 	global __context
 	if __connection is None:
-		# TODO: Read from configuration. Hardcoded for now.
-		__connection = MySQLdb.connect(user=get('dbuser'), db=get('db'), passwd=get('dbpasswd'))
+		__connection = pgdb.connect(database=get('db'), user=get('dbuser'), password=get('dbpasswd'))
 
 	if reuse:
 		if __context is None:
@@ -65,4 +64,4 @@ def log_activity(client, activity):
 	"""
 	logger.debug("Logging %s activity of %s", activity, client)
 	with transaction() as t:
-		t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, NOW(), activity_types.id FROM clients JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
+		t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, NOW(), activity_types.id FROM clients CROSS JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
