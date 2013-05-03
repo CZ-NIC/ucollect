@@ -7,6 +7,8 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <assert.h>
 #include <errno.h>
@@ -257,7 +259,15 @@ static void handle_buffer(struct uplink *uplink) {
 					ulog(LOG_DEBUG, "Sending login info\n");
 					// We received the challenge. Compute the response.
 					const uint8_t *response = compute_response(uplink->buffer, uplink->buffer_size, uplink->password, temp_pool);
-					// FIXME: Generate some challenge
+					// Generate a challenge. Just load some data from /dev/urandom.
+					int fd = open("/dev/urandom", O_RDONLY);
+					if (fd == -1)
+						die("Couldn't open urandom (%s)\n", strerror(errno));
+					// Read by 1 character, as urandom is strange and might give only little data
+					for (size_t i = 0; i < CHALLENGE_LEN; i ++)
+						if (read(fd, uplink->challenge + i, 1) != 1)
+							die("Couldn't read from urandom (%s)\n", strerror(errno));
+					close(fd);
 					/*
 					 * Compose the message. There are 1 char and 3 strings in there ‒ the version used (currently hardcoded
 					 * to 'S' as Software hash), our login name, the response and challenge for the server.
