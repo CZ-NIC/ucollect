@@ -1,11 +1,33 @@
 from twisted.internet.task import LoopingCall
 import twisted.internet.protocol
 import twisted.protocols.basic
+import random
+import hashlib
 from protocol import extract_string
 import logging
 import database
 
 logger = logging.getLogger(name='client')
+sysrand = random.SystemRandom()
+challenge_len = 128 # 128 bits of random should be enough for log-in to protect against replay attacks
+
+def compute_response(version, challenge, password):
+	"""
+	Compute hash response for the challenge.
+	- version: The version of hash to use.
+	  * S: Software.
+	    (No more versions implemented now)
+	- challenge: The original challenge
+	- password: The shared secret
+
+	Returns None if something failed. Make sure you check for it.
+	"""
+	if not challenge:
+		return None
+	if version == 'S':
+		return hashlib.sha256(password + challenge + password).digest()
+	else:
+		return None
 
 class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 	"""
@@ -19,6 +41,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__addr = addr
 		self.__pings_outstanding = 0
 		self.__logged_in = False
+		self.__cid = None
 
 	def __ping(self):
 		"""
@@ -33,21 +56,11 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 
 	def connectionMade(self):
 		logger.info("Connection made from %s", self.cid())
-		with database.transaction() as t:
-			t.execute("SELECT id FROM clients WHERE name = %s", (self.cid(),))
-			result = t.fetchone()
-			if result:
-				logger.info("Client %s logged in with ID %s", self.cid(), result[0])
-			else:
-				logger.info("Client from address %s failed to log in", self.__addr)
-				# Keep the connection open, but idle. Stops the client from reconnecting
-				# too fast. It will first time out the connection, then it'll reconnect.
-				return
-			database.log_activity(self.cid(), "login")
-		self.__logged_in = True
-		self.__pinger = LoopingCall(self.__ping)
-		self.__pinger.start(5, False)
-		self.__plugins.register_client(self)
+		# Send challenge for login.
+		self.__challenge = ''
+		for i in range(0, challenge_len / 8):
+			self.__challenge += chr(sysrand.getrandbits(8))
+		self.sendString('C' + self.__challenge)
 
 	def connectionLost(self, reason):
 		if self.__logged_in:
@@ -57,12 +70,55 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			database.log_activity(self.cid(), "logout")
 
 	def stringReceived(self, string):
-		if not self.__logged_in:
-			return
 		(msg, params) = (string[0], string[1:])
 		logger.trace("Received from %s: %s", self.cid(), repr(string))
-		if msg == 'H':
-			pass # No info on 'H'ello yet
+		if not self.__logged_in:
+			def login_failure(msg):
+				logger.warn('Login failure from %s: %s', self.cid(), msg)
+				self.sendString('F')
+				self.__challenge = None # Prevent more attempts
+				# Keep the connection open, but idle. Prevents very fast
+				# reconnects.
+			if msg == 'L':
+				logger.debug('Client %s sent login info', self.cid())
+				# Client wants to log in.
+				# Extract parameters.
+				(version, params) = (params[0], params[1:])
+				(cid, params) = extract_string(params)
+				(response, params) = extract_string(params)
+				(challenge, params) = extract_string(params)
+				self.__cid = cid
+				if params != '':
+					login_failure('Protocol violation')
+					return
+				log_info = None
+				# Get the password from DB
+				with database.transaction() as t:
+					t.execute('SELECT passwd FROM clients WHERE name = %s', (cid,))
+					log_info = t.fetchone()
+					if not log_info:
+						login_failure('Unknown user')
+						return
+				# Check his hash
+				correct = compute_response(version, self.__challenge, log_info[0])
+				if not correct or correct != response:
+					login_failure('Incorrect password' + repr(correct) + '#' + repr(response))
+					return
+				self.__authenticated = True
+				# Send our hash
+				self.sendString('L' + compute_response(version, challenge, log_info[0]))
+			elif msg == 'H':
+				if self.__authenticated:
+					self.__logged_in = True
+					self.__pinger = LoopingCall(self.__ping)
+					self.__pinger.start(30, False)
+					self.__plugins.register_client(self)
+					database.log_activity(self.cid(), "login")
+					logger.debug('Client %s logged in', self.cid())
+				else:
+					login_failure('Asked for session before loging in')
+					return
+			return
 		elif msg == 'P': # Ping. Answer pong.
 			self.sendString('p' + params)
 		elif msg == 'p': # Pong. Reset the watchdog count
@@ -76,10 +132,13 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 
 	def cid(self):
 		"""
-		The client ID. We use the address for now, but we may
-		want to use something else.
+		The client ID. We use the address until the real client ID is provided by the client.
+		for now, but we may want to use something else.
 		"""
-		return self.__addr.host
+		if self.__cid:
+			return self.__cid
+		else:
+			return self.__addr.host
 
 class ClientFactory(twisted.internet.protocol.Factory):
 	"""
