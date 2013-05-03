@@ -17,7 +17,8 @@ DROP TABLE IF EXISTS clients;
 
 CREATE TABLE clients (
 	id SERIAL PRIMARY KEY NOT NULL,
-	name TEXT UNIQUE NOT NULL
+	name TEXT UNIQUE NOT NULL,
+	passwd TEXT NOT NULL
 );
 CREATE TABLE activity_types (
 	id SMALLSERIAL PRIMARY KEY NOT NULL,
@@ -118,16 +119,14 @@ COMMIT;
 ENDSQL
 
 if [ "$1" = "debug" ] ; then
-	#
+	# Provide some debug data (clients for now)
 	psql -U ucollect -d ucollect <<'ENDSQL'
 BEGIN;
-INSERT INTO clients (name) VALUES ('::1'), ('2001:1488:ac14:1400:224:1dff:fec3:f602'), ('::ffff:172.20.20.196');
+INSERT INTO clients (name, passwd) VALUES ('ruth', '123456'), ('dragonfly', '78910'), ('spider', 'web');
 
 INSERT INTO groups (name) VALUES ('all'), ('ruth'), ('dragonfly'), ('spider');
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'ruth' AND clients.name = '::1';
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'dragonfly' AND clients.name = '2001:1488:ac14:1400:224:1dff:fec3:f602';
-INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'spider' AND clients.name = '::ffff:172.20.20.196';
+INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups ON groups.name = clients.name;
 COMMIT;
 ENDSQL
 fi
