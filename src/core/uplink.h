@@ -23,7 +23,7 @@ struct uplink *uplink_create(struct loop *loop) __attribute__((malloc)) __attrib
  * The remote_name and service must be allocated so it lasts until destroy or next configure.
  * It is not copied.
  */
-void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service) __attribute__((nonnull));
+void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, const char *login, const char *password) __attribute__((nonnull));
 // Move configuration to the provided pool (so the old may be reset)
 void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) __attribute__((nonnull));
 /*
@@ -52,9 +52,11 @@ bool uplink_send_message(struct uplink *uplink, char type, const void *data, siz
  */
 bool uplink_plugin_send_message(struct context *context, const void *data, size_t size) __attribute__((nonnull(1)));
 
-// Some parsing functions
+// Some parsing & rendering functions
 
 // Get a string from buffer. Returns NULL if badly formatted. The buffer position is updated.
 const char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) __attribute__((nonnull));
+// Render string to the wire format. Update position and length of buffer.
+void uplink_render_string(const uint8_t *string, uint32_t string_len, uint8_t **buffer_pos, size_t *buffer_length) __attribute__((nonnull));
 
 #endif

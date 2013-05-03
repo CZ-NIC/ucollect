@@ -37,4 +37,7 @@
 // If so many pings are not answered, consider the link dead
 #define PING_COUNT 2
 
+// The challenge length in bytes to send to server
+#define CHALLENGE_LEN 32
+
 #endif

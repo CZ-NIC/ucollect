@@ -12,6 +12,24 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <openssl/sha.h>
+
+static const uint8_t *compute_response(const uint8_t *challenge, size_t clen, const char *password, struct mem_pool *pool) {
+	uint8_t *output = mem_pool_alloc(pool, SHA256_DIGEST_LENGTH);
+	SHA256_CTX context;
+	SHA256_Init(&context);
+	SHA256_Update(&context, password, strlen(password));
+	SHA256_Update(&context, challenge, clen);
+	SHA256_Update(&context, password, strlen(password));
+	SHA256_Final(output, &context);
+	return output;
+}
+
+enum auth_status {
+	AUTHENTICATED,
+	SENT,
+	NOT_STARTED
+};
 
 struct uplink {
 	// Will always be uplink_read, this is to be able to use it as epoll_handler
@@ -29,6 +47,8 @@ struct uplink {
 	size_t pings_unanswered; // Number of pings sent without answer (in a row)
 	bool ping_scheduled;
 	int fd;
+	enum auth_status auth_status;
+	uint8_t challenge[CHALLENGE_LEN];
 };
 
 static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo *addrinfo) {
@@ -52,6 +72,7 @@ static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo
 	}
 	// Hurray, everything worked. Now we are done.
 	ulog(LOG_DEBUG, "Connected to uplink %s:%s by fd %d\n", uplink->remote_name, uplink->service, sock);
+	uplink->auth_status = NOT_STARTED;
 	uplink->fd = sock;
 	return true;
 }
@@ -83,12 +104,6 @@ static void uplink_connect(struct uplink *uplink) {
 	uplink->ping_timeout = loop_timeout_add(uplink->loop, PING_TIMEOUT, NULL, uplink, send_ping);
 	uplink->ping_scheduled = true;
 	loop_register_fd(uplink->loop, uplink->fd, (struct epoll_handler *) uplink);
-	/*
-	 * Send 'H'ello. For now, it is empty. In future, we expect to have program & protocol version,
-	 * list of plugins and possibly other things too.
-	 */
-	uplink_send_message(uplink, 'H', NULL, 0);
-	loop_uplink_connected(uplink->loop);
 }
 
 static void reconnect_now(struct context *unused, void *data, size_t id_unused) {
@@ -171,6 +186,18 @@ const char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, s
 	return result;
 }
 
+void uplink_render_string(const uint8_t *string, uint32_t length, uint8_t **buffer_pos, size_t *buffer_len) {
+	// Network byte order
+	uint32_t len_encoded = htonl(length);
+	assert(*buffer_len >= length + sizeof(len_encoded));
+	// Copy the data
+	memcpy(*buffer_pos, &len_encoded, sizeof(len_encoded));
+	memcpy(*buffer_pos + sizeof(len_encoded), string, length);
+	// Update the buffer position
+	*buffer_pos += sizeof(len_encoded) + length;
+	*buffer_len -= sizeof(len_encoded) + length;
+}
+
 static void handle_buffer(struct uplink *uplink) {
 	if (uplink->has_size) {
 		// If we already have the size, it is the real message
@@ -179,50 +206,95 @@ static void handle_buffer(struct uplink *uplink) {
 		if (uplink->buffer_size) {
 			char command = *uplink->buffer ++;
 			uplink->buffer_size --;
-			switch (command) {
-				case 'R': { // Route data to given plugin
-					const char *plugin_name = uplink_parse_string(uplink->buffer_pool, &uplink->buffer, &uplink->buffer_size);
-					/*
-					 * The loop_plugin_send_data contains call to plugin callback.
-					 * Such callback can fail and we would like to recover. That is done
-					 * by a longjump directly to the loop. That'd mean this function is not
-					 * completed, therefore we make sure it works well even in such case -
-					 * we create a copy of the buffer and then reset the buffer before
-					 * going to the plugin (resetting it again below doesn't hurt anything).
-					 */
-					struct mem_pool *pool = loop_temp_pool(uplink->loop);
-					uint8_t *buffer = mem_pool_alloc(pool, uplink->buffer_size);
-					memcpy(buffer, uplink->buffer, uplink->buffer_size);
-					size_t length = uplink->buffer_size;
-					buffer_reset(uplink);
-					if (!loop_plugin_send_data(uplink->loop, plugin_name, buffer, length)) {
-						ulog(LOG_ERROR, "Plugin %s referenced by uplink does not exist\n", plugin_name);
-						// TODO: Create some function for formatting messages
-						size_t pname_len = strlen(plugin_name);
-						// 1 for 'P', 1 for '\0' at the end
-						size_t msgsize = 1 + sizeof pname_len + pname_len;
-						char buffer[msgsize];
-						// First goes error specifier - 'P'lugin name doesn't exist
-						buffer[0] = 'P';
-						// Then one byte after, the length of the name
-						uint32_t len_n = htonl(pname_len);
-						memcpy(buffer + 1, &len_n, sizeof len_n);
-						// And the string itself
-						memcpy(buffer + 1 + sizeof len_n, plugin_name, pname_len);
-						// Send an error
-						uplink_send_message(uplink, 'E', buffer, msgsize);
-					}
-					break;
+			struct mem_pool *temp_pool = loop_temp_pool(uplink->loop);
+			if (uplink->auth_status == AUTHENTICATED) {
+				switch (command) {
+					case 'R': { // Route data to given plugin
+							  const char *plugin_name = uplink_parse_string(uplink->buffer_pool, &uplink->buffer, &uplink->buffer_size);
+							  /*
+							   * The loop_plugin_send_data contains call to plugin callback.
+							   * Such callback can fail and we would like to recover. That is done
+							   * by a longjump directly to the loop. That'd mean this function is not
+							   * completed, therefore we make sure it works well even in such case -
+							   * we create a copy of the buffer and then reset the buffer before
+							   * going to the plugin (resetting it again below doesn't hurt anything).
+							   */
+							  uint8_t *buffer = mem_pool_alloc(temp_pool, uplink->buffer_size);
+							  memcpy(buffer, uplink->buffer, uplink->buffer_size);
+							  size_t length = uplink->buffer_size;
+							  buffer_reset(uplink);
+							  if (!loop_plugin_send_data(uplink->loop, plugin_name, buffer, length)) {
+								  ulog(LOG_ERROR, "Plugin %s referenced by uplink does not exist\n", plugin_name);
+								  // TODO: Create some function for formatting messages
+								  size_t pname_len = strlen(plugin_name);
+								  // 1 for 'P', 1 for '\0' at the end
+								  size_t msgsize = 1 + sizeof pname_len + pname_len;
+								  char buffer[msgsize];
+								  // First goes error specifier - 'P'lugin name doesn't exist
+								  buffer[0] = 'P';
+								  // Then one byte after, the length of the name
+								  uint32_t len_n = htonl(pname_len);
+								  memcpy(buffer + 1, &len_n, sizeof len_n);
+								  // And the string itself
+								  memcpy(buffer + 1 + sizeof len_n, plugin_name, pname_len);
+								  // Send an error
+								  uplink_send_message(uplink, 'E', buffer, msgsize);
+							  }
+							  break;
+						  }
+					case 'P': // Ping from the server. Send a pong back.
+						  uplink_send_message(uplink, 'p', uplink->buffer, uplink->buffer_size);
+						  break;
+					case 'p': // Pong. Reset the number of unanswered pings, we got some answer, the link works
+						  uplink->pings_unanswered = 0;
+						  break;
+					default:
+						  ulog(LOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
+						  break;
 				}
-				case 'P': // Ping from the server. Send a pong back.
-					uplink_send_message(uplink, 'p', uplink->buffer, uplink->buffer_size);
-					break;
-				case 'p': // Pong. Reset the number of unanswered pings, we got some answer, the link works
-					uplink->pings_unanswered = 0;
-					break;
-				default:
-					ulog(LOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
-					break;
+			} else {
+				if (command == 'C' && uplink->auth_status == NOT_STARTED) {
+					ulog(LOG_DEBUG, "Sending login info\n");
+					// We received the challenge. Compute the response.
+					const uint8_t *response = compute_response(uplink->buffer, uplink->buffer_size, uplink->password, temp_pool);
+					// FIXME: Generate some challenge
+					/*
+					 * Compose the message. There are 1 char and 3 strings in there ‒ the version used (currently hardcoded
+					 * to 'S' as Software hash), our login name, the response and challenge for the server.
+					 */
+					size_t len = 1 + 3*sizeof(uint32_t) + strlen(uplink->login) + SHA256_DIGEST_LENGTH + CHALLENGE_LEN;
+					uint8_t *message = mem_pool_alloc(temp_pool, len);
+					message[0] = 'S';
+					uint8_t *message_pos = message + 1;
+					size_t len_pos = len - 1;
+					uplink_render_string((const uint8_t *) uplink->login, strlen(uplink->login), &message_pos, &len_pos);
+					uplink_render_string(response, SHA256_DIGEST_LENGTH, &message_pos, &len_pos);
+					uplink_render_string(uplink->challenge, CHALLENGE_LEN, &message_pos, &len_pos);
+					assert(!len_pos);
+					uplink_send_message(uplink, 'L', message, len);
+					uplink->auth_status = SENT;
+				} else if (command == 'L' && uplink->auth_status == SENT) {
+					ulog(LOG_DEBUG, "Received server login info\n");
+					// We got the server response. Compute our own version and check they are the same.
+					const uint8_t *response = compute_response(uplink->challenge, CHALLENGE_LEN, uplink->password, temp_pool);
+					if (uplink->buffer_size == CHALLENGE_LEN && memcmp(uplink->buffer, response, CHALLENGE_LEN) == 0) {
+						ulog(LOG_DEBUG, "Server authenticated\n");
+						// OK, Login complete. Send hello and tell the rest of the program we're connected.
+						/*
+						 * Send 'H'ello. For now, it is empty. In future, we expect to have program & protocol version,
+						 * list of plugins and possibly other things too.
+						 */
+						uplink->auth_status = AUTHENTICATED;
+						uplink_send_message(uplink, 'H', NULL, 0);
+						loop_uplink_connected(uplink->loop);
+					} else
+						// This is an insult, stop talking to the other side.
+						ulog(LOG_ERROR, "Server failed to authenticated. Password mismatch?\n");
+				} else if (command == 'F')
+					ulog(LOG_ERROR, "Server rejected our authentication\n");
+				else
+					// This is an insult, and we won't talk to the other side any more!
+					ulog(LOG_ERROR, "Protocol violation at login\n");
 			}
 		} else {
 			ulog(LOG_ERROR, "Received an empty message from %s:%s\n", uplink->remote_name, uplink->service);
