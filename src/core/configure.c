@@ -50,11 +50,13 @@ static bool load_uplink(struct loop_configurator *configurator, struct uci_secti
 	ulog(LOG_DEBUG, "Processing uplink %s\n", section->e.name);
 	const char *name = uci_lookup_option_string(ctx, section, "name");
 	const char *service = uci_lookup_option_string(ctx, section, "service");
-	if (!name || !service) {
+	const char *login = uci_lookup_option_string(ctx, section, "login");
+	const char *password = uci_lookup_option_string(ctx, section, "password");
+	if (!name || !service || !login || !password) {
 		ulog(LOG_ERROR, "Incomplete configuration of uplink\n");
 		return false;
 	}
-	loop_uplink_configure(configurator, name, service);
+	loop_uplink_configure(configurator, name, service, login, password);
 	return true;
 }
 

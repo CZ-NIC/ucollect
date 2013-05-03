@@ -19,7 +19,7 @@ struct uplink {
 	// Timeouts for pings, etc.
 	struct loop *loop;
 	struct mem_pool *buffer_pool;
-	const char *remote_name, *service;
+	const char *remote_name, *service, *login, *password;
 	const uint8_t *buffer;
 	uint8_t *buffer_pos;
 	size_t buffer_size, size_rest;
@@ -305,11 +305,13 @@ struct uplink *uplink_create(struct loop *loop) {
 	return result;
 }
 
-void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service) {
+void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, const char *login, const char *password) {
 	ulog(LOG_INFO, "Changing remote uplink address to %s:%s\n", remote_name, service);
 	// Set the new remote endpoint
 	uplink->remote_name = remote_name;
 	uplink->service = service;
+	uplink->login = login;
+	uplink->password = password;
 	// Reconnect
 	loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
 	uplink_disconnect(uplink);
@@ -378,4 +380,8 @@ void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) {
 		uplink->remote_name = mem_pool_strdup(pool, uplink->remote_name);
 	if (uplink->service)
 		uplink->service = mem_pool_strdup(pool, uplink->service);
+	if (uplink->login)
+		uplink->login = mem_pool_strdup(pool, uplink->login);
+	if (uplink->password)
+		uplink->password = mem_pool_strdup(pool, uplink->password);
 }
