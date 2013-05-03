@@ -188,7 +188,7 @@ const char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, s
 	return result;
 }
 
-void uplink_render_string(const uint8_t *string, uint32_t length, uint8_t **buffer_pos, size_t *buffer_len) {
+void uplink_render_string(const void *string, uint32_t length, uint8_t **buffer_pos, size_t *buffer_len) {
 	// Network byte order
 	uint32_t len_encoded = htonl(length);
 	assert(*buffer_len >= length + sizeof(len_encoded));
@@ -449,11 +449,11 @@ bool uplink_plugin_send_message(struct context *context, const void *data, size_
 	ulog(LOG_DEBUG, "Sending message of size %zu from plugin %s\n", size, name);
 	uint32_t name_length = strlen(name);
 	uint32_t length = sizeof name_length + name_length + size;
-	uint8_t buffer[length];
-	uint32_t name_length_n = htonl(name_length);
-	memcpy(buffer, &name_length_n, sizeof name_length_n);
-	memcpy(buffer + sizeof name_length, name, name_length);
-	memcpy(buffer + sizeof name_length + name_length, data, size);
+	uint8_t *buffer = mem_pool_alloc(context->temp_pool, length);
+	uint8_t *buffer_pos = buffer;
+	size_t buffer_len = length;
+	uplink_render_string(name, name_length, &buffer_pos, &buffer_len);
+	memcpy(buffer_pos, data, size);
 	return uplink_send_message(context->uplink, 'R', buffer, length);
 }
 
