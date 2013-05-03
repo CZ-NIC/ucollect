@@ -38,7 +38,6 @@ class BucketsPlugin(plugin.Plugin):
 		# Just an arbitrary number
 		self.__seed = 872945724987
 		self.__downloader = LoopingCall(self.__init_download)
-		# FIXME: Adjust the time to something reasonable after the testing.
 		self.__downloader.start(int(config['interval']), False)
 		# We are just gathering data between these two time stamps
 		self.__lower_time = 0
