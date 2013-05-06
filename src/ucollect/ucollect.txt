@@ -36,6 +36,8 @@ config would look like this:
   config uplink
       option name localhost
       option service 5678
+      option login some_name
+      option password "A password"
 
 The `package 'ucollect'` is always the same and should not be changed.
 Then there are three kinds of sections.
@@ -63,6 +65,9 @@ The `uplink` section
 It describes the server it should connect to. It contains the dns name
 (or ip address) in the `name` option and the port or service name in
 in the `service` option.
+
+There's also the login info. The login name is in the `login` option
+and password in `password`.
 
 There should be exactly one instance of this config section.
 
