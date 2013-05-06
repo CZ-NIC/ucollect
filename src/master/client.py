@@ -41,6 +41,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__addr = addr
 		self.__pings_outstanding = 0
 		self.__logged_in = False
+		self.__authenticated = False
 		self.__cid = None
 
 	def __ping(self):
