@@ -39,5 +39,7 @@
 
 // The challenge length in bytes to send to server
 #define CHALLENGE_LEN 32
+// Minimum time between connection attempts
+#define RECONN_TIME 1000
 
 #endif

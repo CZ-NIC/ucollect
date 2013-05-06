@@ -51,6 +51,7 @@ struct uplink {
 	int fd;
 	enum auth_status auth_status;
 	uint8_t challenge[CHALLENGE_LEN];
+	uint64_t last_connect;
 };
 
 static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo *addrinfo) {
@@ -84,6 +85,12 @@ static void send_ping(struct context *context, void *data, size_t id);
 
 // Connect to remote. Blocking. May abort (that one should be solved by retries in future)
 static void uplink_connect(struct uplink *uplink) {
+	if (uplink->last_connect + RECONN_TIME > loop_now(uplink->loop)) {
+		ulog(LOG_WARN, "Reconnecting too often, waiting a little while\n");
+		connect_fail(uplink);
+		return;
+	}
+	uplink->last_connect = loop_now(uplink->loop);
 	assert(uplink->fd == -1);
 	struct addrinfo *remote;
 	int result = getaddrinfo(uplink->remote_name, uplink->service, &(struct addrinfo) { .ai_socktype = SOCK_STREAM }, &remote);
