@@ -76,3 +76,39 @@ Ping::
   Same as with client.
 Pong::
   Same as with client.
+
+Authentication phase
+--------------------
+
+Before the normal communication starts, both the server and client
+need to authenticate to each other. They have a shared secret and each
+sends a challenge (some random data) to the other, the recipient
+computes a hash of the challenge and the shared secret and sends back.
+Then the sender computes the same and compares. If they know the same
+shared secret, it must match.
+
+During this phase, the list of used commands is different than above.
+Any above commands are to be ignored during the authentication phase,
+and the commands in this phase are to be ignored during the normal
+communication.
+
+The scenario to log in looks like this:
+
+* The server sends an `C` message to the client. The payload of the
+  message is the challenge data (it is arbitrary binary data of
+  arbitrary length).
+* The client then computes a hash of the password and the challenge
+  (see below). It sends an `L` message. The payload is single
+  character, representing version of the hash, and 3 data blocks
+  (encoded usually with length prefix), representing the login name of
+  the client, computed hash and challenge for the server.
+* The server checks the returned hash from client. Then it computes
+  the same kind of hash from the challenge sent by the client and
+  sends it back as payload of an `L` message.
+* The client checks the response of server. When it matches, the
+  authentication is done. The client then proceeds to send the `H`ello
+  message.
+
+If the authentication fails, it must not be retried. The receiving
+side might notify the other about the failure by sending an `F`
+message (without any parameters).
