@@ -547,6 +547,7 @@ void loop_run(struct loop *loop) {
 			// Suboptimal, but there should be only few timeouts and not often
 			memmove(loop->timeouts, loop->timeouts + 1, (-- loop->timeout_count) * sizeof *loop->timeouts);
 			current_context = timeout.context;
+			ulog(LOG_DEBUG, "Firing timeout %zu at %llu when %zu more timeouts active\n", timeout.id, (long long unsigned) timeout.when, loop->timeout_count);
 			timeout.callback(timeout.context, timeout.data, timeout.id);
 			mem_pool_reset(loop->temp_pool);
 			current_context = NULL;
@@ -879,6 +880,7 @@ size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *conte
 		.data = data,
 		.id = id ++
 	};
+	ulog(LOG_DEBUG, "Adding timeout for %lu seconds, expected to fire at %zu, now %llu as ID %zu\n", (unsigned long) after,  when, (unsigned long long) loop->now, loop->timeouts[pos].id);
 	loop->timeout_count ++;
 	return loop->timeouts[pos].id;
 }
