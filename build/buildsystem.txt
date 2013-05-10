@@ -142,6 +142,10 @@ variable.
 
 EXTRA_DEFINES::
   Additional defines that will be passed to the compiler.
+EXTRA_INCLUDES::
+  Additional paths to search for inclusion of header files.
+EXTRA_LIBS::
+  Additional libraries to link into the result.
 LDFLAGS::
   Flags passed to the linker. Other flags will be appended by the
   build system.
