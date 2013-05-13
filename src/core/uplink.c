@@ -36,7 +36,6 @@ enum auth_status {
 struct uplink {
 	// Will always be uplink_read, this is to be able to use it as epoll_handler
 	void (*uplink_read)(struct uplink *uplink, uint32_t events);
-	// Timeouts for pings, etc.
 	struct loop *loop;
 	struct mem_pool *buffer_pool;
 	const char *remote_name, *service, *login, *password;
@@ -45,9 +44,12 @@ struct uplink {
 	size_t buffer_size, size_rest;
 	uint32_t reconnect_timeout;
 	bool has_size;
+	// Timeouts for pings, etc.
 	size_t ping_timeout; // The ID of the timeout.
 	size_t pings_unanswered; // Number of pings sent without answer (in a row)
 	bool ping_scheduled;
+	bool reconnect_scheduled;
+	size_t reconnect_id; // The ID of the reconnect timeout
 	int fd;
 	enum auth_status auth_status;
 	uint8_t challenge[CHALLENGE_LEN];
@@ -83,7 +85,7 @@ static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo
 static void connect_fail(struct uplink *uplink);
 static void send_ping(struct context *context, void *data, size_t id);
 
-// Connect to remote. Blocking. May abort (that one should be solved by retries in future)
+// Connect to remote. Blocking.
 static void uplink_connect(struct uplink *uplink) {
 	assert(uplink->fd == -1);
 	if (uplink->last_connect + RECONN_TIME > loop_now(uplink->loop)) {
@@ -120,10 +122,12 @@ static void reconnect_now(struct context *unused, void *data, size_t id_unused) 
 	(void) unused;
 	(void) id_unused;
 	ulog(LOG_INFO, "Reconnecting to %s:%s now\n", uplink->remote_name, uplink->service);
+	uplink->reconnect_scheduled = false;
 	uplink_connect(uplink);
 }
 
 static void connect_fail(struct uplink *uplink) {
+	assert(!uplink->reconnect_scheduled);
 	if (uplink->reconnect_timeout) {
 		// Some subsequent reconnect.
 		uplink->reconnect_timeout *= RECONNECT_MULTIPLY;
@@ -132,7 +136,8 @@ static void connect_fail(struct uplink *uplink) {
 	} else
 		uplink->reconnect_timeout = RECONNECT_BASE;
 	ulog(LOG_INFO, "Going to reconnect to %s:%s after %d seconds\n", uplink->remote_name, uplink->service, uplink->reconnect_timeout / 1000);
-	loop_timeout_add(uplink->loop, uplink->reconnect_timeout, NULL, uplink, reconnect_now);
+	uplink->reconnect_id = loop_timeout_add(uplink->loop, uplink->reconnect_timeout, NULL, uplink, reconnect_now);
+	uplink->reconnect_scheduled = true;
 }
 
 static void buffer_reset(struct uplink *uplink) {
@@ -142,7 +147,7 @@ static void buffer_reset(struct uplink *uplink) {
 	mem_pool_reset(uplink->buffer_pool);
 }
 
-static void uplink_disconnect(struct uplink *uplink) {
+static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect) {
 	if (uplink->fd != -1) {
 		ulog(LOG_DEBUG, "Closing uplink connection %d to %s:%s\n", uplink->fd, uplink->remote_name, uplink->service);
 		loop_uplink_disconnected(uplink->loop);
@@ -153,6 +158,9 @@ static void uplink_disconnect(struct uplink *uplink) {
 		buffer_reset(uplink);
 		if (uplink->ping_scheduled)
 			loop_timeout_cancel(uplink->loop, uplink->ping_timeout);
+		uplink->ping_scheduled = false;
+		if (uplink->reconnect_scheduled && reset_reconnect)
+			loop_timeout_cancel(uplink->loop, uplink->reconnect_id);
 	} else
 		ulog(LOG_DEBUG, "Uplink connection to %s:%s not open\n", uplink->remote_name, uplink->service);
 }
@@ -166,8 +174,11 @@ static void send_ping(struct context *context_unused, void *data, size_t id_unus
 	if (uplink->pings_unanswered >= PING_COUNT) {
 		ulog(LOG_ERROR, "Too many pings not answered on %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
 		// Let the connect be called from the loop, so it works even if uplink_disconnect makes a plugin crash
-		loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
-		uplink_disconnect(uplink);
+		assert(!uplink->reconnect_scheduled);
+		uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
+		uplink->reconnect_scheduled = true;
+		uplink->pings_unanswered = 0;
+		uplink_disconnect(uplink, false);
 		return;
 	}
 	ulog(LOG_DEBUG, "Sending ping to %s:%s\n", uplink->remote_name, uplink->service);
@@ -368,8 +379,10 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 		} else if (amount == 0) { // 0 means socket closed
 			ulog(LOG_WARN, "Remote closed the uplink %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
 CLOSED:
-			loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
-			uplink_disconnect(uplink);
+			assert(!uplink->reconnect_scheduled);
+			uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
+			uplink->reconnect_scheduled = true;
+			uplink_disconnect(uplink, false);
 			return; // We are done with this socket.
 		} else {
 			uplink->buffer_pos += amount;
@@ -402,14 +415,17 @@ void uplink_configure(struct uplink *uplink, const char *remote_name, const char
 	uplink->login = login;
 	uplink->password = password;
 	// Reconnect
-	loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
-	uplink_disconnect(uplink);
+	if (!uplink->reconnect_scheduled) {
+		uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
+		uplink->reconnect_scheduled = true;
+	}
+	uplink_disconnect(uplink, false);
 }
 
 void uplink_destroy(struct uplink *uplink) {
 	ulog(LOG_INFO, "Destroying uplink to %s:%s\n", uplink->remote_name, uplink->service);
 	// The memory pools get destroyed by the loop, we just close the socket, if any.
-	uplink_disconnect(uplink);
+	uplink_disconnect(uplink, true);
 }
 
 static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
@@ -424,8 +440,10 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 				case ECONNRESET:
 				case EPIPE:
 					// Lost connection. Reconnect.
-					loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
-					uplink_disconnect(uplink);
+					assert(!uplink->reconnect_scheduled);
+					uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
+					uplink->reconnect_scheduled = true;
+					uplink_disconnect(uplink, false);
 					return false;
 				default:
 					// Fatal errors
