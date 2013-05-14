@@ -72,6 +72,8 @@ ACK::
   TCP packets with ACK flag set.
 PUSH::
   TCP packets with PUSH flag set.
+SERVER::
+  The communication with the uplink server.
 
 Note that the related categories don't necessarily form complements.
 There may be, for example, packets that are not considered In nor Out
