@@ -23,10 +23,6 @@ class CountPlugin(plugin.Plugin):
 		self.__stats = {}
 		self.__last = int(time.time())
 		self.__current = int(time.time())
-		with database.transaction() as t:
-			t.execute('SELECT name, id FROM count_types')
-			self.__names = dict(t.fetchall())
-		self.__name_order = ("All", "IPv4", "IPv6", "In", "Out", "TCP", "UDP", "ICMP", 'Low port', "SYN", "FIN", "SYN+ACK", "ACK", "PUSH")
 
 	def __init_download(self):
 		"""
@@ -47,6 +43,10 @@ class CountPlugin(plugin.Plugin):
 			return # No data to store.
 		logger.info('Storing count snapshot')
 		with database.transaction() as t:
+			t.execute('SELECT name, id FROM count_types ORDER BY ord')
+			name_data = t.fetchall()
+			name_order = map(lambda x: x[0], name_data)
+			names = dict(name_data)
 			# Store the timestamp here, so all the clients have the same value.
 			t.execute('SELECT NOW()')
 			(now,) = t.fetchone()
@@ -63,7 +63,8 @@ class CountPlugin(plugin.Plugin):
 			# Push all the data in
 			def clientdata(client):
 				snapshot = snapshots[clients[client]]
-				return map(lambda name, index: (snapshot, self.__names[name], self.__data[client][index * 2], self.__data[client][index * 2 + 1]), self.__name_order, range(0, len(self.__name_order)))
+				l = min(len(self.__data[client]) / 2, len(name_order))
+				return map(lambda name, index: (snapshot, names[name], self.__data[client][index * 2], self.__data[client][index * 2 + 1]), name_order[:l], range(0, l))
 			def clientcaptures(client):
 				snapshot = snapshots[clients[client]]
 				return map(lambda i: (snapshot, i, self.__stats[client][3 * i], self.__stats[client][3 * i + 1], self.__stats[client][3 * i + 2]), range(0, len(self.__stats[client]) / 3))

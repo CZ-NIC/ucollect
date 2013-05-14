@@ -70,7 +70,9 @@ CREATE INDEX ON anomalies (from_group, type, timestamp);
 CREATE TABLE count_types (
 	id SMALLINT PRIMARY KEY NOT NULL,
 	name TEXT UNIQUE NOT NULL,
-	description TEXT NOT NULL
+	description TEXT NOT NULL,
+	ord SMALLINT NOT NULL,
+	UNIQUE (ord)
 );
 CREATE SEQUENCE count_types_id OWNED BY count_types.id;
 ALTER TABLE count_types ALTER COLUMN id SET DEFAULT NEXTVAL('count_types_id');
@@ -110,21 +112,22 @@ CREATE TABLE capture_stats (
 
 INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts');
 INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port');
-INSERT INTO count_types (name, description) VALUES
-	('All', 'Any packet is included in this category'),
-	('IPv4', 'Packets sent over the IPv4 protocol.'),
-	('IPv6', 'Packets sent over the IPv6 protocol.'),
-	('In', 'Packets sent over either IPv4 or IPv6 that have source address outside of the local network and destination inside.'),
-	('Out', 'Packets sent over either IPv4 or IPv6 that have source address inside of the local network and destination outside.'),
-	('TCP', 'Packets sent over IPv4/TCP and IPv6/TCP'),
-	('UDP', 'Packets sent over IPv4/UDP and IPv6/UDP'),
-	('ICMP', 'Both ICMP and ICMPv6 packets'),
-	('Low port', 'TCP or UDP packets with the remote port <= 1024'),
-	('SYN', 'TCP packets with the SYN flag set'),
-	('FIN', 'TCP packets with the FIN flag set'),
-	('SYN+ACK', 'TCP packets with both SYN and ACK flags set. This may be a good heuristics for number of created TCP connections.'),
-	('ACK', 'TCP packets with ACK flag set.'),
-	('PUSH', 'TCP packets with the PUSH flag set.');
+INSERT INTO count_types (name, description, ord) VALUES
+	('All', 'Any packet is included in this category', 1),
+	('IPv4', 'Packets sent over the IPv4 protocol.', 2),
+	('IPv6', 'Packets sent over the IPv6 protocol.', 3),
+	('In', 'Packets sent over either IPv4 or IPv6 that have source address outside of the local network and destination inside.', 4),
+	('Out', 'Packets sent over either IPv4 or IPv6 that have source address inside of the local network and destination outside.', 5),
+	('TCP', 'Packets sent over IPv4/TCP and IPv6/TCP', 6),
+	('UDP', 'Packets sent over IPv4/UDP and IPv6/UDP', 7),
+	('ICMP', 'Both ICMP and ICMPv6 packets', 8),
+	('Low port', 'TCP or UDP packets with the remote port <= 1024', 9),
+	('SYN', 'TCP packets with the SYN flag set', 10),
+	('FIN', 'TCP packets with the FIN flag set', 11),
+	('SYN+ACK', 'TCP packets with both SYN and ACK flags set. This may be a good heuristics for number of created TCP connections.', 12),
+	('ACK', 'TCP packets with ACK flag set.', 13),
+	('PUSH', 'TCP packets with the PUSH flag set.', 14),
+	('SERVER', 'Communication with the server', 15);
 COMMIT;
 ENDSQL
 
