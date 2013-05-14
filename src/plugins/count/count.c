@@ -18,6 +18,7 @@ enum selector {
 	TCP, UDP, ICMP,
 	LOW_PORT,
 	SYN_FLAG, FIN_FLAG, SYN_ACK_FLAG, ACK_FLAG, PUSH_FLAG,
+	SERVER,
 	MAX
 };
 
@@ -83,8 +84,15 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 			update(d, info, ICMP);
 	}
 	enum endpoint remote = remote_endpoint(info->direction);
-	if (remote != END_COUNT && info->ports[remote] <= 1024 && info->ports[remote] != 0)
-		update(d, info, LOW_PORT);
+	if (remote != END_COUNT) {
+		if (info->ports[remote] <= 1024 && info->ports[remote] != 0)
+			update(d, info, LOW_PORT);
+		// TODO: Make the remote server configurable.
+		static const uint8_t address[] = { 217, 31, 192, 10 };
+		// Communication with the server. Hardcoded for now. Exclude ssh (at least for current development)
+		if (info->ip_protocol == 4 && memcmp(address, info->addresses[remote], 4) == 0 && info->ports[remote] != 22)
+			update(d, info, SERVER);
+	}
 }
 
 static void initialize(struct context *context) {
