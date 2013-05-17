@@ -351,7 +351,7 @@ static void loop_get_now(struct loop *loop) {
 	 * But the CLOCK_MONOTONIC_RAW doesn't seem to be available in uclibc.
 	 * Any better alternative?
 	 */
-	if(clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
 		die("Couldn't get time (%s)\n", strerror(errno));
 	loop->now = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
@@ -857,7 +857,7 @@ size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *conte
 		 * so it should not grow indefinitely.
 		 */
 	}
-	size_t when = loop->now + after;
+	uint64_t when = loop->now + after;
 	// Sort it in, according to the value of when.
 	size_t pos = 0;
 	for (size_t i = loop->timeout_count; i; i --) {
