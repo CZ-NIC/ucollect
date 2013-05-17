@@ -844,6 +844,12 @@ const char *loop_plugin_get_name(const struct context *context) {
 }
 
 size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *context, void *data, void (*callback)(struct context *context, void *data, size_t id)) {
+	if (after == 0)
+		/*
+		 * Schedule it for the next loop iteration. Prevents uninteruptible
+		 * busy loop, as we accept signals only when waiting for events.
+		 */
+		after = 1;
 	// Enough space?
 	if (loop->timeout_count == loop->timeout_capacity) {
 		loop->timeout_capacity = loop->timeout_capacity * 2;
@@ -881,6 +887,7 @@ size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *conte
 		.id = id ++
 	};
 	ulog(LOG_DEBUG, "Adding timeout for %lu seconds, expected to fire at %zu, now %llu as ID %zu\n", (unsigned long) after,  when, (unsigned long long) loop->now, loop->timeouts[pos].id);
+	assert(loop->now < when);
 	loop->timeout_count ++;
 	return loop->timeouts[pos].id;
 }
