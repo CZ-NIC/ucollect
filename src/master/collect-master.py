@@ -1,8 +1,9 @@
-#!/usr/bin/python
+#!/usr/bin/python2
 from twisted.internet import reactor
 from twisted.internet.endpoints import TCP6ServerEndpoint
 import log_extra
 import logging
+import logging.handlers
 from client import ClientFactory
 from plugin import Plugins
 import master_config
@@ -15,10 +16,9 @@ if severity == 'TRACE':
 else:
 	severity = getattr(logging, severity)
 log_file = master_config.get('log_file')
-if log_file == '-':
-	logging.basicConfig(level=severity, format=master_config.get('log_format'))
-else:
-	logging.basicConfig(level=severity, format=master_config.get('log_format'), filename=log_file)
+logging.basicConfig(level=severity, format=master_config.get('log_format'))
+if log_file != '-':
+	logging.getLogger().addHandler(logging.handlers.RotatingFileHandler(log_file, maxBytes=int(master_config.get('log_file_size')), backupCount=int(master_config.get('log_file_count'))))
 
 loaded_plugins = {}
 plugins = Plugins()
