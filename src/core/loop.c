@@ -655,7 +655,6 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 		case 0: // All OK
 			break;
 		case PCAP_WARNING_PROMISC_NOTSUP:
-		case PCAP_WARNING_TSTAMP_TYPE_NOTSUP:
 		case PCAP_WARNING:
 			// These are just warnings. Display them, but continue.
 			ulog(LOG_WARN, "PCAP on %s: %s\n", interface, pcap_geterr(pcap));
