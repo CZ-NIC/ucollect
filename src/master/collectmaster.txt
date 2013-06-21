@@ -3,7 +3,7 @@ The collection master
 
 The collection master (`collectmaster`) is the server that listens for
 the `ucollect` clients and gathers data from them, saving them to a
-database (currently mysql). It consists of a core and several plugins.
+database (currently postgresql). It consists of a core and several plugins.
 Generally, there's a matching plugin for each plugin in `ucollect`.
 
 The core provides some basic features, like listening for the clients,
@@ -165,7 +165,7 @@ config_version::
 The database
 ------------
 
-A mysql database is used by the server.
+A postgresql database is used by the server.
 
 There's a basic set of tables, and each plugin has it's own additional
 set of tables.
