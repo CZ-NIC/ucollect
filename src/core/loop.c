@@ -628,6 +628,66 @@ static const size_t ip_offset_table[] =
 	[DLT_PFLOG] = 28,  /* BSD pflog          */
 };
 
+// Open one direction of the capture.
+static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char *interface, const char *dir_txt) {
+	ulog(LOG_INFO, "Initializing PCAP (%s) on %s\n", dir_txt, interface);
+	// Open the pcap
+	char errbuf[PCAP_ERRBUF_SIZE];
+	*pcap = pcap_create(interface, errbuf);
+	if (!*pcap) {
+		ulog(LOG_ERROR, "Can't initialize PCAP (%s) on %s (%s)\n", dir_txt, interface, errbuf);
+		return -1;
+	}
+	// Set parameters.
+	int result = pcap_set_promisc(*pcap, 1);
+	assert(result == 0); // Can error only on code errors
+	result = pcap_set_timeout(*pcap, PCAP_TIMEOUT); // One second
+	assert(result == 0);
+	pcap_set_buffer_size(*pcap, PCAP_BUFFER);
+	assert(result == 0);
+
+	// TODO: Some filters?
+
+	// Activate it
+	result = pcap_activate(*pcap);
+	switch (result) {
+		// We need to manually distinguish what are errors, what warnings, etc.
+		case 0: // All OK
+			break;
+		case PCAP_WARNING_PROMISC_NOTSUP:
+		case PCAP_WARNING:
+			// These are just warnings. Display them, but continue.
+			ulog(LOG_WARN, "PCAP (%s) on %s: %s\n", dir_txt, interface, pcap_geterr(*pcap));
+			break;
+		default:
+			/*
+			 * Everything is an error. Even if it wasn't an error, we don't
+			 * know it explicitly, so consider it error.
+			 */
+			ulog(LOG_ERROR, "PCAP on (%s) %s: %s, closing\n", dir_txt, interface, pcap_geterr(*pcap));
+			pcap_close(*pcap);
+			return -1;
+	}
+	// Set it non-blocking. We'll keep switching between pcaps of interfaces and other events.
+	if (pcap_setnonblock(*pcap, 1, errbuf) == -1) {
+		ulog(LOG_ERROR, "Can't set PCAP (%s) on %s non-blocking (%s)\n", dir_txt, interface, errbuf);
+		pcap_close(*pcap);
+		return -1;
+	}
+	result = pcap_setdirection(*pcap, direction);
+	pcap_perror(*pcap, "X");
+	assert(result == 0);
+
+	// Get the file descriptor for the epoll.
+	int fd = pcap_get_selectable_fd(*pcap);
+	if (fd == -1) {
+		ulog(LOG_ERROR, "Can't get FD for PCAP (%s) on %s\n", dir_txt, interface);
+		pcap_close(*pcap);
+		return -1;
+	}
+	return fd;
+}
+
 bool loop_add_pcap(struct loop_configurator *configurator, const char *interface) {
 	// First, go through the old ones and copy it if is there.
 	LFOR(pcap, old, &configurator->loop->pcap_interfaces)
@@ -640,58 +700,10 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 			new->name = mem_pool_strdup(configurator->config_pool, interface);
 			return true;
 		}
-	ulog(LOG_INFO, "Initializing PCAP on %s\n", interface);
-	// Open the pcap
-	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t *pcap = pcap_create(interface, errbuf);
-	if (!pcap) {
-		ulog(LOG_ERROR, "Can't initialize PCAP on %s (%s)\n", interface, errbuf);
-		return false;
-	}
-	// Set parameters.
-	int result = pcap_set_promisc(pcap, 1);
-	assert(result == 0); // Can error only on code errors
-	result = pcap_set_timeout(pcap, PCAP_TIMEOUT); // One second
-	assert(result == 0);
-	pcap_set_buffer_size(pcap, PCAP_BUFFER);
-	assert(result == 0);
-
-	// TODO: Some filters?
-
-	// Activate it
-	result = pcap_activate(pcap);
-	switch (result) {
-		// We need to manually distinguish what are errors, what warnings, etc.
-		case 0: // All OK
-			break;
-		case PCAP_WARNING_PROMISC_NOTSUP:
-		case PCAP_WARNING:
-			// These are just warnings. Display them, but continue.
-			ulog(LOG_WARN, "PCAP on %s: %s\n", interface, pcap_geterr(pcap));
-			break;
-		default:
-			/*
-			 * Everything is an error. Even if it wasn't an error, we don't
-			 * know it explicitly, so consider it error.
-			 */
-			ulog(LOG_ERROR, "PCAP on %s: %s, closing\n", interface, pcap_geterr(pcap));
-			pcap_close(pcap);
-			return false;
-	}
-	// Set it non-blocking. We'll keep switching between pcaps of interfaces and other events.
-	if (pcap_setnonblock(pcap, 1, errbuf) == -1) {
-		ulog(LOG_ERROR, "Can't set PCAP on %s non-blocking (%s)\n", interface, errbuf);
-		pcap_close(pcap);
-		return false;
-	}
-
-	// Get the file descriptor for the epoll.
-	int fd = pcap_get_selectable_fd(pcap);
-	if (fd == -1) {
-		ulog(LOG_ERROR, "Can't get FD for PCAP on %s\n", interface);
-		pcap_close(pcap);
-		return false;
-	}
+	pcap_t *pcap;
+	int fd = pcap_create_dir(&pcap, PCAP_D_INOUT, interface, "inout");
+	if (fd == -1)
+		return false; // Error already reported
 
 	// Put the PCAP into the new configuration loop.
 	struct pcap_interface *new = pcap_append_pool(&configurator->pcap_interfaces, configurator->config_pool);
