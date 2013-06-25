@@ -740,20 +740,25 @@ size_t *loop_pcap_stats(struct context *context) {
 	struct loop *loop = context->loop;
 	size_t *result = mem_pool_alloc(context->temp_pool, (1 + 3 * loop->pcap_interfaces.count) * sizeof *result);
 	*result = loop->pcap_interfaces.count;
-	size_t i = 1;
+	size_t pos = 1;
 	LFOR(pcap, interface, &loop->pcap_interfaces) {
-		struct pcap_stat ps;
-		// MARK
-		int error = pcap_stats(interface->directions[0].pcap, &ps);
-		if (error)
-			memset(result + 1 + 3 * i, 0xff, 3 * sizeof *result);
-		else {
-			result[i ++] = ps.ps_recv - interface->captured;
-			interface->captured = ps.ps_recv;
-			result[i ++] = ps.ps_drop - interface->dropped;
-			interface->dropped = ps.ps_drop;
-			result[i ++] = ps.ps_ifdrop - interface->if_dropped;
-			interface->if_dropped = ps.ps_ifdrop;
+		memset(result + pos, 0, 3 * sizeof *result);
+		for (size_t i = 0; i < 2; i ++) {
+			struct pcap_stat ps;
+			int error = pcap_stats(interface->directions[i].pcap, &ps);
+			if (error) {
+				memset(result + pos, 0xff, 3 * sizeof *result);
+				break;
+			} else {
+				result[pos ++] = ps.ps_recv - interface->captured;
+				interface->captured = ps.ps_recv;
+				result[pos ++] = ps.ps_drop - interface->dropped;
+				interface->dropped = ps.ps_drop;
+				result[pos ++] = ps.ps_ifdrop - interface->if_dropped;
+				interface->if_dropped = ps.ps_ifdrop;
+			}
+			if (!i)
+				pos -= 3;
 		}
 	}
 	return result;
