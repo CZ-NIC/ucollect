@@ -22,10 +22,6 @@ config would look like this:
 
   config interface
       option ifname 'eth0'
-      list localaddr '127.0.0.1/32'
-      list localaddr '192.0.2.1/24'
-      list localaddr '::1/128'
-      list localaddr '2001:db8::1/32'
 
   config plugin
       option libname 'libplugin_count.so'
@@ -47,10 +43,6 @@ The `interface` section
 
 This describes one interface to listen on. The option `ifname` specifies
 the name of the interface on the system.
-
-The `localaddr` list specifies address ranges to be considered on local
-network. This is used by the plugins to decide if a given packet is
-inbound or outbound.
 
 The `plugin` section
 ~~~~~~~~~~~~~~~~~~~~

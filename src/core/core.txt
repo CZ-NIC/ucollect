@@ -105,15 +105,6 @@ like C++ or Java.
 For details about each module, refer to the comments in the header
 file. This is just overview, not a complete API reference.
 
-address
-~~~~~~~
-
-This module allows to parse string representation of addresses and
-store them. It allows to store a group of addresses (or networks, in
-the address/netmask notation). It is possible to match one address
-against a network or group of networks -- find out if the address is in
-the network, or any of the networks.
-
 context
 ~~~~~~~
 
