@@ -127,6 +127,9 @@ static void pool_list_destroy(const struct pool_list *list) {
 		mem_pool_destroy(pool->pool);
 }
 
+#define PCAP_DIR_IN 0
+#define PCAP_DIR_OUT 1
+
 struct pcap_interface {
 	/*
 	 * This will be always set to pcap_read. Trick to make the epollhandling
@@ -140,9 +143,11 @@ struct pcap_interface {
 	// Link back to the loop owning this pcap. For epoll handler.
 	struct loop *loop;
 	const char *name;
-	pcap_t *pcap;
+	struct {
+		pcap_t *pcap;
+		int fd;
+	} directions[2];
 	struct address_list *local_addresses;
-	int fd;
 	size_t offset;
 	size_t watchdog_timer;
 	bool watchdog_received,  watchdog_initialized;
@@ -323,9 +328,11 @@ static void self_reconfigure(struct context *context, void *data, size_t id) {
 static void pcap_read(struct pcap_interface *interface, uint32_t unused) {
 	(void) unused;
 	ulog(LOG_DEBUG_VERBOSE, "Read on interface %s\n", interface->name);
-	int result = pcap_dispatch(interface->pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) interface);
+	// MARK
+	int result = pcap_dispatch(interface->directions[0].pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) interface);
 	if (result == -1) {
-		ulog(LOG_ERROR, "Error reading packets from PCAP on %s (%s)\n", interface->name, pcap_geterr(interface->pcap));
+		// MARK
+		ulog(LOG_ERROR, "Error reading packets from PCAP on %s (%s)\n", interface->name, pcap_geterr(interface->directions[0].pcap));
 		interface->loop->retry_reconfigure_on_failure = true;
 		self_reconfigure(NULL, NULL, 0); // Try to reconfigure on the next loop iteration
 	}
@@ -340,8 +347,10 @@ static void epoll_register_pcap(struct loop *loop, struct pcap_interface *interf
 			.ptr = interface
 		}
 	};
-	if (epoll_ctl(loop->epoll_fd, op, interface->fd, &event) == -1)
-		die("Can't register PCAP fd %d of %s to epoll fd %d (%s)\n", interface->fd, interface->name, loop->epoll_fd, strerror(errno));
+	// MARK
+	if (epoll_ctl(loop->epoll_fd, op, interface->directions[0].fd, &event) == -1)
+		// MARK
+		die("Can't register PCAP fd %d of %s to epoll fd %d (%s)\n", interface->directions[0].fd, interface->name, loop->epoll_fd, strerror(errno));
 }
 
 static void loop_get_now(struct loop *loop) {
@@ -589,7 +598,8 @@ static void pcap_destroy(struct pcap_interface *interface) {
 	ulog(LOG_INFO, "Closing PCAP on %s\n", interface->name);
 	if (interface->watchdog_initialized)
 		loop_timeout_cancel(interface->loop, interface->watchdog_timer);
-	pcap_close(interface->pcap);
+	// MARK
+	pcap_close(interface->directions[0].pcap);
 }
 
 void loop_destroy(struct loop *loop) {
@@ -690,9 +700,14 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 		.handler = pcap_read,
 		.loop = configurator->loop,
 		.name = mem_pool_strdup(configurator->config_pool, interface),
-		.pcap = pcap,
+		// MARK
+		.directions = {
+			[0] = {
+				.pcap = pcap,
+				.fd = fd
+			}
+		},
 		.local_addresses = address_list_create(configurator->config_pool),
-		.fd = fd,
 		.offset = ip_offset_table[pcap_datalink(pcap)],
 		.mark = true
 	};
@@ -706,7 +721,8 @@ size_t *loop_pcap_stats(struct context *context) {
 	size_t i = 1;
 	LFOR(pcap, interface, &loop->pcap_interfaces) {
 		struct pcap_stat ps;
-		int error = pcap_stats(interface->pcap, &ps);
+		// MARK
+		int error = pcap_stats(interface->directions[0].pcap, &ps);
 		if (error)
 			memset(result + 1 + 3 * i, 0xff, 3 * sizeof *result);
 		else {
