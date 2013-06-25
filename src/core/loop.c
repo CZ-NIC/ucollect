@@ -159,6 +159,7 @@ struct pcap_interface {
 	size_t watchdog_missed;
 	struct pcap_interface *next;
 	bool mark; // Mark for configurator.
+	bool in; // Currently processed direction is in (temporary internal mark)
 	// Statistics from the last time, so we can return just the diffs
 	size_t captured, dropped, if_dropped;
 };
@@ -309,10 +310,11 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 	struct packet_info info = {
 		.length = header->caplen - interface->offset,
 		.data = data + interface->offset,
-		.interface = interface->name
+		.interface = interface->name,
+		.direction = interface->in ? DIR_IN : DIR_OUT
 	};
 	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s\n", info.length, interface->name);
-	parse_packet(&info, interface->local_addresses, interface->loop->batch_pool);
+	parse_packet(&info, interface->loop->batch_pool);
 	LFOR(plugin, plugin, &interface->loop->plugins)
 		plugin_packet(plugin, &info);
 }
@@ -333,7 +335,7 @@ static void self_reconfigure(struct context *context, void *data, size_t id) {
 static void pcap_read(struct pcap_sub_interface *sub, uint32_t unused) {
 	(void) unused;
 	ulog(LOG_DEBUG_VERBOSE, "Read on interface %s\n", sub->interface->name);
-	// MARK: Set the direction
+	sub->interface->in = sub == &sub->interface->directions[0];
 	int result = pcap_dispatch(sub->pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) sub->interface);
 	if (result == -1) {
 		ulog(LOG_ERROR, "Error reading packets from PCAP on %s (%s)\n", sub->interface->name, pcap_geterr(sub->pcap));

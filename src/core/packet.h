@@ -95,10 +95,9 @@ struct packet_info {
 
 /*
  * Parse the stuff in the passed packet. It expects length and data are already
- * set, it fills the addresses, protocols, etc. The local_addresses are used to
- * guess the direction of the packet.
+ * set, it fills the addresses, protocols, etc.
  */
-void parse_packet(struct packet_info *packet, const struct address_list *local_addresses, struct mem_pool *pool) __attribute__((nonnull));
+void parse_packet(struct packet_info *packet, struct mem_pool *pool) __attribute__((nonnull));
 
 /*
  * Which endpoint is the remote one for the given direction?

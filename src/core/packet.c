@@ -33,7 +33,7 @@ struct tcp_ports {
 	uint8_t flags;
 };
 
-static void parse_internal(struct packet_info *packet, const struct address_list *local_addresses, struct mem_pool *pool) {
+static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 	packet->app_protocol_raw = 0xff;
 	/*
 	 * Try to put the packet into the form for an IP packet. We're lucky, the version field
@@ -79,16 +79,6 @@ static void parse_internal(struct packet_info *packet, const struct address_list
 			return;
 	}
 
-	// Do direction guessing
-	bool internal[END_COUNT];
-	for (size_t i = 0; i < END_COUNT; i ++)
-		internal[i] = addr_in_net_list(packet->addresses[i], packet->addr_len, local_addresses);
-	if (internal[END_SRC] && !internal[END_DST])
-		packet->direction = DIR_OUT;
-	else if (!internal[END_SRC] && internal[END_DST])
-		packet->direction = DIR_IN;
-	else
-		packet->direction = DIR_UNKNOWN;
 	/*
 	 * The start of the next header. Might be tcp, or something else (we abuse the structure
 	 * for UDP too).
@@ -117,7 +107,7 @@ static void parse_internal(struct packet_info *packet, const struct address_list
 			next->data = below_ip;
 			next->length = length_rest;
 			next->interface = packet->interface;
-			parse_packet(next, local_addresses, pool);
+			parse_packet(next, pool);
 			return; // And we're done (no ports here)
 		case 6: // TCP
 			if (length_rest < sizeof *tcp_ports)
@@ -176,7 +166,7 @@ static void postprocess(struct packet_info *packet) {
 		packet->tcp_flags = 0;
 }
 
-void parse_packet(struct packet_info *packet, const struct address_list *local_addresses, struct mem_pool *pool) {
-	parse_internal(packet, local_addresses, pool);
+void parse_packet(struct packet_info *packet, struct mem_pool *pool) {
+	parse_internal(packet, pool);
 	postprocess(packet);
 }
