@@ -1,6 +1,5 @@
 #include "packet.h"
 #include "mem_pool.h"
-#include "address.h"
 
 // These are for the IP header structs.
 #include <netinet/ip.h>

@@ -17,21 +17,6 @@ static bool load_interface(struct loop_configurator *configurator, struct uci_se
 	}
 	if (!loop_add_pcap(configurator, name))
 		return false;
-	struct uci_option *addresses = uci_lookup_option(ctx, section, "localaddr");
-	if (!addresses) {
-		ulog(LOG_WARN, "Failed to load local addresses (localaddr) of interface %s, assuming none are local\n", section->e.name);
-		return true;
-	}
-	if (addresses->type != UCI_TYPE_LIST) {
-		ulog(LOG_ERROR, "localaddr of interface %s isn't a list\n", section->e.name);
-		return false;
-	}
-	struct uci_element *addr;
-	uci_foreach_element(&addresses->v.list, addr) {
-		ulog(LOG_DEBUG, "Adding address %s\n", addr->name);
-		if (!loop_pcap_add_address(configurator, addr->name))
-			return false;
-	}
 	return true;
 }
 

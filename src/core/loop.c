@@ -4,7 +4,6 @@
 #include "context.h"
 #include "plugin.h"
 #include "packet.h"
-#include "address.h"
 #include "tunable.h"
 #include "loader.h"
 #include "configure.h"
@@ -152,7 +151,6 @@ struct pcap_interface {
 	struct loop *loop;
 	const char *name;
 	struct pcap_sub_interface directions[2];
-	struct address_list *local_addresses;
 	size_t offset;
 	size_t watchdog_timer;
 	bool watchdog_received,  watchdog_initialized;
@@ -510,7 +508,6 @@ void loop_run(struct loop *loop) {
 			LFOR(pcap, interface, &loop->pcap_interfaces) {
 				if (!loop_add_pcap(configurator, interface->name))
 					die("Copy of %s failed\n", interface->name);
-				address_list_copy(configurator->pcap_interfaces.tail->local_addresses, interface->local_addresses);
 			}
 			loop_config_commit(configurator);
 			goto REINIT;
@@ -703,7 +700,6 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 			struct pcap_interface *new = pcap_append_pool(&configurator->pcap_interfaces, configurator->config_pool);
 			*new = *old;
 			new->next = NULL;
-			new->local_addresses = address_list_create(configurator->config_pool);
 			new->name = mem_pool_strdup(configurator->config_pool, interface);
 			return true;
 		}
@@ -738,7 +734,6 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 				.interface = new
 			}
 		},
-		.local_addresses = address_list_create(configurator->config_pool),
 		.offset = ip_offset_table[pcap_datalink(pcap_in)],
 		.mark = true
 	};
@@ -771,11 +766,6 @@ size_t *loop_pcap_stats(struct context *context) {
 		}
 	}
 	return result;
-}
-
-bool loop_pcap_add_address(struct loop_configurator *configurator, const char *address) {
-	assert(configurator->pcap_interfaces.tail);
-	return address_list_add_parsed(configurator->pcap_interfaces.tail->local_addresses, address, true);
 }
 
 bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {

@@ -37,7 +37,7 @@ void loop_destroy(struct loop *loop) __attribute__((nonnull));
 size_t *loop_pcap_stats(struct context *context) __attribute__((nonnull)) __attribute__((malloc));
 /*
  * When you want to configure the loop, you start by loop_config_start. You get
- * a handle to the configurator. You can then call loop_add_pcap, loop_pcap_add_address and
+ * a handle to the configurator. You can then call loop_add_pcap and
  * loop_add_plugin functions with it. After you are done, you call loop_config_commit,
  * which will make the changes available.
  *
@@ -56,8 +56,6 @@ void loop_config_commit(struct loop_configurator *configurator) __attribute__((n
 void loop_config_abort(struct loop_configurator *configurator) __attribute__((nonnull));
 
 bool loop_add_pcap(struct loop_configurator *configurator, const char *interface) __attribute__((nonnull));
-// Add a local address for the last added pcap interface. Can be net address (eg. 192.168.0.0/16).
-bool loop_pcap_add_address(struct loop_configurator *configurator, const char *address) __attribute__((nonnull));
 // Add a plugin. Provide the name of the library to load.
 bool loop_add_plugin(struct loop_configurator *configurator, const char *plugin) __attribute__((nonnull));
 // Set the remote endpoint of the uplink
