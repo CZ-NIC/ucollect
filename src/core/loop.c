@@ -130,23 +130,28 @@ static void pool_list_destroy(const struct pool_list *list) {
 #define PCAP_DIR_IN 0
 #define PCAP_DIR_OUT 1
 
-struct pcap_interface {
+struct pcap_interface;
+
+struct pcap_sub_interface {
 	/*
-	 * This will be always set to pcap_read. Trick to make the epollhandling
+	 * This will be always set to pcap_read_*. Trick to make the epollhandling
 	 * simpler ‒ we put this struct directly as the user data to epoll and the
 	 * generic handler calls the handler found, no matter what type it is.
 	 *
 	 * This item must be first in the data structure. It'll be then casted to
 	 * the epoll_handler, which contains a function pointer as the first element.
 	 */
-	void (*handler)(struct pcap_interface *interface, uint32_t events);
+	void (*handler)(struct pcap_sub_interface *sub, uint32_t events);
+	pcap_t *pcap;
+	int fd;
+	struct pcap_interface *interface;
+};
+
+struct pcap_interface {
 	// Link back to the loop owning this pcap. For epoll handler.
 	struct loop *loop;
 	const char *name;
-	struct {
-		pcap_t *pcap;
-		int fd;
-	} directions[2];
+	struct pcap_sub_interface directions[2];
 	struct address_list *local_addresses;
 	size_t offset;
 	size_t watchdog_timer;
@@ -325,32 +330,31 @@ static void self_reconfigure(struct context *context, void *data, size_t id) {
 		die("Couldn't SIGHUP self (%s)\n", strerror(errno));
 }
 
-static void pcap_read(struct pcap_interface *interface, uint32_t unused) {
+static void pcap_read(struct pcap_sub_interface *sub, uint32_t unused) {
 	(void) unused;
-	ulog(LOG_DEBUG_VERBOSE, "Read on interface %s\n", interface->name);
-	// MARK
-	int result = pcap_dispatch(interface->directions[0].pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) interface);
+	ulog(LOG_DEBUG_VERBOSE, "Read on interface %s\n", sub->interface->name);
+	// MARK: Set the direction
+	int result = pcap_dispatch(sub->pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) sub->interface);
 	if (result == -1) {
-		// MARK
-		ulog(LOG_ERROR, "Error reading packets from PCAP on %s (%s)\n", interface->name, pcap_geterr(interface->directions[0].pcap));
-		interface->loop->retry_reconfigure_on_failure = true;
+		ulog(LOG_ERROR, "Error reading packets from PCAP on %s (%s)\n", sub->interface->name, pcap_geterr(sub->pcap));
+		sub->interface->loop->retry_reconfigure_on_failure = true;
 		self_reconfigure(NULL, NULL, 0); // Try to reconfigure on the next loop iteration
 	}
-	interface->watchdog_received = true;
-	ulog(LOG_DEBUG_VERBOSE, "Handled %d packets on %s\n", result, interface->name);
+	sub->interface->watchdog_received = true;
+	ulog(LOG_DEBUG_VERBOSE, "Handled %d packets on %s/%p\n", result, sub->interface->name, (void *) sub);
 }
 
 static void epoll_register_pcap(struct loop *loop, struct pcap_interface *interface, int op) {
-	struct epoll_event event = {
-		.events = EPOLLIN,
-		.data = {
-			.ptr = interface
-		}
-	};
-	// MARK
-	if (epoll_ctl(loop->epoll_fd, op, interface->directions[0].fd, &event) == -1)
-		// MARK
-		die("Can't register PCAP fd %d of %s to epoll fd %d (%s)\n", interface->directions[0].fd, interface->name, loop->epoll_fd, strerror(errno));
+	for (size_t i = 0; i < 2; i ++) {
+		struct epoll_event event = {
+			.events = EPOLLIN,
+			.data = {
+				.ptr = &interface->directions[i]
+			}
+		};
+		if (epoll_ctl(loop->epoll_fd, op, interface->directions[i].fd, &event) == -1)
+			die("Can't register PCAP fd %d of %s to epoll fd %d (%s)\n", interface->directions[i].fd, interface->name, loop->epoll_fd, strerror(errno));
+	}
 }
 
 static void loop_get_now(struct loop *loop) {
@@ -716,17 +720,20 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 	// Put the PCAP into the new configuration loop.
 	struct pcap_interface *new = pcap_append_pool(&configurator->pcap_interfaces, configurator->config_pool);
 	*new = (struct pcap_interface) {
-		.handler = pcap_read,
 		.loop = configurator->loop,
 		.name = mem_pool_strdup(configurator->config_pool, interface),
 		.directions = {
 			[PCAP_DIR_IN] = {
+				.handler = pcap_read,
 				.pcap = pcap_in,
-				.fd = fd_in
+				.fd = fd_in,
+				.interface = new
 			},
 			[PCAP_DIR_OUT] = {
+				.handler = pcap_read,
 				.pcap = pcap_out,
-				.fd = fd_out
+				.fd = fd_out,
+				.interface = new
 			}
 		},
 		.local_addresses = address_list_create(configurator->config_pool),
