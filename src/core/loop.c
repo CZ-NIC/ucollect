@@ -598,8 +598,8 @@ static void pcap_destroy(struct pcap_interface *interface) {
 	ulog(LOG_INFO, "Closing PCAP on %s\n", interface->name);
 	if (interface->watchdog_initialized)
 		loop_timeout_cancel(interface->loop, interface->watchdog_timer);
-	// MARK
-	pcap_close(interface->directions[0].pcap);
+	for (size_t i = 0; i < 2; i ++)
+		pcap_close(interface->directions[i].pcap);
 }
 
 void loop_destroy(struct loop *loop) {
@@ -674,8 +674,8 @@ static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char
 		pcap_close(*pcap);
 		return -1;
 	}
+	// For some reason, this doesn't work before activated. Maybe it's just filter on the output?
 	result = pcap_setdirection(*pcap, direction);
-	pcap_perror(*pcap, "X");
 	assert(result == 0);
 
 	// Get the file descriptor for the epoll.
@@ -685,6 +685,7 @@ static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char
 		pcap_close(*pcap);
 		return -1;
 	}
+	assert(pcap_datalink(*pcap) <= DLT_PFLOG);
 	return fd;
 }
 
@@ -700,27 +701,36 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 			new->name = mem_pool_strdup(configurator->config_pool, interface);
 			return true;
 		}
-	pcap_t *pcap;
-	int fd = pcap_create_dir(&pcap, PCAP_D_INOUT, interface, "inout");
-	if (fd == -1)
+	pcap_t *pcap_in;
+	int fd_in = pcap_create_dir(&pcap_in, PCAP_D_IN, interface, "in");
+	if (fd_in == -1)
 		return false; // Error already reported
+
+	pcap_t *pcap_out;
+	int fd_out = pcap_create_dir(&pcap_out, PCAP_D_OUT, interface, "out");
+	if (fd_out == -1) {
+		pcap_close(pcap_in);
+		return false;
+	}
 
 	// Put the PCAP into the new configuration loop.
 	struct pcap_interface *new = pcap_append_pool(&configurator->pcap_interfaces, configurator->config_pool);
-	assert(pcap_datalink(pcap) <= DLT_PFLOG);
 	*new = (struct pcap_interface) {
 		.handler = pcap_read,
 		.loop = configurator->loop,
 		.name = mem_pool_strdup(configurator->config_pool, interface),
-		// MARK
 		.directions = {
-			[0] = {
-				.pcap = pcap,
-				.fd = fd
+			[PCAP_DIR_IN] = {
+				.pcap = pcap_in,
+				.fd = fd_in
+			},
+			[PCAP_DIR_OUT] = {
+				.pcap = pcap_out,
+				.fd = fd_out
 			}
 		},
 		.local_addresses = address_list_create(configurator->config_pool),
-		.offset = ip_offset_table[pcap_datalink(pcap)],
+		.offset = ip_offset_table[pcap_datalink(pcap_in)],
 		.mark = true
 	};
 	return true;
