@@ -31,68 +31,72 @@ struct user_data {
 	} data[MAX];
 };
 
-static void update(struct user_data *d, const struct packet_info *info, enum selector selector) {
+static void update(struct user_data *d, enum selector selector, size_t size) {
 	assert(selector < MAX);
 	d->data[selector].count ++;
-	d->data[selector].size += info->length - info->hdr_length;
+	d->data[selector].size += size;
 }
 
-static void packet_handle(struct context *context, const struct packet_info *info) {
+static void packet_handle_internal(struct context *context, const struct packet_info *info, size_t size) {
 	struct user_data *d = context->user_data;
 	if (info->next) {
 		// It's wrapper around some other real packet. We're not interested in the envelope.
-		packet_handle(context, info->next);
+		packet_handle_internal(context, info->next, size);
 		return;
 	}
-	update(d, info, ANY);
+	update(d, ANY, size);
 	switch (info->direction) {
 		case DIR_IN:
-			update(d, info, IN);
+			update(d, IN, size);
 			break;
 		case DIR_OUT:
-			update(d, info, OUT);
+			update(d, OUT, size);
 			break;
 		default:;// Ignore others (and silence warning)
 	}
 	switch (info->ip_protocol) {
 		case 4:
-			update(d, info, V4);
+			update(d, V4, size);
 			break;
 		case 6:
-			update(d, info, V6);
+			update(d, V6, size);
 			break;
 	}
 	switch (info->app_protocol) {
 		case 'T':
-			update(d, info, TCP);
+			update(d, TCP, size);
 			if (info->tcp_flags & TCP_SYN)
-				update(d, info, SYN_FLAG);
+				update(d, SYN_FLAG, size);
 			if (info->tcp_flags & TCP_FIN)
-				update(d, info, FIN_FLAG);
+				update(d, FIN_FLAG, size);
 			if ((info->tcp_flags & TCP_FIN) && (info->tcp_flags & TCP_FIN))
-				update(d, info, SYN_ACK_FLAG);
+				update(d, SYN_ACK_FLAG, size);
 			if (info->tcp_flags & TCP_ACK)
-				update(d, info, ACK_FLAG);
+				update(d, ACK_FLAG, size);
 			if (info->tcp_flags & PUSH_FLAG)
-				update(d, info, PUSH_FLAG);
+				update(d, PUSH_FLAG, size);
 			break;
 		case 'U':
-			update(d, info, UDP);
+			update(d, UDP, size);
 			break;
 		case 'i':
 		case 'I':
-			update(d, info, ICMP);
+			update(d, ICMP, size);
 	}
 	enum endpoint remote = remote_endpoint(info->direction);
 	if (remote != END_COUNT) {
 		if (info->ports[remote] <= 1024 && info->ports[remote] != 0)
-			update(d, info, LOW_PORT);
+			update(d, LOW_PORT, size);
 		// TODO: Make the remote server configurable.
 		static const uint8_t address[] = { 217, 31, 192, 10 };
 		// Communication with the server. Hardcoded for now. Exclude ssh (at least for current development)
 		if (info->ip_protocol == 4 && memcmp(address, info->addresses[remote], 4) == 0 && info->ports[remote] != 22)
-			update(d, info, SERVER);
+			update(d, SERVER, size);
 	}
+}
+
+static void packet_handle(struct context *context, const struct packet_info *info) {
+	packet_handle_internal(context, info, info->length);
 }
 
 static void initialize(struct context *context) {
