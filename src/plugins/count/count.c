@@ -69,7 +69,7 @@ static void packet_handle_internal(struct context *context, const struct packet_
 				update(d, SYN_FLAG, size);
 			if (info->tcp_flags & TCP_FIN)
 				update(d, FIN_FLAG, size);
-			if ((info->tcp_flags & TCP_FIN) && (info->tcp_flags & TCP_FIN))
+			if ((info->tcp_flags & TCP_ACK) && (info->tcp_flags & TCP_SYN))
 				update(d, SYN_ACK_FLAG, size);
 			if (info->tcp_flags & TCP_ACK)
 				update(d, ACK_FLAG, size);
