@@ -754,16 +754,25 @@ size_t *loop_pcap_stats(struct context *context) {
 				memset(result + pos, 0xff, 3 * sizeof *result);
 				break;
 			} else {
-				result[pos ++] = ps.ps_recv - interface->captured;
-				interface->captured = ps.ps_recv;
-				result[pos ++] = ps.ps_drop - interface->dropped;
-				interface->dropped = ps.ps_drop;
-				result[pos ++] = ps.ps_ifdrop - interface->if_dropped;
+				result[pos ++] += ps.ps_recv;
+				result[pos ++] += ps.ps_drop;
+				result[pos ++] += ps.ps_ifdrop - interface->if_dropped;
 				interface->if_dropped = ps.ps_ifdrop;
 			}
-			if (!i)
-				pos -= 3;
+			pos -= 3;
 		}
+
+		size_t tmp = result[pos];
+		result[pos ++] -= interface->captured;
+		interface->captured = tmp;
+
+		tmp = result[pos];
+		result[pos ++] -= interface->dropped;
+		interface->dropped = tmp;
+
+		tmp = result[pos];
+		result[pos ++] -= interface->if_dropped;
+		interface->if_dropped = tmp;
 	}
 	return result;
 }
