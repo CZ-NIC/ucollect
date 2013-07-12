@@ -18,7 +18,9 @@ else:
 log_file = master_config.get('log_file')
 logging.basicConfig(level=severity, format=master_config.get('log_format'))
 if log_file != '-':
-	logging.getLogger().addHandler(logging.handlers.RotatingFileHandler(log_file, maxBytes=int(master_config.get('log_file_size')), backupCount=int(master_config.get('log_file_count'))))
+	handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=int(master_config.get('log_file_size')), backupCount=int(master_config.get('log_file_count')))
+	handler.setFormatter(logging.Formatter(fmt=master_config.get('log_format')))
+	logging.getLogger().addHandler(handler)
 
 loaded_plugins = {}
 plugins = Plugins()
