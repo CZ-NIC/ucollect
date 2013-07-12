@@ -149,8 +149,6 @@ static void postprocess(struct packet_info *packet) {
 		memset(&packet->addresses, 0, sizeof packet->addresses);
 		packet->addr_len = 0;
 		packet->app_protocol = '\0';
-		// We don't even know the direction if we don't have the addresses
-		packet->direction = DIR_UNKNOWN;
 	}
 	bool has_ports = (packet->app_protocol == 'T' || packet->app_protocol == 'U');
 	if (!has_ports) {
