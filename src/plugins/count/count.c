@@ -127,7 +127,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	// Get enough space to encode the result
 	size_t enc_len = 3 * *stats + 2 * MAX;
 	struct encoded *encoded;
-	size_t enc_size = sizeof *encoded + enc_len * sizeof *encoded->data;
+	size_t enc_size = sizeof encoded->timestamp + sizeof encoded->if_count + enc_len * sizeof *encoded->data;
 	encoded = mem_pool_alloc(context->temp_pool, enc_size);
 	encoded->timestamp = htobe64(u->timestamp);
 	// Encode the statistics

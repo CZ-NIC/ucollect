@@ -86,6 +86,7 @@ class CountPlugin(plugin.Plugin):
 		if_count = data[1]
 		self.__stats[client] = data[2:2 + 3 * if_count]
 		self.__data[client] = data[2 + 3 * if_count:]
+		logger.debug("Data: %s", data)
 		if len(self.__data[client]) % 2:
 			logger.error("Odd count of data elements (%s) from %s", len(self.__data[client]), client)
 		database.log_activity(client, "counts")
