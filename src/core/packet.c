@@ -6,6 +6,8 @@
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
 
+#include <pcap/pcap.h>
+
 #include <stdbool.h>
 #include <string.h>
 
@@ -108,7 +110,8 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 			next->data = below_ip;
 			next->length = length_rest;
 			next->interface = packet->interface;
-			parse_packet(next, pool);
+			next->direction = packet->direction;
+			parse_packet(next, pool, DLT_RAW);
 			return; // And we're done (no ports here)
 		case 6: // TCP
 			if (length_rest < sizeof *tcp_ports)
@@ -165,7 +168,85 @@ static void postprocess(struct packet_info *packet) {
 		packet->tcp_flags = 0;
 }
 
-void parse_packet(struct packet_info *packet, struct mem_pool *pool) {
-	parse_internal(packet, pool);
-	postprocess(packet);
+static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
+	const unsigned char *data = packet->data;
+	if (packet->length < 14)
+		return;
+	/*
+	 * The ethernet frame defines that we should have the peramble and
+	 * start of frame delimiter. But these are probably on the wire only,
+	 * as it seems the 8 bytes are not in the data we got. Similarly, the
+	 * frame check sequence/CRC is not present in the data.
+	 */
+	// Point out the addresses
+	packet->addresses[END_DST] = data;
+	data += 6;
+	packet->addresses[END_SRC] = data;
+	data += 6;
+	packet->addr_len = 6;
+	uint16_t type = ntohs(*(uint16_t *) data);
+	// VLAN tagging
+	if (type == 0x8100) // IEEE 802.1q
+		data += 4;
+	if (type == 0x88a8) // IEEE 802.1ad
+		data += 8;
+	size_t skipped = data - (const unsigned char*) packet->data;
+	if (skipped >= packet->length)
+		return; // Give up. Short packet.
+	type = ntohs(*(uint16_t *) data);
+	ulog(LOG_DEBUG_VERBOSE, "Ethernet type %04hX\n", type);
+	// Skip over the type
+	data += 2;
+	// Prepare the packet below
+	struct packet_info *next = mem_pool_alloc(pool, sizeof *packet->next);
+	packet->next = next;
+	(*next) = (struct packet_info) {
+		.data = data,
+		.length = packet->length - skipped,
+		.interface = packet->interface,
+		.direction = packet->direction,
+		.layer = 'I',
+		.app_protocol = '?'
+	};
+	if (type < 0x0800) // Length, not type, as per IEEE 802.3. Assume IP in the rest.
+		goto IP;
+	switch (type) {
+		case 0x0800: // IPv4
+		case 0x86DD: // IPv6
+			IP:
+			packet->app_protocol = 'I';
+			// Parse the IP part
+			parse_packet(next, pool, DLT_RAW);
+			break;
+		case 0x0806: // ARP
+			packet->app_protocol = 'A';
+			break;
+		case 0x0842: // Wake On Lan
+			packet->app_protocol = 'W';
+			break;
+		case 0x8137: // IPX (both)
+		case 0x8138:
+			packet->app_protocol = 'X';
+			break;
+		case 0x888E: // EAP (authentication)
+			packet->app_protocol = 'E';
+			break;
+	}
+}
+
+void parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalink) {
+	switch (datalink) {
+		case DLT_EN10MB: // Ethernet II
+			packet->layer = 'E';
+			parse_ethernet(packet, pool);
+			break;
+		case DLT_RAW: // RAW IP (already parsed out, possibly)
+			packet->layer = 'I';
+			parse_internal(packet, pool);
+			postprocess(packet);
+			break;
+		default:
+			ulog(LOG_WARN, "Packet on unknown layer %d\n", datalink);
+			// We should be called with zeroed-out packet, except for the basic values. Leave that be.
+	}
 }

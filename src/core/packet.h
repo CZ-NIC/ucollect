@@ -49,7 +49,7 @@ struct packet_info {
 	size_t hdr_length;
 	/*
 	 * Source and destination address. Raw data (addr_len bytes each).
-	 * Is set only with ip_protocol == 4 || 6, otherwise it is NULL.
+	 * Is set only with ip_protocol == 4 || 6, or with ethernet frames.
 	 */
 	const void *addresses[END_COUNT];
 	/*
@@ -57,10 +57,16 @@ struct packet_info {
 	 * Filled in only in case the app_protocol is T or U. Otherwise, it is 0.
 	 */
 	uint16_t ports[END_COUNT];
+	/*
+	 * The layer of the packet:
+	 * - 'E': Ethernet.
+	 * - 'I': IP layer.
+	 */
+	char layer;
 	// As in iphdr, 6 for IPv6, 4 for IPv4. Others may be present.
 	unsigned char ip_protocol;
 	/*
-	 * The application-facing protocol. Currently, these are recognized:
+	 * The application-facing protocol. Currently, these are recognized for IP layer:
 	 * - 'T': TCP
 	 * - 'U': UDP
 	 * - 'i': ICMP
@@ -72,6 +78,12 @@ struct packet_info {
 	 * This is set only with ip_protocol == 4 || 6, otherwise it is
 	 * zero.
 	 *
+	 * These are on the ethernet layer:
+	 * - 'I': An IP packet is below.
+	 * - 'A': ARP.
+	 * - 'W': Wake On Lan
+	 * - 'X': IPX
+	 * - 'E': EAP
 	 * Beware that we may add more known protocols in future.
 	 */
 	char app_protocol;
@@ -97,7 +109,7 @@ struct packet_info {
  * Parse the stuff in the passed packet. It expects length and data are already
  * set, it fills the addresses, protocols, etc.
  */
-void parse_packet(struct packet_info *packet, struct mem_pool *pool) __attribute__((nonnull));
+void parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalink) __attribute__((nonnull));
 
 /*
  * Which endpoint is the remote one for the given direction?

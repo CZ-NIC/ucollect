@@ -152,6 +152,7 @@ struct pcap_interface {
 	const char *name;
 	struct pcap_sub_interface directions[2];
 	size_t offset;
+	int datalink;
 	size_t watchdog_timer;
 	bool watchdog_received,  watchdog_initialized;
 	size_t watchdog_missed;
@@ -306,13 +307,13 @@ struct loop_configurator {
 // Handle one packet.
 static void packet_handler(struct pcap_interface *interface, const struct pcap_pkthdr *header, const unsigned char *data) {
 	struct packet_info info = {
-		.length = header->caplen - interface->offset,
-		.data = data + interface->offset,
+		.length = header->caplen,
+		.data = data,
 		.interface = interface->name,
 		.direction = interface->in ? DIR_IN : DIR_OUT
 	};
-	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s (offset %zu, starting %016llX%016llX)\n", info.length, interface->name, interface->offset, *(long long unsigned *) info.data, *(1 + (long long unsigned *) info.data));
-	parse_packet(&info, interface->loop->batch_pool);
+	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s (starting %016llX%016llX, on layer %d)\n", info.length, interface->name, *(long long unsigned *) info.data, *(1 + (long long unsigned *) info.data), interface->datalink);
+	parse_packet(&info, interface->loop->batch_pool, interface->datalink);
 	LFOR(plugin, plugin, &interface->loop->plugins)
 		plugin_packet(plugin, &info);
 }
@@ -621,16 +622,6 @@ void loop_destroy(struct loop *loop) {
 	mem_pool_destroy(loop->permanent_pool);
 }
 
-// How much data should be skipped on each type of pcap. Borrowed from the DNS traffic analyser project.
-static const size_t ip_offset_table[] =
-{
-	[DLT_LOOP] = 4,
-	[DLT_NULL] = 4,    /* BSD LoopBack       */
-	[DLT_EN10MB] = 14, /* EthernetII, I hope */
-	[DLT_RAW] = 0,     /* RAW IP             */
-	[DLT_PFLOG] = 28,  /* BSD pflog          */
-};
-
 // Open one direction of the capture.
 static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char *interface, const char *dir_txt) {
 	ulog(LOG_INFO, "Initializing PCAP (%s) on %s\n", dir_txt, interface);
@@ -734,7 +725,7 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 				.interface = new
 			}
 		},
-		.offset = ip_offset_table[pcap_datalink(pcap_in)],
+		.datalink = pcap_datalink(pcap_in),
 		.mark = true
 	};
 	return true;
