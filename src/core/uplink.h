@@ -59,4 +59,10 @@ const char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, s
 // Render string to the wire format. Update position and length of buffer.
 void uplink_render_string(const void *string, uint32_t string_len, uint8_t **buffer_pos, size_t *buffer_length) __attribute__((nonnull));
 
+// Get the address the uplink is connected to. NULL if not connected.
+const uint8_t *uplink_address(struct uplink *uplink) __attribute__((nonnull));
+
+// Get the length of address returned by uplink_address. 0 if not connected.
+size_t uplink_addr_len(struct uplink *uplink) __attribute__((nonnull));
+
 #endif

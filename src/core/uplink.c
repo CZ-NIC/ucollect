@@ -33,6 +33,8 @@ enum auth_status {
 	NOT_STARTED
 };
 
+#define IPV6_LEN 16
+
 struct uplink {
 	// Will always be uplink_read, this is to be able to use it as epoll_handler
 	void (*uplink_read)(struct uplink *uplink, uint32_t events);
@@ -51,9 +53,11 @@ struct uplink {
 	bool reconnect_scheduled;
 	size_t reconnect_id; // The ID of the reconnect timeout
 	int fd;
-	enum auth_status auth_status;
-	uint8_t challenge[CHALLENGE_LEN];
 	uint64_t last_connect;
+	size_t addr_len;
+	uint8_t address[IPV6_LEN];
+	uint8_t challenge[CHALLENGE_LEN];
+	enum auth_status auth_status;
 };
 
 static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo *addrinfo) {
@@ -79,6 +83,16 @@ static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo
 	ulog(LOG_DEBUG, "Connected to uplink %s:%s by fd %d\n", uplink->remote_name, uplink->service, sock);
 	uplink->auth_status = NOT_STARTED;
 	uplink->fd = sock;
+	switch (addrinfo->ai_family) {
+		case AF_INET:
+			memcpy(uplink->address, &((struct sockaddr_in *) addrinfo->ai_addr)->sin_addr, 4);
+			uplink->addr_len = 4;
+			break;
+		case AF_INET6:
+			memcpy(uplink->address, &((struct sockaddr_in6 *) addrinfo->ai_addr)->sin6_addr, 16);
+			uplink->addr_len = 16;
+			break;
+	}
 	return true;
 }
 
@@ -161,6 +175,7 @@ static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect) {
 		uplink->ping_scheduled = false;
 		if (uplink->reconnect_scheduled && reset_reconnect)
 			loop_timeout_cancel(uplink->loop, uplink->reconnect_id);
+		uplink->addr_len = 0;
 	} else
 		ulog(LOG_DEBUG, "Uplink connection to %s:%s not open\n", uplink->remote_name, uplink->service);
 }
@@ -491,4 +506,15 @@ void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) {
 		uplink->login = mem_pool_strdup(pool, uplink->login);
 	if (uplink->password)
 		uplink->password = mem_pool_strdup(pool, uplink->password);
+}
+
+const uint8_t *uplink_address(struct uplink *uplink) {
+	if (uplink->addr_len)
+		return uplink->address;
+	else
+		return NULL;
+}
+
+size_t uplink_addr_len(struct uplink *uplink) {
+	return uplink->addr_len;
 }

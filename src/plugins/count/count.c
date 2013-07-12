@@ -88,10 +88,10 @@ static void packet_handle_internal(struct context *context, const struct packet_
 	if (remote != END_COUNT) {
 		if (info->ports[remote] <= 1024 && info->ports[remote] != 0)
 			update(d, LOW_PORT, size);
-		// TODO: Make the remote server configurable.
-		static const uint8_t address[] = { 217, 31, 192, 10 };
+		const uint8_t *address = uplink_address(context->uplink);
+		size_t addr_len = uplink_addr_len(context->uplink);
 		// Communication with the server. Hardcoded for now. Exclude ssh (at least for current development)
-		if (info->ip_protocol == 4 && memcmp(address, info->addresses[remote], 4) == 0 && info->ports[remote] != 22)
+		if (info->addr_len == addr_len && memcmp(address, info->addresses[remote], addr_len) == 0 && info->ports[remote] != 22)
 			update(d, SERVER, size);
 	}
 }
