@@ -311,7 +311,7 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 		.interface = interface->name,
 		.direction = interface->in ? DIR_IN : DIR_OUT
 	};
-	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s\n", info.length, interface->name);
+	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s (offset %zu, starting %016llX%016llX)\n", info.length, interface->name, interface->offset, *(long long unsigned *) info.data, *(1 + (long long unsigned *) info.data));
 	parse_packet(&info, interface->loop->batch_pool);
 	LFOR(plugin, plugin, &interface->loop->plugins)
 		plugin_packet(plugin, &info);

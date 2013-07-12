@@ -1,5 +1,6 @@
 #include "packet.h"
 #include "mem_pool.h"
+#include "util.h"
 
 // These are for the IP header structs.
 #include <netinet/ip.h>
@@ -39,6 +40,7 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 	 * is on the same place for v6 as for v4, so it works.
 	 */
 	const struct iphdr *iphdr = packet->data;
+	ulog(LOG_DEBUG_VERBOSE, "Parsing packet of %zu bytes, version %i\n", packet->length, (int) iphdr->version);
 	if (packet->length < sizeof *iphdr) {
 		// Packet too short. Not IP therefore, bail out.
 		packet->ip_protocol = 0;
