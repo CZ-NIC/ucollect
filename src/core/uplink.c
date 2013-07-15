@@ -66,21 +66,21 @@ static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo
 	// Try getting a socket.
 	int sock = socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
 	if (sock == -1) {
-		ulog(LOG_WARN, "Couldn't create socket of family %d, type %d and protocol %d (%s)\n", addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol, strerror(errno));
+		ulog(LLOG_WARN, "Couldn't create socket of family %d, type %d and protocol %d (%s)\n", addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol, strerror(errno));
 		// Try other
 		return uplink_connect_internal(uplink, addrinfo->ai_next);
 	}
 	// If that works, try connecting it
 	int error = connect(sock, addrinfo->ai_addr, addrinfo->ai_addrlen);
 	if (error != 0) {
-		ulog(LOG_WARN, "Couldn't connect socket %d (%s)\n", sock, strerror(errno));
+		ulog(LLOG_WARN, "Couldn't connect socket %d (%s)\n", sock, strerror(errno));
 		error = close(sock);
 		if (error != 0)
-			ulog(LOG_ERROR, "Couldn't close socket %d (%s), leaking FD\n", sock, strerror(errno));
+			ulog(LLOG_ERROR, "Couldn't close socket %d (%s), leaking FD\n", sock, strerror(errno));
 		return uplink_connect_internal(uplink, addrinfo->ai_next);
 	}
 	// Hurray, everything worked. Now we are done.
-	ulog(LOG_DEBUG, "Connected to uplink %s:%s by fd %d\n", uplink->remote_name, uplink->service, sock);
+	ulog(LLOG_DEBUG, "Connected to uplink %s:%s by fd %d\n", uplink->remote_name, uplink->service, sock);
 	uplink->auth_status = NOT_STARTED;
 	uplink->fd = sock;
 	switch (addrinfo->ai_family) {
@@ -103,7 +103,7 @@ static void send_ping(struct context *context, void *data, size_t id);
 static void uplink_connect(struct uplink *uplink) {
 	assert(uplink->fd == -1);
 	if (uplink->last_connect + RECONN_TIME > loop_now(uplink->loop)) {
-		ulog(LOG_WARN, "Reconnecting too often, waiting a little while\n");
+		ulog(LLOG_WARN, "Reconnecting too often, waiting a little while\n");
 		connect_fail(uplink);
 		return;
 	}
@@ -111,14 +111,14 @@ static void uplink_connect(struct uplink *uplink) {
 	struct addrinfo *remote;
 	int result = getaddrinfo(uplink->remote_name, uplink->service, &(struct addrinfo) { .ai_socktype = SOCK_STREAM }, &remote);
 	if (result != 0) {
-		ulog(LOG_ERROR, "Failed to resolve the uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, gai_strerror(result));
+		ulog(LLOG_ERROR, "Failed to resolve the uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, gai_strerror(result));
 		connect_fail(uplink);
 		return;
 	}
 	bool connected = uplink_connect_internal(uplink, remote);
 	freeaddrinfo(remote);
 	if (!connected) {
-		ulog(LOG_ERROR, "Failed to connect to any address and port for uplink %s:%s\n", uplink->remote_name, uplink->service);
+		ulog(LLOG_ERROR, "Failed to connect to any address and port for uplink %s:%s\n", uplink->remote_name, uplink->service);
 		connect_fail(uplink);
 		return;
 	}
@@ -135,7 +135,7 @@ static void reconnect_now(struct context *unused, void *data, size_t id_unused) 
 	struct uplink *uplink = data;
 	(void) unused;
 	(void) id_unused;
-	ulog(LOG_INFO, "Reconnecting to %s:%s now\n", uplink->remote_name, uplink->service);
+	ulog(LLOG_INFO, "Reconnecting to %s:%s now\n", uplink->remote_name, uplink->service);
 	uplink->reconnect_scheduled = false;
 	uplink_connect(uplink);
 }
@@ -149,7 +149,7 @@ static void connect_fail(struct uplink *uplink) {
 			uplink->reconnect_timeout = RECONNECT_MAX;
 	} else
 		uplink->reconnect_timeout = RECONNECT_BASE;
-	ulog(LOG_INFO, "Going to reconnect to %s:%s after %d seconds\n", uplink->remote_name, uplink->service, uplink->reconnect_timeout / 1000);
+	ulog(LLOG_INFO, "Going to reconnect to %s:%s after %d seconds\n", uplink->remote_name, uplink->service, uplink->reconnect_timeout / 1000);
 	uplink->reconnect_id = loop_timeout_add(uplink->loop, uplink->reconnect_timeout, NULL, uplink, reconnect_now);
 	uplink->reconnect_scheduled = true;
 }
@@ -163,11 +163,11 @@ static void buffer_reset(struct uplink *uplink) {
 
 static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect) {
 	if (uplink->fd != -1) {
-		ulog(LOG_DEBUG, "Closing uplink connection %d to %s:%s\n", uplink->fd, uplink->remote_name, uplink->service);
+		ulog(LLOG_DEBUG, "Closing uplink connection %d to %s:%s\n", uplink->fd, uplink->remote_name, uplink->service);
 		loop_uplink_disconnected(uplink->loop);
 		int result = close(uplink->fd);
 		if (result != 0)
-			ulog(LOG_ERROR, "Couldn't close uplink connection to %s:%s, leaking file descriptor %d (%s)\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
+			ulog(LLOG_ERROR, "Couldn't close uplink connection to %s:%s, leaking file descriptor %d (%s)\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
 		uplink->fd = -1;
 		buffer_reset(uplink);
 		if (uplink->ping_scheduled)
@@ -177,7 +177,7 @@ static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect) {
 			loop_timeout_cancel(uplink->loop, uplink->reconnect_id);
 		uplink->addr_len = 0;
 	} else
-		ulog(LOG_DEBUG, "Uplink connection to %s:%s not open\n", uplink->remote_name, uplink->service);
+		ulog(LLOG_DEBUG, "Uplink connection to %s:%s not open\n", uplink->remote_name, uplink->service);
 }
 
 static void send_ping(struct context *context_unused, void *data, size_t id_unused) {
@@ -187,7 +187,7 @@ static void send_ping(struct context *context_unused, void *data, size_t id_unus
 	uplink->ping_scheduled = false;
 	// How long does it not answer pings?
 	if (uplink->pings_unanswered >= PING_COUNT) {
-		ulog(LOG_ERROR, "Too many pings not answered on %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
+		ulog(LLOG_ERROR, "Too many pings not answered on %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
 		// Let the connect be called from the loop, so it works even if uplink_disconnect makes a plugin crash
 		assert(!uplink->reconnect_scheduled);
 		uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
@@ -196,7 +196,7 @@ static void send_ping(struct context *context_unused, void *data, size_t id_unus
 		uplink_disconnect(uplink, false);
 		return;
 	}
-	ulog(LOG_DEBUG, "Sending ping to %s:%s\n", uplink->remote_name, uplink->service);
+	ulog(LLOG_DEBUG, "Sending ping to %s:%s\n", uplink->remote_name, uplink->service);
 	uplink->pings_unanswered ++;
 	uplink_send_message(uplink, 'P', NULL, 0);
 	// Schedule new ping
@@ -236,7 +236,7 @@ void uplink_render_string(const void *string, uint32_t length, uint8_t **buffer_
 static void handle_buffer(struct uplink *uplink) {
 	if (uplink->has_size) {
 		// If we already have the size, it is the real message
-		ulog(LOG_DEBUG, "Uplink %s:%s received complete message of %zu bytes\n", uplink->remote_name, uplink->service, uplink->buffer_size);
+		ulog(LLOG_DEBUG, "Uplink %s:%s received complete message of %zu bytes\n", uplink->remote_name, uplink->service, uplink->buffer_size);
 
 		if (uplink->buffer_size) {
 			char command = *uplink->buffer ++;
@@ -259,7 +259,7 @@ static void handle_buffer(struct uplink *uplink) {
 							  size_t length = uplink->buffer_size;
 							  buffer_reset(uplink);
 							  if (!loop_plugin_send_data(uplink->loop, plugin_name, buffer, length)) {
-								  ulog(LOG_ERROR, "Plugin %s referenced by uplink does not exist\n", plugin_name);
+								  ulog(LLOG_ERROR, "Plugin %s referenced by uplink does not exist\n", plugin_name);
 								  // TODO: Create some function for formatting messages
 								  size_t pname_len = strlen(plugin_name);
 								  // 1 for 'P', 1 for '\0' at the end
@@ -284,12 +284,12 @@ static void handle_buffer(struct uplink *uplink) {
 						  uplink->pings_unanswered = 0;
 						  break;
 					default:
-						  ulog(LOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
+						  ulog(LLOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
 						  break;
 				}
 			} else {
 				if (command == 'C' && uplink->auth_status == NOT_STARTED) {
-					ulog(LOG_DEBUG, "Sending login info\n");
+					ulog(LLOG_DEBUG, "Sending login info\n");
 					// We received the challenge. Compute the response.
 					const uint8_t *response = compute_response(uplink->buffer, uplink->buffer_size, uplink->password, temp_pool);
 					// Generate a challenge. Just load some data from /dev/urandom.
@@ -317,11 +317,11 @@ static void handle_buffer(struct uplink *uplink) {
 					uplink_send_message(uplink, 'L', message, len);
 					uplink->auth_status = SENT;
 				} else if (command == 'L' && uplink->auth_status == SENT) {
-					ulog(LOG_DEBUG, "Received server login info\n");
+					ulog(LLOG_DEBUG, "Received server login info\n");
 					// We got the server response. Compute our own version and check they are the same.
 					const uint8_t *response = compute_response(uplink->challenge, CHALLENGE_LEN, uplink->password, temp_pool);
 					if (uplink->buffer_size == CHALLENGE_LEN && memcmp(uplink->buffer, response, CHALLENGE_LEN) == 0) {
-						ulog(LOG_DEBUG, "Server authenticated\n");
+						ulog(LLOG_DEBUG, "Server authenticated\n");
 						// OK, Login complete. Send hello and tell the rest of the program we're connected.
 						/*
 						 * Send 'H'ello. For now, it is empty. In future, we expect to have program & protocol version,
@@ -332,15 +332,15 @@ static void handle_buffer(struct uplink *uplink) {
 						loop_uplink_connected(uplink->loop);
 					} else
 						// This is an insult, stop talking to the other side.
-						ulog(LOG_ERROR, "Server failed to authenticated. Password mismatch?\n");
+						ulog(LLOG_ERROR, "Server failed to authenticated. Password mismatch?\n");
 				} else if (command == 'F')
-					ulog(LOG_ERROR, "Server rejected our authentication\n");
+					ulog(LLOG_ERROR, "Server rejected our authentication\n");
 				else
 					// This is an insult, and we won't talk to the other side any more!
-					ulog(LOG_ERROR, "Protocol violation at login\n");
+					ulog(LLOG_ERROR, "Protocol violation at login\n");
 			}
 		} else {
-			ulog(LOG_ERROR, "Received an empty message from %s:%s\n", uplink->remote_name, uplink->service);
+			ulog(LLOG_ERROR, "Received an empty message from %s:%s\n", uplink->remote_name, uplink->service);
 		}
 
 		// Next time start a new message from scratch
@@ -357,7 +357,7 @@ static void handle_buffer(struct uplink *uplink) {
 
 static void uplink_read(struct uplink *uplink, uint32_t unused) {
 	(void) unused;
-	ulog(LOG_DEBUG, "Read on uplink %s:%s (%d)\n", uplink->remote_name, uplink->service, uplink->fd);
+	ulog(LLOG_DEBUG, "Read on uplink %s:%s (%d)\n", uplink->remote_name, uplink->service, uplink->fd);
 	size_t limit = 50; // Max of 50 messages, so we don't block forever. Arbitrary smallish number.
 	while (limit) {
 		limit --;
@@ -382,17 +382,17 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 #endif
 					return;
 				case EINTR:
-					ulog(LOG_WARN, "Non-fatal error reading from %s:%s (%d): %s\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
+					ulog(LLOG_WARN, "Non-fatal error reading from %s:%s (%d): %s\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
 					continue; // We'll just retry next time
 				case ECONNRESET:
 					// This is similar to close
-					ulog(LOG_WARN, "Connection to %s:%s reset, reconnecting\n", uplink->remote_name, uplink->service);
+					ulog(LLOG_WARN, "Connection to %s:%s reset, reconnecting\n", uplink->remote_name, uplink->service);
 					goto CLOSED;
 				default: // Other errors are fatal, as we don't know the cause
 					die("Error reading from uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, strerror(errno));
 			}
 		} else if (amount == 0) { // 0 means socket closed
-			ulog(LOG_WARN, "Remote closed the uplink %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
+			ulog(LLOG_WARN, "Remote closed the uplink %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
 CLOSED:
 			assert(!uplink->reconnect_scheduled);
 			uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
@@ -409,7 +409,7 @@ CLOSED:
 }
 
 struct uplink *uplink_create(struct loop *loop) {
-	ulog(LOG_INFO, "Creating uplink\n");
+	ulog(LLOG_INFO, "Creating uplink\n");
 	struct mem_pool *permanent_pool = loop_permanent_pool(loop);
 	struct uplink *result = mem_pool_alloc(permanent_pool, sizeof *result);
 	*result = (struct uplink) {
@@ -423,7 +423,7 @@ struct uplink *uplink_create(struct loop *loop) {
 }
 
 void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, const char *login, const char *password) {
-	ulog(LOG_INFO, "Changing remote uplink address to %s:%s\n", remote_name, service);
+	ulog(LLOG_INFO, "Changing remote uplink address to %s:%s\n", remote_name, service);
 	// Set the new remote endpoint
 	uplink->remote_name = remote_name;
 	uplink->service = service;
@@ -438,7 +438,7 @@ void uplink_configure(struct uplink *uplink, const char *remote_name, const char
 }
 
 void uplink_destroy(struct uplink *uplink) {
-	ulog(LOG_INFO, "Destroying uplink to %s:%s\n", uplink->remote_name, uplink->service);
+	ulog(LLOG_INFO, "Destroying uplink to %s:%s\n", uplink->remote_name, uplink->service);
 	// The memory pools get destroyed by the loop, we just close the socket, if any.
 	uplink_disconnect(uplink, true);
 }
@@ -450,7 +450,7 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 			switch (errno) {
 				case EINTR:
 					// Just interrupt called during send. Retry.
-					ulog(LOG_WARN, "EINTR during send to %s:%s\n", uplink->remote_name, uplink->service);
+					ulog(LLOG_WARN, "EINTR during send to %s:%s\n", uplink->remote_name, uplink->service);
 					continue;
 				case ECONNRESET:
 				case EPIPE:
@@ -486,7 +486,7 @@ bool uplink_send_message(struct uplink *uplink, char type, const void *data, siz
 
 bool uplink_plugin_send_message(struct context *context, const void *data, size_t size) {
 	const char *name = loop_plugin_get_name(context);
-	ulog(LOG_DEBUG, "Sending message of size %zu from plugin %s\n", size, name);
+	ulog(LLOG_DEBUG, "Sending message of size %zu from plugin %s\n", size, name);
 	uint32_t name_length = strlen(name);
 	uint32_t length = sizeof name_length + name_length + size;
 	uint8_t *buffer = mem_pool_alloc(context->temp_pool, length);

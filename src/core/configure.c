@@ -9,10 +9,10 @@
 #include <string.h>
 
 static bool load_interface(struct loop_configurator *configurator, struct uci_section *section, struct uci_context *ctx) {
-	ulog(LOG_DEBUG, "Processing interface %s\n", section->e.name);
+	ulog(LLOG_DEBUG, "Processing interface %s\n", section->e.name);
 	const char *name = uci_lookup_option_string(ctx, section, "ifname");
 	if (!name) {
-		ulog(LOG_ERROR, "Failed to load ifname of interface %s\n", section->e.name);
+		ulog(LLOG_ERROR, "Failed to load ifname of interface %s\n", section->e.name);
 		return false;
 	}
 	if (!loop_add_pcap(configurator, name))
@@ -21,10 +21,10 @@ static bool load_interface(struct loop_configurator *configurator, struct uci_se
 }
 
 static bool load_plugin(struct loop_configurator *configurator, struct uci_section *section, struct uci_context *ctx) {
-	ulog(LOG_DEBUG, "Processing plugin %s\n", section->e.name);
+	ulog(LLOG_DEBUG, "Processing plugin %s\n", section->e.name);
 	const char *libpath = uci_lookup_option_string(ctx, section, "libname");
 	if (!libpath) {
-		ulog(LOG_ERROR, "Failed to load libname of plugin %s\n", section->e.name);
+		ulog(LLOG_ERROR, "Failed to load libname of plugin %s\n", section->e.name);
 		return false;
 	}
 	// TODO: Plugin configuration
@@ -32,13 +32,13 @@ static bool load_plugin(struct loop_configurator *configurator, struct uci_secti
 }
 
 static bool load_uplink(struct loop_configurator *configurator, struct uci_section *section, struct uci_context *ctx) {
-	ulog(LOG_DEBUG, "Processing uplink %s\n", section->e.name);
+	ulog(LLOG_DEBUG, "Processing uplink %s\n", section->e.name);
 	const char *name = uci_lookup_option_string(ctx, section, "name");
 	const char *service = uci_lookup_option_string(ctx, section, "service");
 	const char *login = uci_lookup_option_string(ctx, section, "login");
 	const char *password = uci_lookup_option_string(ctx, section, "password");
 	if (!name || !service || !login || !password) {
-		ulog(LOG_ERROR, "Incomplete configuration of uplink\n");
+		ulog(LLOG_ERROR, "Incomplete configuration of uplink\n");
 		return false;
 	}
 	loop_uplink_configure(configurator, name, service, login, password);
@@ -58,17 +58,17 @@ static bool load_package(struct loop_configurator *configurator, struct uci_cont
 				return false;
 		} else if (strcmp(s->type, "uplink") == 0) {
 			if (seen_uplink) {
-				ulog(LOG_ERROR, "Multiple uplinks in configuration\n");
+				ulog(LLOG_ERROR, "Multiple uplinks in configuration\n");
 				return false;
 			}
 			seen_uplink = true;
 			if (!load_uplink(configurator, s, ctx))
 				return false;
 		} else
-			ulog(LOG_WARN, "Ignoring config section '%s' of unknown type '%s'\n", s->e.name, s->type);
+			ulog(LLOG_WARN, "Ignoring config section '%s' of unknown type '%s'\n", s->e.name, s->type);
 	}
 	if (!seen_uplink) {
-		ulog(LOG_ERROR, "No uplink configuration found\n");
+		ulog(LLOG_ERROR, "No uplink configuration found\n");
 		return false;
 	}
 	return true;
@@ -78,7 +78,7 @@ static bool load_config_internal(struct loop_configurator *configurator, struct 
 	struct uci_package *package;
 	int ok = uci_load(ctx, "ucollect", &package);
 	if (ok != UCI_OK || !package) {
-		ulog(LOG_ERROR, "Can't load configuration of ucollect\n");
+		ulog(LLOG_ERROR, "Can't load configuration of ucollect\n");
 		return false;
 	}
 	bool result = load_package(configurator, ctx, package);
@@ -89,7 +89,7 @@ static bool load_config_internal(struct loop_configurator *configurator, struct 
 bool load_config(struct loop *loop) {
 	struct uci_context *ctx = uci_alloc_context();
 	if (!ctx) {
-		ulog(LOG_ERROR, "Can't allocate UCI context\n");
+		ulog(LLOG_ERROR, "Can't allocate UCI context\n");
 		return false;
 	}
 	struct loop_configurator *configurator = loop_config_start(loop);

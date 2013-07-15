@@ -45,7 +45,7 @@ static void packet_handle_internal(struct context *context, const struct packet_
 		return;
 	}
 	update(d, ANY, size);
-	ulog(LOG_DEBUG_VERBOSE, "New packet, currently %zu/%zu\n", (size_t) d->data[ANY].count, (size_t) d->data[ANY].size);
+	ulog(LLOG_DEBUG_VERBOSE, "New packet, currently %zu/%zu\n", (size_t) d->data[ANY].count, (size_t) d->data[ANY].size);
 	switch (info->direction) {
 		case DIR_IN:
 			update(d, IN, size);
@@ -139,7 +139,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	for (size_t i = 0; i < MAX; i ++) {
 		encoded->data[2 * i + offset] = htonl(u->data[i].count);
 		encoded->data[2 * i + offset + 1] = htonl(u->data[i].size);
-		ulog(LOG_DEBUG_VERBOSE, "Sending count value for %zu: %zu/%zu at offset %zu\n", i, (size_t) u->data[i].count, (size_t) u->data[i].size, offset + 2*i);
+		ulog(LLOG_DEBUG_VERBOSE, "Sending count value for %zu: %zu/%zu at offset %zu\n", i, (size_t) u->data[i].count, (size_t) u->data[i].size, offset + 2*i);
 	}
 	// Send the message
 	uplink_plugin_send_message(context, encoded, enc_size);

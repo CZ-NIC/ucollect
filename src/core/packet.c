@@ -42,7 +42,7 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 	 * is on the same place for v6 as for v4, so it works.
 	 */
 	const struct iphdr *iphdr = packet->data;
-	ulog(LOG_DEBUG_VERBOSE, "Parsing packet of %zu bytes, version %i\n", packet->length, (int) iphdr->version);
+	ulog(LLOG_DEBUG_VERBOSE, "Parsing packet of %zu bytes, version %i\n", packet->length, (int) iphdr->version);
 	if (packet->length < sizeof *iphdr) {
 		// Packet too short. Not IP therefore, bail out.
 		packet->ip_protocol = 0;
@@ -194,7 +194,7 @@ static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
 	if (skipped >= packet->length)
 		return; // Give up. Short packet.
 	type = ntohs(*(uint16_t *) data);
-	ulog(LOG_DEBUG_VERBOSE, "Ethernet type %04hX\n", type);
+	ulog(LLOG_DEBUG_VERBOSE, "Ethernet type %04hX\n", type);
 	// Skip over the type
 	data += 2;
 	// Prepare the packet below
@@ -246,7 +246,7 @@ void parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalin
 			postprocess(packet);
 			break;
 		default:
-			ulog(LOG_WARN, "Packet on unknown layer %d\n", datalink);
+			ulog(LLOG_WARN, "Packet on unknown layer %d\n", datalink);
 			// We should be called with zeroed-out packet, except for the basic values. Leave that be.
 	}
 }

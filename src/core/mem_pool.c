@@ -40,7 +40,7 @@ struct mem_pool *mem_pool_create(const char *name) {
 		.head = NULL
 	};
 	strcpy(pool->name, name);
-	ulog(LOG_DEBUG, "Created pool %s\n", name);
+	ulog(LLOG_DEBUG, "Created pool %s\n", name);
 	return pool;
 }
 
@@ -50,7 +50,7 @@ void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
 	*(uint32_t *) (chunk->data + size) = POOL_CANARY_END;
 	chunk->length = size;
 	pool_insert_after(pool, chunk, NULL);
-	ulog(LOG_DEBUG_VERBOSE, "Allocated %zu bytes from %s at address %p\n", size, pool->name, (void *) chunk);
+	ulog(LLOG_DEBUG_VERBOSE, "Allocated %zu bytes from %s at address %p\n", size, pool->name, (void *) chunk);
 	return chunk->data;
 }
 
@@ -60,7 +60,7 @@ void mem_pool_reset(struct mem_pool *pool) {
 		pool->head = current->next;
 		assert(current->canary == POOL_CANARY_BEGIN);
 		assert(*(uint32_t *) (current->data + current->length) == POOL_CANARY_END);
-		ulog(LOG_DEBUG_VERBOSE, "Freeing %p of size %zu from %s\n", (void *) current, current->length, pool->name);
+		ulog(LLOG_DEBUG_VERBOSE, "Freeing %p of size %zu from %s\n", (void *) current, current->length, pool->name);
 		free(current);
 	}
 	pool->tail = NULL;
@@ -68,7 +68,7 @@ void mem_pool_reset(struct mem_pool *pool) {
 
 void mem_pool_destroy(struct mem_pool *pool) {
 	mem_pool_reset(pool);
-	ulog(LOG_DEBUG, "Destroyed pool %s\n", pool->name);
+	ulog(LLOG_DEBUG, "Destroyed pool %s\n", pool->name);
 	free(pool);
 }
 
@@ -123,13 +123,13 @@ static struct pool_page *page_get(size_t size, const char *name) {
 		result->size = size;
 	}
 	result->next = NULL;
-	ulog(LOG_DEBUG, "Got page %zu large for pool '%s' (%p) %s\n", size, name, (void *) result, cached);
+	ulog(LLOG_DEBUG, "Got page %zu large for pool '%s' (%p) %s\n", size, name, (void *) result, cached);
 	return result;
 }
 
 // Release a given page (previously allocated by page_get).
 static void page_return(struct pool_page *page, const char *name) {
-	ulog(LOG_DEBUG, "Releasing page %zu large from pool '%s' (%p) %s\n", page->size, name, (void *) page, (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE) ? " (cached)" : "");
+	ulog(LLOG_DEBUG, "Releasing page %zu large from pool '%s' (%p) %s\n", page->size, name, (void *) page, (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE) ? " (cached)" : "");
 	if (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE)
 		// A single page can be put into the cache, if it is not already full
 		page_cache[page_cache_size ++] = page;
@@ -170,7 +170,7 @@ static void page_walk_and_delete(struct pool_page *page, const char *name) {
 }
 
 struct mem_pool *mem_pool_create(const char *name) {
-	ulog(LOG_DEBUG, "Creating memory pool '%s'\n", name);
+	ulog(LLOG_DEBUG, "Creating memory pool '%s'\n", name);
 	size_t name_len = 1 + strlen(name);
 	// Get the first page for the pool
 	assert(PAGE_SIZE > sizeof(struct pool_page) + sizeof(struct mem_pool) + name_len);
@@ -194,7 +194,7 @@ struct mem_pool *mem_pool_create(const char *name) {
 }
 
 void mem_pool_destroy(struct mem_pool *pool) {
-	ulog(LOG_DEBUG, "Destroying memory pool '%s'\n", pool->name);
+	ulog(LLOG_DEBUG, "Destroying memory pool '%s'\n", pool->name);
 	/*
 	 * Walk the pages and release each of them. The pool itself is in one of them,
 	 * so there's no need to explicitly delete it.

@@ -64,7 +64,7 @@ static void sig_handler(int signal) {
 		// There's a handler
 		jump_signum = signal;
 #ifdef DEBUG
-		ulog(LOG_WARN, "Trying to create a core dump (if they are enabled)\n");
+		ulog(LLOG_WARN, "Trying to create a core dump (if they are enabled)\n");
 		/*
 		 * Create a core dump. Do it by copying the process by fork and then
 		 * aborting the child. Abort creates a core dump, if it is enabled.
@@ -94,7 +94,7 @@ static const int signals[] = {
 };
 
 static void signal_initialize(void) {
-	ulog(LOG_INFO, "Initializing emergency signal handlers\n");
+	ulog(LLOG_INFO, "Initializing emergency signal handlers\n");
 	struct sigaction action = {
 		.sa_handler = sig_handler,
 		.sa_flags = SA_NODEFER
@@ -312,7 +312,7 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 		.interface = interface->name,
 		.direction = interface->in ? DIR_IN : DIR_OUT
 	};
-	ulog(LOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s (starting %016llX%016llX, on layer %d)\n", info.length, interface->name, *(long long unsigned *) info.data, *(1 + (long long unsigned *) info.data), interface->datalink);
+	ulog(LLOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s (starting %016llX%016llX, on layer %d)\n", info.length, interface->name, *(long long unsigned *) info.data, *(1 + (long long unsigned *) info.data), interface->datalink);
 	parse_packet(&info, interface->loop->batch_pool, interface->datalink);
 	LFOR(plugin, plugin, &interface->loop->plugins)
 		plugin_packet(plugin, &info);
@@ -333,16 +333,16 @@ static void self_reconfigure(struct context *context, void *data, size_t id) {
 
 static void pcap_read(struct pcap_sub_interface *sub, uint32_t unused) {
 	(void) unused;
-	ulog(LOG_DEBUG_VERBOSE, "Read on interface %s\n", sub->interface->name);
+	ulog(LLOG_DEBUG_VERBOSE, "Read on interface %s\n", sub->interface->name);
 	sub->interface->in = sub == &sub->interface->directions[0];
 	int result = pcap_dispatch(sub->pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) sub->interface);
 	if (result == -1) {
-		ulog(LOG_ERROR, "Error reading packets from PCAP on %s (%s)\n", sub->interface->name, pcap_geterr(sub->pcap));
+		ulog(LLOG_ERROR, "Error reading packets from PCAP on %s (%s)\n", sub->interface->name, pcap_geterr(sub->pcap));
 		sub->interface->loop->retry_reconfigure_on_failure = true;
 		self_reconfigure(NULL, NULL, 0); // Try to reconfigure on the next loop iteration
 	}
 	sub->interface->watchdog_received = true;
-	ulog(LOG_DEBUG_VERBOSE, "Handled %d packets on %s/%p\n", result, sub->interface->name, (void *) sub);
+	ulog(LLOG_DEBUG_VERBOSE, "Handled %d packets on %s/%p\n", result, sub->interface->name, (void *) sub);
 }
 
 static void epoll_register_pcap(struct loop *loop, struct pcap_interface *interface, int op) {
@@ -377,7 +377,7 @@ struct loop *loop_create(void) {
 		sig_initialized = true;
 	}
 #endif
-	ulog(LOG_INFO, "Creating a main loop\n");
+	ulog(LLOG_INFO, "Creating a main loop\n");
 	/*
 	 * 42 is arbitrary choice. The man page says it is ignored except it must
 	 * be positive number.
@@ -402,9 +402,9 @@ void loop_break(struct loop *loop) {
 }
 
 static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
-	ulog(LOG_INFO, "Removing plugin %s\n", plugin->plugin.name);
+	ulog(LLOG_INFO, "Removing plugin %s\n", plugin->plugin.name);
 	if (setjmp(jump_env)) {
-		ulog(LOG_ERROR, "Signal %d during plugin finish, doing emergency shutdown instead\n", jump_signum);
+		ulog(LLOG_ERROR, "Signal %d during plugin finish, doing emergency shutdown instead\n", jump_signum);
 		emergency = true;
 	}
 	jump_ready = true;
@@ -453,7 +453,7 @@ static void request_reconfigure_full(int unused) {
 }
 
 void loop_run(struct loop *loop) {
-	ulog(LOG_INFO, "Running the main loop\n");
+	ulog(LLOG_INFO, "Running the main loop\n");
 	sigset_t blocked;
 	// Block signals during actions, and let them only during the epoll
 	sigemptyset(&blocked);
@@ -489,7 +489,7 @@ void loop_run(struct loop *loop) {
 			if (failure) {
 				reinit = holder->failed < FAIL_COUNT;
 				failed = holder->failed;
-				ulog(LOG_ERROR, "Signal %d in plugin %s (failed %zu times before)\n", jump_signum, holder->plugin.name, failed);
+				ulog(LLOG_ERROR, "Signal %d in plugin %s (failed %zu times before)\n", jump_signum, holder->plugin.name, failed);
 			}
 			plugin_destroy(holder, true);
 			struct loop_configurator *configurator = loop_config_start(loop);
@@ -502,7 +502,7 @@ void loop_run(struct loop *loop) {
 						die("Copy of %s failed\n", plugin->libname);
 				} else if (reinit) {
 					if (!loop_add_plugin(configurator, libname))
-						ulog(LOG_ERROR, "Reinit of %s failed, aborting plugin\n", libname);
+						ulog(LLOG_ERROR, "Reinit of %s failed, aborting plugin\n", libname);
 					else
 						configurator->plugins.tail->failed = failed + 1;
 				}
@@ -513,7 +513,7 @@ void loop_run(struct loop *loop) {
 			loop_config_commit(configurator);
 			goto REINIT;
 		} else {
-			ulog(LOG_ERROR, "Signal %d outside of plugin, aborting\n", jump_signum);
+			ulog(LLOG_ERROR, "Signal %d outside of plugin, aborting\n", jump_signum);
 			abort();
 		}
 	}
@@ -539,14 +539,14 @@ void loop_run(struct loop *loop) {
 		if (loop->reconfigure) { // We are asked to reconfigure
 			jump_ready = 0;
 			loop->reconfigure = false;
-			ulog(LOG_INFO, "Reconfiguring\n");
+			ulog(LLOG_INFO, "Reconfiguring\n");
 			if (loop->reconfigure_full)
 				// Wipe out current configuration, so we start clean
 				loop_config_commit(loop_config_start(loop));
 			if (load_config(loop))
 				loop->retry_reconfigure_on_failure = false;
 			else {
-				ulog(LOG_ERROR, "Reconfiguration failed, using previous configuration\n");
+				ulog(LLOG_ERROR, "Reconfiguration failed, using previous configuration\n");
 				if (loop->retry_reconfigure_on_failure)
 					loop_timeout_add(loop, IFACE_RECONFIGURE_TIME, NULL, NULL, self_reconfigure);
 			}
@@ -560,7 +560,7 @@ void loop_run(struct loop *loop) {
 			// Suboptimal, but there should be only few timeouts and not often
 			memmove(loop->timeouts, loop->timeouts + 1, (-- loop->timeout_count) * sizeof *loop->timeouts);
 			current_context = timeout.context;
-			ulog(LOG_DEBUG, "Firing timeout %zu at %llu when %zu more timeouts active\n", timeout.id, (long long unsigned) timeout.when, loop->timeout_count);
+			ulog(LLOG_DEBUG, "Firing timeout %zu at %llu when %zu more timeouts active\n", timeout.id, (long long unsigned) timeout.when, loop->timeout_count);
 			timeout.callback(timeout.context, timeout.data, timeout.id);
 			mem_pool_reset(loop->temp_pool);
 			current_context = NULL;
@@ -569,13 +569,13 @@ void loop_run(struct loop *loop) {
 		// Handle events from epoll
 		if (ready == -1) {
 			if (errno == EINTR) {
-				ulog(LOG_WARN, "epoll_wait on %d interrupted, retry\n", loop->epoll_fd);
+				ulog(LLOG_WARN, "epoll_wait on %d interrupted, retry\n", loop->epoll_fd);
 				continue;
 			}
 			die("epoll_wait on %d failed: %s\n", loop->epoll_fd, strerror(errno));
 		} else if (!ready && !timeouts_called) {
 			// This is strange. We wait for 1 event idefinitelly and get 0
-			ulog(LOG_WARN, "epoll_wait on %d returned 0 events and 0 timeouts\n", loop->epoll_fd);
+			ulog(LLOG_WARN, "epoll_wait on %d returned 0 events and 0 timeouts\n", loop->epoll_fd);
 		} else {
 			for (size_t i = 0; i < (size_t) ready; i ++) {
 				/*
@@ -599,7 +599,7 @@ void loop_run(struct loop *loop) {
 }
 
 static void pcap_destroy(struct pcap_interface *interface) {
-	ulog(LOG_INFO, "Closing PCAP on %s\n", interface->name);
+	ulog(LLOG_INFO, "Closing PCAP on %s\n", interface->name);
 	if (interface->watchdog_initialized)
 		loop_timeout_cancel(interface->loop, interface->watchdog_timer);
 	for (size_t i = 0; i < 2; i ++)
@@ -607,7 +607,7 @@ static void pcap_destroy(struct pcap_interface *interface) {
 }
 
 void loop_destroy(struct loop *loop) {
-	ulog(LOG_INFO, "Releasing the main loop\n");
+	ulog(LLOG_INFO, "Releasing the main loop\n");
 	// Close the epoll
 	int result = close(loop->epoll_fd);
 	assert(result == 0);
@@ -624,12 +624,12 @@ void loop_destroy(struct loop *loop) {
 
 // Open one direction of the capture.
 static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char *interface, const char *dir_txt) {
-	ulog(LOG_INFO, "Initializing PCAP (%s) on %s\n", dir_txt, interface);
+	ulog(LLOG_INFO, "Initializing PCAP (%s) on %s\n", dir_txt, interface);
 	// Open the pcap
 	char errbuf[PCAP_ERRBUF_SIZE];
 	*pcap = pcap_create(interface, errbuf);
 	if (!*pcap) {
-		ulog(LOG_ERROR, "Can't initialize PCAP (%s) on %s (%s)\n", dir_txt, interface, errbuf);
+		ulog(LLOG_ERROR, "Can't initialize PCAP (%s) on %s (%s)\n", dir_txt, interface, errbuf);
 		return -1;
 	}
 	// Set parameters.
@@ -651,20 +651,20 @@ static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char
 		case PCAP_WARNING_PROMISC_NOTSUP:
 		case PCAP_WARNING:
 			// These are just warnings. Display them, but continue.
-			ulog(LOG_WARN, "PCAP (%s) on %s: %s\n", dir_txt, interface, pcap_geterr(*pcap));
+			ulog(LLOG_WARN, "PCAP (%s) on %s: %s\n", dir_txt, interface, pcap_geterr(*pcap));
 			break;
 		default:
 			/*
 			 * Everything is an error. Even if it wasn't an error, we don't
 			 * know it explicitly, so consider it error.
 			 */
-			ulog(LOG_ERROR, "PCAP on (%s) %s: %s, closing\n", dir_txt, interface, pcap_geterr(*pcap));
+			ulog(LLOG_ERROR, "PCAP on (%s) %s: %s, closing\n", dir_txt, interface, pcap_geterr(*pcap));
 			pcap_close(*pcap);
 			return -1;
 	}
 	// Set it non-blocking. We'll keep switching between pcaps of interfaces and other events.
 	if (pcap_setnonblock(*pcap, 1, errbuf) == -1) {
-		ulog(LOG_ERROR, "Can't set PCAP (%s) on %s non-blocking (%s)\n", dir_txt, interface, errbuf);
+		ulog(LLOG_ERROR, "Can't set PCAP (%s) on %s non-blocking (%s)\n", dir_txt, interface, errbuf);
 		pcap_close(*pcap);
 		return -1;
 	}
@@ -675,7 +675,7 @@ static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char
 	// Get the file descriptor for the epoll.
 	int fd = pcap_get_selectable_fd(*pcap);
 	if (fd == -1) {
-		ulog(LOG_ERROR, "Can't get FD for PCAP (%s) on %s\n", dir_txt, interface);
+		ulog(LLOG_ERROR, "Can't get FD for PCAP (%s) on %s\n", dir_txt, interface);
 		pcap_close(*pcap);
 		return -1;
 	}
@@ -786,11 +786,11 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	void *plugin_handle = plugin_load(libname, &plugin);
 	if (!plugin_handle)
 		return false;
-	ulog(LOG_INFO, "Installing plugin %s\n", plugin.name);
+	ulog(LLOG_INFO, "Installing plugin %s\n", plugin.name);
 	struct mem_pool *permanent_pool = mem_pool_create(plugin.name);
 	assert(!jump_ready);
 	if (setjmp(jump_env)) {
-		ulog(LOG_ERROR, "Signal %d during plugin initialization, aborting load\n", jump_signum);
+		ulog(LLOG_ERROR, "Signal %d during plugin initialization, aborting load\n", jump_signum);
 		mem_pool_destroy(permanent_pool);
 		plugin_unload(plugin_handle);
 		return false;
@@ -927,7 +927,7 @@ size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *conte
 		.data = data,
 		.id = id ++
 	};
-	ulog(LOG_DEBUG, "Adding timeout for %lu seconds, expected to fire at %llu, now %llu as ID %zu\n", (unsigned long) after,  (unsigned long long) when, (unsigned long long) loop->now, loop->timeouts[pos].id);
+	ulog(LLOG_DEBUG, "Adding timeout for %lu seconds, expected to fire at %llu, now %llu as ID %zu\n", (unsigned long) after,  (unsigned long long) when, (unsigned long long) loop->now, loop->timeouts[pos].id);
 	assert(loop->now < when);
 	loop->timeout_count ++;
 	return loop->timeouts[pos].id;
@@ -992,9 +992,9 @@ static void pcap_watchdog(struct context *context_unused, void *data, size_t id_
 	if (interface->watchdog_received) {
 		interface->watchdog_missed = 0;
 	} else {
-		ulog(LOG_WARN, "No data on interface %s in a long time\n", interface->name);
+		ulog(LLOG_WARN, "No data on interface %s in a long time\n", interface->name);
 		if (interface->watchdog_missed >= WATCHDOG_MISSED_COUNT) {
-			ulog(LOG_ERROR, "Too many missed intervals of data on %s, doing full reconfigure in attempt to recover from unknown external errors\n", interface->name);
+			ulog(LLOG_ERROR, "Too many missed intervals of data on %s, doing full reconfigure in attempt to recover from unknown external errors\n", interface->name);
 			interface->loop->retry_reconfigure_on_failure = true;
 			if (kill(getpid(), SIGUSR1))
 				die("Can't send SIGUSR1 to self (%s)\n", strerror(errno));

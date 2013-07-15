@@ -6,15 +6,15 @@
 void die(const char *format, ...) __attribute__((format(printf, 1, 2))) __attribute__((noreturn));
 
 #ifndef MAX_LOG_LEVEL
-#define MAX_LOG_LEVEL LOG_DEBUG
+#define MAX_LOG_LEVEL LLOG_DEBUG
 #endif
 
 enum log_level {
-	LOG_ERROR,
-	LOG_WARN,
-	LOG_INFO,
-	LOG_DEBUG,
-	LOG_DEBUG_VERBOSE
+	LLOG_ERROR,
+	LLOG_WARN,
+	LLOG_INFO,
+	LLOG_DEBUG,
+	LLOG_DEBUG_VERBOSE
 };
 
 void ulog_internal(enum log_level log_level, const char *format, va_list *args);

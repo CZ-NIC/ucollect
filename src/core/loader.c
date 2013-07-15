@@ -18,7 +18,7 @@ struct plugin *plugin_info_buckets(void);
 static int dummy;
 
 void *plugin_load(const char *libname, struct plugin *target) {
-	ulog(LOG_INFO, "Want plugin %s\n", libname);
+	ulog(LLOG_INFO, "Want plugin %s\n", libname);
 	if (strcmp(libname, "libplugin_count.so") == 0) {
 		*target = *plugin_info_count();
 		return &dummy;
@@ -26,7 +26,7 @@ void *plugin_load(const char *libname, struct plugin *target) {
 		*target = *plugin_info_buckets();
 		return &dummy;
 	}
-	ulog(LOG_ERROR, "Dynamic loading not allowed\n");
+	ulog(LLOG_ERROR, "Dynamic loading not allowed\n");
 	return NULL;
 }
 
@@ -39,7 +39,7 @@ void plugin_unload(void *library) {
 #include <dlfcn.h>
 
 void *plugin_load(const char *libname, struct plugin *target) {
-	ulog(LOG_INFO, "Loading plugin library %s\n", libname);
+	ulog(LLOG_INFO, "Loading plugin library %s\n", libname);
 	dlerror(); // Reset errors
 #ifdef PLUGIN_PATH
 	char libpath[PATH_MAX + 1];
@@ -49,7 +49,7 @@ void *plugin_load(const char *libname, struct plugin *target) {
 #endif
 	void *library = dlopen(libpath, RTLD_NOW | RTLD_LOCAL);
 	if (!library) {
-		ulog(LOG_ERROR, "Can't load plugin %s: %s\n", libpath, dlerror());
+		ulog(LLOG_ERROR, "Can't load plugin %s: %s\n", libpath, dlerror());
 		return NULL;
 	}
 	struct plugin *(*plugin_info)();
@@ -63,7 +63,7 @@ void *plugin_load(const char *libname, struct plugin *target) {
 #pragma GCC diagnostic pop
 	const char *error = dlerror();
 	if (error) {
-		ulog(LOG_ERROR, "The library %s doesn't contain plugin_info() - is it a plugin?: %s\n", libpath, error);
+		ulog(LLOG_ERROR, "The library %s doesn't contain plugin_info() - is it a plugin?: %s\n", libpath, error);
 		dlclose(library);
 		return NULL;
 	}
@@ -73,7 +73,7 @@ void *plugin_load(const char *libname, struct plugin *target) {
 }
 
 void plugin_unload(void *library) {
-	ulog(LOG_INFO, "Unloading plugin library\n");
+	ulog(LLOG_INFO, "Unloading plugin library\n");
 	dlclose(library);
 }
 #endif

@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
+#include <syslog.h>
 
 // The loop is global, so we can use it from the signal handler.
 static struct loop *loop;
@@ -33,6 +34,7 @@ static void cleanup(void) {
 }
 
 int main(int argc, const char* argv[]) {
+	openlog("ucollect", LOG_CONS | LOG_NDELAY | LOG_PID, LOG_DAEMON);
 	(void) argc;
 	(void) argv;
 	// Create the loop.
@@ -58,7 +60,7 @@ int main(int argc, const char* argv[]) {
 	}
 
 	if (!load_config(loop)) {
-		ulog(LOG_ERROR, "No configuration available\n");
+		ulog(LLOG_ERROR, "No configuration available\n");
 		cleanup();
 		return 1;
 	}

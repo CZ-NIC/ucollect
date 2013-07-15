@@ -197,7 +197,7 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 	}
 	generation_activate(u, 0, be64toh(header->timestamp), loop_now(context->loop));
 	assert(u->criteria_count && u->hash_count && u->bucket_count);
-	ulog(LOG_INFO, "Received bucket information version %u (%u buckets, %u hashes)\n", (unsigned) u->config_version, (unsigned) u->bucket_count, (unsigned) u->hash_count);
+	ulog(LLOG_INFO, "Received bucket information version %u (%u buckets, %u hashes)\n", (unsigned) u->config_version, (unsigned) u->bucket_count, (unsigned) u->hash_count);
 	u->initialized = true;
 }
 
@@ -225,7 +225,7 @@ static void provide_generation(struct context *context, const uint8_t *data, siz
 	assert(length == sizeof timestamp);
 	memcpy(&timestamp, data, length); // Copy, to ensure correct alignment
 	timestamp = be64toh(timestamp);
-	ulog(LOG_DEBUG, "Old generation is %zu, new %zu\n", (size_t) u->generations[u->current_generation].timestamp, (size_t) timestamp);
+	ulog(LLOG_DEBUG, "Old generation is %zu, new %zu\n", (size_t) u->generations[u->current_generation].timestamp, (size_t) timestamp);
 	// Compute the size of the message to send
 	bool global_overflow = false;
 	if (++ u->biggest_timeslot > u->max_timeslots) {
@@ -362,7 +362,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			return;
 		case 'G': // We are asked to send the current generation and start a new one
 			if (context->user_data->initialized) {
-				ulog(LOG_DEBUG, "Asked for generation data\n");
+				ulog(LLOG_DEBUG, "Asked for generation data\n");
 				provide_generation(context, data + 1, length - 1);
 			} else {
 				/*
@@ -371,7 +371,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 				 * configuration. This is because the server just broadcasts the
 				 * request without tracking who already asked for configuration.
 				 */
-				ulog(LOG_WARN, "Asked for generation data, but not initialized yet.\n");
+				ulog(LLOG_WARN, "Asked for generation data, but not initialized yet.\n");
 				// Ignore it, we have nothing.
 			}
 			return;
@@ -380,7 +380,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			provide_keys(context, data + 1, length - 1);
 			return;
 		default:
-			ulog(LOG_WARN, "Unknown buckets request %hhu/%c\n", *data, (char) *data);
+			ulog(LLOG_WARN, "Unknown buckets request %hhu/%c\n", *data, (char) *data);
 			return;
 	}
 }
@@ -396,7 +396,7 @@ static void packet(struct context *context, const struct packet_info *packet) {
 	// Into which timeslot does the packet belong?
 	size_t slot = (loop_now(context->loop) - u->timeslot_start) / u->time_granularity;
 	if (slot < u->biggest_timeslot)
-		ulog(LOG_WARN, "Time went backwards?\n");
+		ulog(LLOG_WARN, "Time went backwards?\n");
 	else if (slot > u->biggest_timeslot)
 		u->biggest_timeslot = slot;
 	if (u->biggest_timeslot >= u->max_timeslots)

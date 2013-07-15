@@ -6,7 +6,7 @@ O := $(RELATIVE).
 S := $(RELATIVE).
 ASCIIDOC := asciidoc
 AR := ar
-MAX_LOG_LEVEL := LOG_DEBUG_VERBOSE
+MAX_LOG_LEVEL := LLOG_DEBUG_VERBOSE
 PAGE_SIZE := $(shell getconf PAGE_SIZE)
 
 include $(S)/Makefile.dir
