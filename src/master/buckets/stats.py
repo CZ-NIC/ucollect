@@ -196,6 +196,5 @@ def anomalies(buckets, treshold):
 	# first transpose the array and generate the refernces.
 	ref_means = map(reference, zip(*bucket_params))
 	# Take each item from the buckets, compute the distance and compare it with the treshold.
-	# Take the index and anomality of each. Then filter based on the anomality and drop
-	# the anomality.
-	return map(lambda (index, anomality): index, filter(lambda (index, anomality): anomality, map(lambda bucket, index: (index, distance(bucket, ref_means) > treshold), bucket_params, range(0, len(bucket_params)))))
+	# Take the index and anomality of each. Then filter based on the anomality.
+	return filter(lambda (index, anomality): anomality > treshold, map(lambda bucket, index: (index, distance(bucket, ref_means)), bucket_params, range(0, len(bucket_params))))

@@ -145,7 +145,7 @@ class BucketsPlugin(plugin.Plugin):
 						do_send = False
 						break
 					examine.append(len(an))
-					examine.extend(an)
+					examine.extend(map(lambda (index, anomality): index, an))
 				# The lower_time is the timestamp/ID of this batch. Or, with the clients that are connected
 				# for the time of the batch at least.
 				# We could try asking for the older ones too (we have them in local history).
