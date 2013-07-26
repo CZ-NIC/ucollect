@@ -1,4 +1,7 @@
 import buckets.stats
+import logging
+
+logger = logging.getLogger(name='buckets')
 
 class Group:
 	"""
@@ -12,7 +15,7 @@ class Group:
 	The client does not care which criterion it is. It is expected that each criterion will have its
 	own sets.
 	"""
-	def __init__(self, hash_count, bucket_count, window_backlog, treshold):
+	def __init__(self, hash_count, bucket_count, window_backlog, treshold, hasher):
 		"""
 		Constructor. Parameters:
 		- hash_count: Number of independent hash functions.
@@ -20,6 +23,7 @@ class Group:
 		- window_backlog: Number of history windows in addition to the current one
 		  to keep and compute the statistics from.
 		- treshold: Treshold how far a bucket must be from the average to be considered anomalous.
+		- hasher: The thing that computes hashes of data, to reconstruct where things were.
 		"""
 		self.__members = set()
 		self.__hash_count = hash_count
@@ -29,7 +33,9 @@ class Group:
 		self.__history = []
 		self.__current = self.__empty_data()
 		self.__keys = {}
+		self.__strengths = {}
 		self.__key_submitted_cnt = 0
+		self.__hasher = hasher
 
 	def __empty_data(self):
 		"""
@@ -108,15 +114,19 @@ class Group:
 
 		The order of clients is arbitrary.
 		"""
-		result = (self.__keys, self.__key_submitted_cnt)
+		result = (self.__keys, self.__key_submitted_cnt, dict(map(lambda (k, sts): (k, min(sts)), self.__strengths.iteritems())))
 		self.__keys = {}
+		self.__strengths = {}
 		self.__key_submitted_cnt = 0
 		return result
 
-	def keys_aggregate(self, client, keys):
+	def keys_aggregate(self, client, keys, strengths, binary_keys):
 		"""
 		Add list of keys received from the client to the current gathered set.
 		"""
-		for k in keys:
+		logger.trace("Strengths: %s/%s/%s", strengths, keys, repr(binary_keys))
+		for (k, b) in zip(keys, binary_keys):
 			self.__keys.setdefault(k, []).append(client)
+			# TODO: Be resilient to bad keys
+			self.__strengths.setdefault(k, []).extend(map(lambda hindex: strengths[hindex][self.__hasher.get(b, hindex) % self.__bucket_count], range(0, self.__hash_count)))
 		self.__key_submitted_cnt += 1

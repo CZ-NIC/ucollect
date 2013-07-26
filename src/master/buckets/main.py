@@ -11,6 +11,7 @@ import database
 import plugin
 import buckets.group
 import buckets.client
+import buckets.rng
 
 logger = logging.getLogger(name='buckets')
 
@@ -52,6 +53,7 @@ class BucketsPlugin(plugin.Plugin):
 		self.__gathering = False
 		self.__aggregating_keys = False
 		self.__have_keys = False
+		self.__hasher = buckets.rng.Hash(self.__seed, self.__hash_count, 256 * max(map(lambda c: c.item_len(), self.__criteria)))
 
 	def client_connected(self, client):
 		name = client.cid()
@@ -65,7 +67,7 @@ class BucketsPlugin(plugin.Plugin):
 				# Does the group exist, or create an empty one?
 				if g not in self.__groups[crit.code()]:
 					logger.debug("Creating group %s in criterion %s", g, crit.code());
-					self.__groups[crit.code()][g] = buckets.group.Group(hash_count=self.__hash_count, bucket_count=self.__bucket_count, window_backlog=self.__gather_history_max, treshold=self.__treshold)
+					self.__groups[crit.code()][g] = buckets.group.Group(hash_count=self.__hash_count, bucket_count=self.__bucket_count, window_backlog=self.__gather_history_max, treshold=self.__treshold, hasher=self.__hasher)
 				self.__groups[crit.code()][g].add(name)
 
 	def client_disconnected(self, client):
@@ -109,11 +111,11 @@ class BucketsPlugin(plugin.Plugin):
 			def cdata(crit):
 				def gdata(gname):
 					group = self.__groups[crit][gname]
-					(keys, count) = group.keys_extract()
-					return map(lambda key: (crit, now, key, len(keys[key]), count, gname), keys.keys())
+					(keys, count, strengths) = group.keys_extract()
+					return map(lambda key: (crit, now, key, len(keys[key]), count, strengths[key], gname), keys.keys())
 				return reduce(aggregate, map(gdata, self.__groups[crit].keys()))
 			data = reduce(aggregate, map(cdata, self.__groups.keys()))
-			t.executemany('INSERT INTO anomalies(from_group, type, timestamp, value, relevance_count, relevance_of) SELECT groups.id, %s, %s, %s, %s, %s FROM groups WHERE groups.name = %s', data)
+			t.executemany('INSERT INTO anomalies(from_group, type, timestamp, value, relevance_count, relevance_of, strength) SELECT groups.id, %s, %s, %s, %s, %s, %s FROM groups WHERE groups.name = %s', data)
 
 	def __process(self):
 		"""
@@ -151,14 +153,15 @@ class BucketsPlugin(plugin.Plugin):
 				# We could try asking for the older ones too (we have them in local history).
 				if do_send:
 					logger.debug('Asking for keys %s on criterion %s and group %s at %s', examine, crit.code(), g, generation)
-					def ask_client(criterion, client, group):
+					strengths = map(dict, anomalies)
+					def ask_client(criterion, client, group, strengths):
 						# Separate function, so the variables are copied to the parameters.
 						# Otherwise, the value in all criteria were for the last one,
 						# as the function remembered the variable here, which got changed.
 						def callback(message, success):
 							if success:
 								if self.__aggregating_keys:
-									group.keys_aggregate(client.name(), criterion.decode_multiple(message))
+									group.keys_aggregate(client.name(), criterion.decode_multiple(message), strengths, criterion.decode_raw_multiple(message))
 								else:
 									logger.debug("Late reply for keys ignored")
 							else:
@@ -166,7 +169,7 @@ class BucketsPlugin(plugin.Plugin):
 						client.get_keys(cindex, generation, examine, callback)
 					# Send it to all the clients.
 					for client in group.members():
-						ask_client(crit, self.__clients[client], group)
+						ask_client(crit, self.__clients[client], group, strengths)
 				else:
 					logger.debug('No anomaly asked on criterion %s and group %s at %s', crit.code(), g, generation)
 			cindex += 1
