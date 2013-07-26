@@ -126,7 +126,9 @@ class Group:
 		"""
 		logger.trace("Strengths: %s/%s/%s", strengths, keys, repr(binary_keys))
 		for (k, b) in zip(keys, binary_keys):
-			self.__keys.setdefault(k, []).append(client)
-			# TODO: Be resilient to bad keys
-			self.__strengths.setdefault(k, []).extend(map(lambda hindex: strengths[hindex][self.__hasher.get(b, hindex) % self.__bucket_count], range(0, self.__hash_count)))
+			try:
+				self.__strengths.setdefault(k, []).extend(map(lambda hindex: strengths[hindex][self.__hasher.get(b, hindex) % self.__bucket_count], range(0, self.__hash_count)))
+				self.__keys.setdefault(k, []).append(client)
+			except KeyError:
+				logger.error("Client %s sent invalid key data (for buckets we didn't ask for): keys", client, keys)
 		self.__key_submitted_cnt += 1
