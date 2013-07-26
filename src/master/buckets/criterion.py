@@ -11,10 +11,17 @@ class Criterion:
 		"""
 		Decode multiple data concatenated together. Returns list of the strings.
 		"""
+		return map(self.decode, self.decode_raw_multiple(data))
+
+	def decode_raw_multiple(self, data):
+		"""
+		Extract the data into sequence of binary representations of the keys,
+		as they are on the wire.
+		"""
 		l = self.item_len()
 		result = []
 		while data:
-			result.append(self.decode(data[:l]))
+			result.append(data[:l])
 			data = data[l:]
 		return result
 
