@@ -13,8 +13,8 @@ struct rng_seed rng_seed_init(uint64_t seed) {
 	 */
 	uint64_t even = seed & 0x5555555555555555LLU;
 	uint64_t odd = seed & 0xAAAAAAAAAAAAAAAALLU;
-	result.low = (even & 0x00000000FFFFFFFFLU) | ((even & 0xFFFFFFFF00000000LLU) >> 31);
-	result.high = (odd & 0x00000000FFFFFFFFLU) | ((odd & 0xFFFFFFFF00000000LLU) >> 33);
+	result.low = (even & 0x00000000FFFFFFFFLLU) | ((even & 0xFFFFFFFF00000000LLU) >> 31);
+	result.high = (odd & 0x00000000FFFFFFFFLLU) | ((odd & 0xFFFFFFFF00000000LLU) >> 33);
 	assert (result.low && result.high);
 	return result;
 }
