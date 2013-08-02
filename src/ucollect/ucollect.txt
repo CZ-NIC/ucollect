@@ -8,13 +8,17 @@ the gathered data to the central server for processing.
 Invocation
 ----------
 
-It takes no parameters. All configuration is done through the
-configuration file.
+A configuration directory with UCI configs may be specified as the
+first (and only) parameter. If no parameter is set, the directory of
+`/etc/config` is used.
+
+The rest of configuration is read from there.
 
 Configuration
 -------------
 
-The configuration is read from `/etc/config/ucollect`. It uses the
+The configuration is read from `/etc/config/ucollect` (or file
+`ucollect` from the directory set on command line). It uses the
 http://wiki.openwrt.org/doc/uci[uci] system and syntax. An example
 config would look like this:
 
