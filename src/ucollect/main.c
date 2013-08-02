@@ -34,9 +34,12 @@ static void cleanup(void) {
 }
 
 int main(int argc, const char* argv[]) {
-	openlog("ucollect", LOG_CONS | LOG_NDELAY | LOG_PID, LOG_DAEMON);
 	(void) argc;
-	(void) argv;
+	openlog("ucollect", LOG_CONS | LOG_NDELAY | LOG_PID, LOG_DAEMON);
+	if (argv[1]) {
+		ulog(LLOG_DEBUG, "Setting config dir to %s\n", argv[1]);
+		config_set_dir(argv[1]);
+	}
 	// Create the loop.
 	loop = loop_create();
 

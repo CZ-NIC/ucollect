@@ -86,12 +86,23 @@ static bool load_config_internal(struct loop_configurator *configurator, struct 
 	return result;
 }
 
+static const char *config_dir;
+
+void config_set_dir(const char *dir) {
+	config_dir = dir;
+}
+
 bool load_config(struct loop *loop) {
 	struct uci_context *ctx = uci_alloc_context();
 	if (!ctx) {
 		ulog(LLOG_ERROR, "Can't allocate UCI context\n");
 		return false;
 	}
+	if (config_dir)
+		if (uci_set_confdir(ctx, config_dir) != UCI_OK) {
+			ulog(LLOG_ERROR, "Can't set configuration directory to %s\n", config_dir);
+			return false;
+		}
 	struct loop_configurator *configurator = loop_config_start(loop);
 	bool result = load_config_internal(configurator, ctx);
 	uci_free_context(ctx);
