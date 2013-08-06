@@ -441,7 +441,6 @@ static volatile struct loop *current_loop;
 
 static void request_reconfigure(int unused) {
 	(void) unused;
-	ulog(LLOG_WARN, "Reconfigure request\n");
 	assert(current_loop);
 	current_loop->reconfigure = 1;
 }
