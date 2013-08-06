@@ -441,6 +441,7 @@ static volatile struct loop *current_loop;
 
 static void request_reconfigure(int unused) {
 	(void) unused;
+	ulog(LLOG_WARN, "Reconfigure request\n");
 	assert(current_loop);
 	current_loop->reconfigure = 1;
 }
@@ -692,6 +693,8 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 			*new = *old;
 			new->next = NULL;
 			new->name = mem_pool_strdup(configurator->config_pool, interface);
+			new->directions[PCAP_DIR_IN].interface = new;
+			new->directions[PCAP_DIR_OUT].interface = new;
 			return true;
 		}
 	pcap_t *pcap_in;
