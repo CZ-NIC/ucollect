@@ -423,12 +423,22 @@ struct uplink *uplink_create(struct loop *loop) {
 }
 
 void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, const char *login, const char *password) {
-	ulog(LLOG_INFO, "Changing remote uplink address to %s:%s\n", remote_name, service);
+	bool same =
+		uplink->remote_name && strcmp(uplink->remote_name, remote_name) == 0 &&
+		uplink->service && strcmp(uplink->service, service) == 0 &&
+		uplink->login && strcmp(uplink->login, login) == 0 &&
+		uplink->password && strcmp(uplink->password, password) == 0;
 	// Set the new remote endpoint
 	uplink->remote_name = remote_name;
 	uplink->service = service;
 	uplink->login = login;
 	uplink->password = password;
+	// If it is the same, we don't need to reconnect (but we need to store the new pointers, the old might die soon)
+	if (same) {
+		ulog(LLOG_DEBUG, "Not changing remote uplink as it is the same\n");
+		return;
+	}
+	ulog(LLOG_INFO, "Changing remote uplink address to %s:%s\n", remote_name, service);
 	// Reconnect
 	if (!uplink->reconnect_scheduled) {
 		uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
