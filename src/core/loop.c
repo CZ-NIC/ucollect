@@ -599,7 +599,7 @@ void loop_run(struct loop *loop) {
 }
 
 static void pcap_destroy(struct pcap_interface *interface) {
-	ulog(LLOG_INFO, "Closing PCAP on %s\n", interface->name);
+	ulog(LLOG_INFO, "Closing both PCAPs on %s\n", interface->name);
 	if (interface->watchdog_initialized)
 		loop_timeout_cancel(interface->loop, interface->watchdog_timer);
 	for (size_t i = 0; i < 2; i ++)
