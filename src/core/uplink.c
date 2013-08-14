@@ -15,8 +15,10 @@
 #include <string.h>
 #include <unistd.h>
 #include <openssl/sha.h>
+#include <atsha204.h>
 
-static const uint8_t *compute_response(const uint8_t *challenge, size_t clen, const char *password, struct mem_pool *pool) {
+#ifdef SOFT_LOGIN
+static const uint8_t *compute_response_soft(const uint8_t *challenge, size_t clen, const char *password, struct mem_pool *pool) {
 	uint8_t *output = mem_pool_alloc(pool, SHA256_DIGEST_LENGTH);
 	SHA256_CTX context;
 	SHA256_Init(&context);
@@ -25,6 +27,23 @@ static const uint8_t *compute_response(const uint8_t *challenge, size_t clen, co
 	SHA256_Update(&context, password, strlen(password));
 	SHA256_Final(output, &context);
 	return output;
+}
+#else
+static void atsha_log_callback(const char *msg) {
+	ulog(LLOG_ERROR, "ATSHA: %s\n", msg);
+}
+#endif
+
+static void gen_random(uint8_t *buffer, size_t size) {
+	// Generate a challenge. Just load some data from /dev/urandom.
+	int fd = open("/dev/urandom", O_RDONLY);
+	if (fd == -1)
+		die("Couldn't open urandom (%s)\n", strerror(errno));
+	// Read by 1 character, as urandom is strange and might give only little data
+	for (size_t i = 0; i < size; i ++)
+		if (read(fd, buffer + i, 1) != 1)
+			die("Couldn't read from urandom (%s)\n", strerror(errno));
+	close(fd);
 }
 
 enum auth_status {
@@ -56,7 +75,7 @@ struct uplink {
 	uint64_t last_connect;
 	size_t addr_len;
 	uint8_t address[IPV6_LEN];
-	uint8_t challenge[CHALLENGE_LEN];
+	uint8_t server_login[CHALLENGE_LEN];
 	enum auth_status auth_status;
 };
 
@@ -288,19 +307,12 @@ static void handle_buffer(struct uplink *uplink) {
 						  break;
 				}
 			} else {
+#ifdef SOFT_LOGIN
 				if (command == 'C' && uplink->auth_status == NOT_STARTED) {
 					ulog(LLOG_DEBUG, "Sending login info\n");
 					// We received the challenge. Compute the response.
 					const uint8_t *response = compute_response(uplink->buffer, uplink->buffer_size, uplink->password, temp_pool);
-					// Generate a challenge. Just load some data from /dev/urandom.
-					int fd = open("/dev/urandom", O_RDONLY);
-					if (fd == -1)
-						die("Couldn't open urandom (%s)\n", strerror(errno));
-					// Read by 1 character, as urandom is strange and might give only little data
-					for (size_t i = 0; i < CHALLENGE_LEN; i ++)
-						if (read(fd, uplink->challenge + i, 1) != 1)
-							die("Couldn't read from urandom (%s)\n", strerror(errno));
-					close(fd);
+					gen_random(uplink->server_login, CHALLENGE_LEN);
 					/*
 					 * Compose the message. There are 1 char and 3 strings in there ‒ the version used (currently hardcoded
 					 * to 'S' as Software hash), our login name, the response and challenge for the server.
@@ -312,14 +324,14 @@ static void handle_buffer(struct uplink *uplink) {
 					size_t len_pos = len - 1;
 					uplink_render_string((const uint8_t *) uplink->login, strlen(uplink->login), &message_pos, &len_pos);
 					uplink_render_string(response, SHA256_DIGEST_LENGTH, &message_pos, &len_pos);
-					uplink_render_string(uplink->challenge, CHALLENGE_LEN, &message_pos, &len_pos);
+					uplink_render_string(uplink->server_login, CHALLENGE_LEN, &message_pos, &len_pos);
 					assert(!len_pos);
 					uplink_send_message(uplink, 'L', message, len);
 					uplink->auth_status = SENT;
 				} else if (command == 'L' && uplink->auth_status == SENT) {
 					ulog(LLOG_DEBUG, "Received server login info\n");
 					// We got the server response. Compute our own version and check they are the same.
-					const uint8_t *response = compute_response(uplink->challenge, CHALLENGE_LEN, uplink->password, temp_pool);
+					const uint8_t *response = compute_response(uplink->server_login, CHALLENGE_LEN, uplink->password, temp_pool);
 					if (uplink->buffer_size == CHALLENGE_LEN && memcmp(uplink->buffer, response, CHALLENGE_LEN) == 0) {
 						ulog(LLOG_DEBUG, "Server authenticated\n");
 						// OK, Login complete. Send hello and tell the rest of the program we're connected.
@@ -333,6 +345,74 @@ static void handle_buffer(struct uplink *uplink) {
 					} else
 						// This is an insult, stop talking to the other side.
 						ulog(LLOG_ERROR, "Server failed to authenticated. Password mismatch?\n");
+#else
+				if (command == 'C' && uplink->auth_status == NOT_STARTED) {
+					ulog(LLOG_DEBUG, "Sending login info\n");
+					// Get the chip handle
+					atsha_set_log_callback(atsha_log_callback);
+					struct atsha_handle *cryptochip = atsha_open();
+					if (!cryptochip)
+						die("Couldn't open the ATSHA204 chip\n");
+					// Read the serial number
+					atsha_big_int serial;
+					int result = atsha_serial_number(cryptochip, &serial);
+					if (result != ATSHA_ERR_OK)
+						die("Don't known my own name: %s\n", atsha_error_name(result));
+
+#define HALF_SIZE 16
+					// Compute response to the server challenge
+					atsha_big_int server_challenge, client_response;
+					static const uint8_t local_half[HALF_SIZE] = PASSWD_HALF;
+					assert(HALF_SIZE + uplink->buffer_size == sizeof(server_challenge.data));
+					server_challenge.bytes = HALF_SIZE + uplink->buffer_size;
+					memcpy(server_challenge.data, local_half, HALF_SIZE);
+					memcpy(server_challenge.data + HALF_SIZE, uplink->buffer, uplink->buffer_size);
+					result = atsha_challenge_response(cryptochip, server_challenge, &client_response);
+					if (result != ATSHA_ERR_OK)
+						die("Can't answer challenge: %s\n", atsha_error_name(result));
+
+					// Generate a challenge for the server and compute expected response
+					atsha_big_int client_challenge, server_response;
+					client_challenge.bytes = HALF_SIZE + uplink->buffer_size;
+					memcpy(client_challenge.data, local_half, HALF_SIZE);
+					gen_random(client_challenge.data + HALF_SIZE, uplink->buffer_size);
+					result = atsha_challenge_response(cryptochip, client_challenge, &server_response);
+					if (result != ATSHA_ERR_OK)
+						die("Can't computer expected response: %s\n", atsha_error_name(result));
+
+					atsha_close(cryptochip);
+
+					// Store the expected response
+					assert(server_response.bytes == CHALLENGE_LEN);
+					memcpy(uplink->server_login, server_response.data, CHALLENGE_LEN);
+
+					// Send all computed stuff
+					size_t len = 1 + 3*sizeof(uint32_t) + serial.bytes + client_response.bytes + server_challenge.bytes;
+					uint8_t *message = mem_pool_alloc(temp_pool, len);
+					message[0] = 'A';
+					uint8_t *message_pos = message + 1;
+					size_t len_pos = len - 1;
+					uplink_render_string(serial.data, serial.bytes, &message_pos, &len_pos);
+					uplink_render_string(client_response.data, client_response.bytes, &message_pos, &len_pos);
+					uplink_render_string(client_challenge.data, client_challenge.bytes, &message_pos, &len_pos);
+					assert(!len_pos);
+					uplink_send_message(uplink, 'L', message, len);
+					uplink->auth_status = SENT;
+				} else if (command == 'L' && uplink->auth_status == SENT) {
+					if (uplink->buffer_size == CHALLENGE_LEN && memcmp(uplink->buffer, uplink->server_login, CHALLENGE_LEN) == 0) {
+						ulog(LLOG_DEBUG, "Server authenticated\n");
+						// OK, Login complete. Send hello and tell the rest of the program we're connected.
+						/*
+						 * Send 'H'ello. For now, it is empty. In future, we expect to have program & protocol version,
+						 * list of plugins and possibly other things too.
+						 */
+						uplink->auth_status = AUTHENTICATED;
+						uplink_send_message(uplink, 'H', NULL, 0);
+						loop_uplink_connected(uplink->loop);
+					} else
+						// This is an insult, stop talking to the other side.
+						ulog(LLOG_ERROR, "Server failed to authenticated. Password mismatch?\n");
+#endif
 				} else if (command == 'F')
 					ulog(LLOG_ERROR, "Server rejected our authentication\n");
 				else
