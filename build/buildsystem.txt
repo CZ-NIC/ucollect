@@ -153,6 +153,8 @@ LDFLAGS::
 This overrides whatever is set by the `TARGET` and `RELEASE`
 variables.
 
+LOGIN_PASSWD_HALF::
+  The static half of password used for the challenge-response login.
 MAX_LOG_LEVEL::
   Maximum level of log messages that are output. Default is LOG_DEBUG.
 NO_DOC::
@@ -217,6 +219,8 @@ OUTPUT_DIRECTORY::
 PAGE_SIZE::
   The size of the memory page. It has the value set in PAGE_SIZE
   variable in make.
+PASSWD_HALF::
+  The static half of password used for the challenge-response login.
 PLUGIN_PATH::
   Where the plugin libraries should be found at runtime.
 PREFIX::
