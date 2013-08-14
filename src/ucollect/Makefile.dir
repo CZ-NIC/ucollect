@@ -4,6 +4,6 @@ ucollect_MODULES := \
 	main
 ucollect_LOCAL_LIBS := ucollect_core
 # TODO: Make the build system take this from the ucollect_core somehow
-ucollect_SYSTEM_LIBS := pcap rt dl uci crypto ssl
+ucollect_SYSTEM_LIBS := pcap rt dl uci crypto ssl unbound atsha204
 
 DOCS += src/ucollect/ucollect
