@@ -1,7 +1,10 @@
 SCRIPTS += src/master/collectmaster
 DOCS += src/master/collectmaster
+LIBRARIES += src/master/atsha204
 
 collectmaster_SOURCE = collect-master.py
+
+atsha204_MODULES := atsha204
 
 ifneq (,$(findstring ^$(RESTRICT),^src/master))
 clean: clean-master
