@@ -5,7 +5,7 @@ LIBRARIES += src/master/atsha204
 collectmaster_SOURCE = collect-master.py
 
 atsha204_MODULES := atsha204
-atsha204_SYSTEM_LIBS := crypto ssl unbound atsha204
+atsha204_SO_LIBS := crypto ssl unbound atsha204
 
 ifneq (,$(findstring ^$(RESTRICT),^src/master))
 clean: clean-master

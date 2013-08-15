@@ -60,6 +60,7 @@ ifdef STATIC
 TODO: Static linking
 else
 $(1): LINK_LIBRARIES += -L$(O)/lib -Wl,-R$(abspath $(O)/lib) $$(addprefix -l,$$($(2)_LOCAL_LIBS) $$($(2)_SYSTEM_LIBS))
+$(1): LINK_SO_LIBRARIES += $$(addprefix -l,$$($(2)_SO_LIBS))
 $(1): $$(patsubst %,$(O)/lib/lib%.so,$$($(2)_LOCAL_LIBS))
 endif
 
@@ -155,7 +156,7 @@ $(O)/lib/%.so: CFLAGS_ALL += -fPIC
 $(O)/lib/%.so:
 	$(M) LD $@
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) $(LDFLAGS_ALL) $(LINK_LIBRARIES) -shared -o $@ $(filter %.o,$^)
+	$(Q)$(CC) $(LDFLAGS_ALL) $(LINK_SO_LIBRARIES) -shared -o $@ $(filter %.o,$^)
 
 $(O)/docs/%:
 	$(M) DOC-HTML $@
