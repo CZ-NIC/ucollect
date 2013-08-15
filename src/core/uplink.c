@@ -506,8 +506,8 @@ void uplink_configure(struct uplink *uplink, const char *remote_name, const char
 	bool same =
 		uplink->remote_name && strcmp(uplink->remote_name, remote_name) == 0 &&
 		uplink->service && strcmp(uplink->service, service) == 0 &&
-		uplink->login && strcmp(uplink->login, login) == 0 &&
-		uplink->password && strcmp(uplink->password, password) == 0;
+		(uplink->login == login || (uplink->login && strcmp(uplink->login, login) == 0)) &&
+		(uplink->password == password || (uplink->password && strcmp(uplink->password, password)) == 0);
 	// Set the new remote endpoint
 	uplink->remote_name = remote_name;
 	uplink->service = service;

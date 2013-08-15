@@ -1066,8 +1066,8 @@ void loop_plugin_reinit(struct context *context) {
 void loop_uplink_configure(struct loop_configurator *configurator, const char *remote, const char *service, const char *login, const char *password) {
 	configurator->remote_name = mem_pool_strdup(configurator->config_pool, remote);
 	configurator->remote_service = mem_pool_strdup(configurator->config_pool, service);
-	configurator->login = mem_pool_strdup(configurator->config_pool, login);
-	configurator->password = mem_pool_strdup(configurator->config_pool, password);
+	configurator->login = login ? mem_pool_strdup(configurator->config_pool, login) : NULL;
+	configurator->password = password ? mem_pool_strdup(configurator->config_pool, password) : NULL;
 }
 
 uint64_t loop_now(struct loop *loop) {
