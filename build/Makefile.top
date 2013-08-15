@@ -155,7 +155,7 @@ $(O)/lib/%.so: CFLAGS_ALL += -fPIC
 $(O)/lib/%.so:
 	$(M) LD $@
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) $(LDFLAGS_ALL) -shared -o $@ $(filter %.o,$^)
+	$(Q)$(CC) $(LDFLAGS_ALL) $(LINK_LIBRARIES) -shared -o $@ $(filter %.o,$^)
 
 $(O)/docs/%:
 	$(M) DOC-HTML $@
