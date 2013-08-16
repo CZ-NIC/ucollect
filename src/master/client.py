@@ -113,6 +113,13 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				if version != log_info[1]:
 					login_failure("Mechanism doesn't match")
 					return
+				if version == 'A':
+					if len(challenge) != 16:
+						login_failure('Wrong challenge length')
+						return
+					if len(log_info[0]) != 64: # 32, but it's in hexa there
+						login_failure('Database corruption?')
+						return
 				# Check his hash
 				correct = compute_response(version, cid, self.__challenge, log_info[0])
 				if not correct or correct != response:
