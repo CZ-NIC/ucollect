@@ -96,9 +96,6 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				(cid, params) = extract_string(params)
 				(response, params) = extract_string(params)
 				(challenge, params) = extract_string(params)
-				if version != 'A': # TODO: Allow with some clients by DB?
-					login_failure('Bad version')
-					return
 				self.__cid = cid
 				if version == 'A':
 					self.__cid = self.__cid.encode('hex')
@@ -108,11 +105,14 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				log_info = None
 				# Get the password from DB
 				with database.transaction() as t:
-					t.execute('SELECT passwd FROM clients WHERE name = %s', (self.__cid,))
+					t.execute('SELECT passwd, mechanism FROM clients WHERE name = %s', (self.__cid,))
 					log_info = t.fetchone()
 					if not log_info:
 						login_failure('Unknown user')
 						return
+				if version != log_info[1]:
+					login_failure("Mechanism doesn't match")
+					return
 				# Check his hash
 				correct = compute_response(version, cid, self.__challenge, log_info[0])
 				if not correct or correct != response:
