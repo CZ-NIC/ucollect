@@ -6,17 +6,19 @@ import hashlib
 from protocol import extract_string
 import logging
 import database
+import atsha204
 
 logger = logging.getLogger(name='client')
 sysrand = random.SystemRandom()
 challenge_len = 128 # 128 bits of random should be enough for log-in to protect against replay attacks
 
-def compute_response(version, challenge, password):
+def compute_response(version, login, challenge, password):
 	"""
 	Compute hash response for the challenge.
 	- version: The version of hash to use.
 	  * S: Software.
 	    (No more versions implemented now)
+	  * A: Atsha204
 	- challenge: The original challenge
 	- password: The shared secret
 
@@ -26,6 +28,12 @@ def compute_response(version, challenge, password):
 		return None
 	if version == 'S':
 		return hashlib.sha256(password + challenge + password).digest()
+	elif version == 'A':
+		full_c = ''
+		for i in range(0, 16):
+			full_c += '\x00'
+		full_c += challenge
+		return atsha204.hmac(login, password.decode('hex'), full_c)
 	else:
 		return None
 
@@ -88,26 +96,31 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				(cid, params) = extract_string(params)
 				(response, params) = extract_string(params)
 				(challenge, params) = extract_string(params)
+				if version != 'A': # TODO: Allow with some clients by DB?
+					login_failure('Bad version')
+					return
 				self.__cid = cid
+				if version == 'A':
+					self.__cid = self.__cid.encode('hex')
 				if params != '':
 					login_failure('Protocol violation')
 					return
 				log_info = None
 				# Get the password from DB
 				with database.transaction() as t:
-					t.execute('SELECT passwd FROM clients WHERE name = %s', (cid,))
+					t.execute('SELECT passwd FROM clients WHERE name = %s', (self.__cid,))
 					log_info = t.fetchone()
 					if not log_info:
 						login_failure('Unknown user')
 						return
 				# Check his hash
-				correct = compute_response(version, self.__challenge, log_info[0])
+				correct = compute_response(version, cid, self.__challenge, log_info[0])
 				if not correct or correct != response:
-					login_failure('Incorrect password' + repr(correct) + '#' + repr(response))
+					login_failure('Incorrect password')
 					return
 				self.__authenticated = True
 				# Send our hash
-				self.sendString('L' + compute_response(version, challenge, log_info[0]))
+				self.sendString('L' + compute_response(version, cid, challenge, log_info[0]))
 			elif msg == 'H':
 				if self.__authenticated:
 					self.__logged_in = True

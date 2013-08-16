@@ -8,7 +8,6 @@ from client import ClientFactory
 from plugin import Plugins
 import master_config
 import importlib
-import atsha204
 
 severity = master_config.get('log_severity')
 if severity == 'TRACE':
