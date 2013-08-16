@@ -387,14 +387,14 @@ static void handle_buffer(struct uplink *uplink) {
 					memcpy(uplink->server_login, server_response.data, CHALLENGE_LEN);
 
 					// Send all computed stuff
-					size_t len = 1 + 3*sizeof(uint32_t) + serial.bytes + client_response.bytes + server_challenge.bytes;
+					size_t len = 1 + 3*sizeof(uint32_t) + serial.bytes + client_response.bytes + client_challenge.bytes - HALF_SIZE;
 					uint8_t *message = mem_pool_alloc(temp_pool, len);
 					message[0] = 'A';
 					uint8_t *message_pos = message + 1;
 					size_t len_pos = len - 1;
 					uplink_render_string(serial.data, serial.bytes, &message_pos, &len_pos);
 					uplink_render_string(client_response.data, client_response.bytes, &message_pos, &len_pos);
-					uplink_render_string(client_challenge.data, client_challenge.bytes, &message_pos, &len_pos);
+					uplink_render_string(client_challenge.data + HALF_SIZE, client_challenge.bytes - HALF_SIZE, &message_pos, &len_pos);
 					assert(!len_pos);
 					uplink_send_message(uplink, 'L', message, len);
 					uplink->auth_status = SENT;
