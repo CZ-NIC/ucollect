@@ -19,7 +19,9 @@ CREATE TABLE clients (
 	id INT PRIMARY KEY NOT NULL,
 	name TEXT UNIQUE NOT NULL,
 	passwd TEXT NOT NULL,
-	mechanism CHAR NOT NULL DEFAULT 'A'
+	mechanism CHAR NOT NULL DEFAULT 'A',
+	builtin_passwd TEXT NOT NULL,
+	slot_id SMALLINT NOT NULL
 );
 CREATE SEQUENCE clients_id OWNED BY clients.id;
 ALTER TABLE clients ALTER COLUMN id SET DEFAULT NEXTVAL('clients_id');
