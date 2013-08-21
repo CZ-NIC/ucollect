@@ -154,7 +154,8 @@ This overrides whatever is set by the `TARGET` and `RELEASE`
 variables.
 
 LOGIN_PASSWD_HALF::
-  The static half of password used for the challenge-response login.
+  A path to a file containing the static half of password used for the
+  challenge-response login.
 MAX_LOG_LEVEL::
   Maximum level of log messages that are output. Default is LOG_DEBUG.
 NO_DOC::
