@@ -12,7 +12,7 @@ logger = logging.getLogger(name='client')
 sysrand = random.SystemRandom()
 challenge_len = 128 # 128 bits of random should be enough for log-in to protect against replay attacks
 
-def compute_response(version, login, challenge, password):
+def compute_response(version, login, challenge, password, slot, local_passwd):
 	"""
 	Compute hash response for the challenge.
 	- version: The version of hash to use.
@@ -29,11 +29,8 @@ def compute_response(version, login, challenge, password):
 	if version == 'S':
 		return hashlib.sha256(password + challenge + password).digest()
 	elif version == 'A':
-		full_c = ''
-		for i in range(0, 16):
-			full_c += '\x00'
-		full_c += challenge
-		return atsha204.hmac(login, password.decode('hex'), full_c)
+		full_c = local_passwd.decode('hex') + challenge
+		return atsha204.hmac(slot, login, password.decode('hex'), full_c)
 	else:
 		return None
 
@@ -105,7 +102,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				log_info = None
 				# Get the password from DB
 				with database.transaction() as t:
-					t.execute('SELECT passwd, mechanism FROM clients WHERE name = %s', (self.__cid,))
+					t.execute('SELECT passwd, mechanism, builtin_passwd, slot_id FROM clients WHERE name = %s', (self.__cid,))
 					log_info = t.fetchone()
 					if not log_info:
 						login_failure('Unknown user')
@@ -117,17 +114,17 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 					if len(challenge) != 16:
 						login_failure('Wrong challenge length')
 						return
-					if len(log_info[0]) != 64: # 32, but it's in hexa there
+					if len(log_info[0]) != 64 or len(log_info[2]) != 32: # 32, but it's in hexa there
 						login_failure('Database corruption?')
 						return
 				# Check his hash
-				correct = compute_response(version, cid, self.__challenge, log_info[0])
+				correct = compute_response(version, cid, self.__challenge, log_info[0], log_info[3], log_info[2])
 				if not correct or correct != response:
 					login_failure('Incorrect password')
 					return
 				self.__authenticated = True
 				# Send our hash
-				self.sendString('L' + compute_response(version, cid, challenge, log_info[0]))
+				self.sendString('L' + compute_response(version, cid, challenge, log_info[0], log_info[3], log_info[2]))
 			elif msg == 'H':
 				if self.__authenticated:
 					self.__logged_in = True
