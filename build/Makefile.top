@@ -14,10 +14,6 @@ endif
 ifeq ($(TARGET),mips)
 	CC = mips-softfloat-linux-uclibc-gcc
 endif
-ifdef STATIC
-	CFLAGS += -static -DSTATIC
-	LDFLAGS += -static
-endif
 ifdef VERBOSE
 	Q=
 	M=@\#
@@ -28,16 +24,21 @@ endif
 ifndef PLUGIN_PATH
 	PLUGIN_PATH := lib
 endif
-ifdef LOGIN_PASSWD_HALF
-	CFLAGS += -DPASSWD_HALF="$$(cat $(LOGIN_PASSWD_HALF))"
-else
-	CFLAGS += -DPASSWD_HALF='{0}'
-endif
-ifeq ($(ENABLE_PYTHON), 1)
-	CFLAGS += $(shell python2.7-config --includes)
-endif
 CFLAGS_ALL += $(CFLAGS) --std=gnu99 -pedantic -Wall -Wextra -DOUTPUT_DIRECTORY=\"$(abspath $(O))\" -DSOURCE_DIRECTORY=\"$(abspath $(S))\" -DPAGE_SIZE=$(PAGE_SIZE) -DPREFIX=$(abspath $(O)) -DMAX_LOG_LEVEL=$(MAX_LOG_LEVEL) -DPLUGIN_PATH=\"$(PLUGIN_PATH)\" $(addprefix,-D,$(EXTRA_DEFINES))
 LDFLAGS_ALL += $(LDFLAGS)
+
+ifdef STATIC
+	CFLAGS_ALL += -static -DSTATIC
+	LDFLAGS_ALL += -static
+endif
+ifdef LOGIN_PASSWD_HALF
+	CFLAGS_ALL += -DPASSWD_HALF="$$(cat $(LOGIN_PASSWD_HALF))"
+else
+	CFLAGS_ALL += -DPASSWD_HALF='{0}'
+endif
+ifeq ($(ENABLE_PYTHON), 1)
+	CFLAGS_ALL += $(shell python2.7-config --includes)
+endif
 
 # Magic to track dependencies on header files. They are stored in the .d files
 # by the compiler, then we load them on the next run and use them.
