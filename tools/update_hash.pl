@@ -3,6 +3,8 @@ use common::sense;
 use Digest::SHA;
 use File::Path;
 
+# FIXME: Get rid of the --no-check-certificate 
+
 my ($pass_file, $url, $tag, @plugins) = @ARGV;
 
 sub parse($) {
@@ -22,7 +24,7 @@ $passwd =~ s/0x//g;
 my @passwd = parse $passwd;
 
 # Get versions of packages
-open my $packages, '-|', 'wget', "$url/lists/generic", '-O', '-' or die "Couldn't download package list: $!\n";
+open my $packages, '-|', 'wget', '--no-check-certificate', "$url/lists/generic", '-O', '-' or die "Couldn't download package list: $!\n";
 my @packages = <$packages>;
 close $packages or die "Error downloading package list: $!\n";
 
@@ -39,7 +41,7 @@ my %paths = map {
 } @packages;
 
 for my $plugin (@plugins) {
-	system 'wget', ($packages{$plugin} // die "Package $plugin doesn't exist in the list\n"), '-O', 'package.ipk' and die "Couldn't download package $packages{$plugin}\n";
+	system 'wget', '--no-check-certificate', ($packages{$plugin} // die "Package $plugin doesn't exist in the list\n"), '-O', 'package.ipk' and die "Couldn't download package $packages{$plugin}\n";
 	system 'tar', 'xf', 'package.ipk' and die "Can't unpack package for $plugin\n";
 	system 'tar', 'xf', 'data.tar.gz' and die "Can't unpack data for $plugin\n";
 	my $library = $paths{$plugin};
