@@ -1,9 +1,17 @@
 #include "loader.h"
 #include "util.h"
 #include "plugin.h"
+#include "tunable.h"
 
 #include <limits.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <openssl/sha.h>
 
 #ifdef STATIC
 
@@ -38,14 +46,37 @@ void plugin_unload(void *library) {
 
 #include <dlfcn.h>
 
-void *plugin_load(const char *libname, struct plugin *target) {
+void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash) {
 	ulog(LLOG_INFO, "Loading plugin library %s\n", libname);
 	dlerror(); // Reset errors
 #ifdef PLUGIN_PATH
 	char libpath[PATH_MAX + 1];
 	snprintf(libpath, PATH_MAX + 1, PLUGIN_PATH "/%s", libname);
+	int libfile = open(libpath, O_RDONLY);
+	if (libfile == -1) {
+		ulog(LLOG_ERROR, "Plugin %s doesn't exist: %s\n", libpath, strerror(errno));
+		return NULL;
+	}
+	SHA256_CTX context;
+	SHA256_Init(&context);
+#define MAX_BUF 1024
+	uint8_t buffer[MAX_BUF];
+	ssize_t result;
+	while ((result = read(libfile, buffer, MAX_BUF)) > 0)
+		SHA256_Update(&context, buffer, result);
+	if (result < 0) {
+		ulog(LLOG_ERROR, "Error reading from plugin library %s: %s\n", libpath, strerror(errno));
+		close(libfile);
+		return NULL;
+	}
+	close(libfile);
+	uint8_t output[SHA256_DIGEST_LENGTH];
+	SHA256_Final(output, &context);
+	memcpy(hash, output, CHALLENGE_LEN / 2);
 #else
 	const char *libpath = libname;
+	ulog(LLOG_WARN, "Not having complete path. Can't compute hash, there might be problems logging in\n");
+	memset(hash, 0, CHALLENGE_LEN / 2);
 #endif
 	void *library = dlopen(libpath, RTLD_NOW | RTLD_LOCAL);
 	if (!library) {

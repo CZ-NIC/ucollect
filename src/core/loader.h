@@ -1,6 +1,8 @@
 #ifndef UCOLLECT_LOADER_H
 #define UCOLLECT_LOADER_H
 
+#include <stdint.h>
+
 struct plugin;
 
 /*
@@ -10,7 +12,7 @@ struct plugin;
  * Call it with the library name to load.
  */
 
-void *plugin_load(const char *libname, struct plugin *target);
+void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash);
 void plugin_unload(void *plugin);
 
 #endif

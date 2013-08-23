@@ -193,6 +193,7 @@ struct plugin_holder {
 	struct plugin_holder *original; // When copying, in the configurator
 	bool mark; // Mark for configurator.
 	size_t failed;
+	uint8_t hash[CHALLENGE_LEN / 2];
 };
 
 struct plugin_list {
@@ -287,7 +288,7 @@ struct loop {
 	uint64_t now;
 	// The epoll
 	int epoll_fd;
-	// Turnes to 1 when we are stopped.
+	// Turns to 1 when we are stopped.
 	volatile sig_atomic_t stopped; // We may be stopped from a signal, so not bool
 	volatile sig_atomic_t reconfigure; // Set to 1 when there's SIGHUP and we should reconfigure
 	volatile sig_atomic_t reconfigure_full; // De-initialize first.
@@ -785,7 +786,8 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 		}
 	// Load the plugin
 	struct plugin plugin;
-	void *plugin_handle = plugin_load(libname, &plugin);
+	uint8_t hash[CHALLENGE_LEN / 2];
+	void *plugin_handle = plugin_load(libname, &plugin, hash);
 	if (!plugin_handle)
 		return false;
 	ulog(LLOG_INFO, "Installing plugin %s\n", plugin.name);
@@ -818,6 +820,7 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 		.plugin = plugin,
 		.mark = true
 	};
+	memcpy(new->hash, hash, sizeof hash);
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
 	plugin_init(new);
