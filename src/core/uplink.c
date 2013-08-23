@@ -362,7 +362,8 @@ static void handle_buffer(struct uplink *uplink) {
 #define HALF_SIZE 16
 					// Compute response to the server challenge
 					atsha_big_int server_challenge, client_response;
-					static const uint8_t local_half[HALF_SIZE] = PASSWD_HALF;
+					uint8_t local_half[HALF_SIZE] = PASSWD_HALF;
+					loop_xor_plugins(uplink->loop, local_half);
 					assert(HALF_SIZE + uplink->buffer_size == sizeof(server_challenge.data));
 					server_challenge.bytes = HALF_SIZE + uplink->buffer_size;
 					memcpy(server_challenge.data, local_half, HALF_SIZE);
