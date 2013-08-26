@@ -109,7 +109,7 @@ struct packet_info {
  * Parse the stuff in the passed packet. It expects length and data are already
  * set, it fills the addresses, protocols, etc.
  */
-void parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalink) __attribute__((nonnull));
+void uc_parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalink) __attribute__((nonnull));
 
 /*
  * Which endpoint is the remote one for the given direction?

@@ -111,7 +111,7 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 			next->length = length_rest;
 			next->interface = packet->interface;
 			next->direction = packet->direction;
-			parse_packet(next, pool, DLT_RAW);
+			uc_parse_packet(next, pool, DLT_RAW);
 			return; // And we're done (no ports here)
 		case 6: // TCP
 			if (length_rest < sizeof *tcp_ports)
@@ -216,7 +216,7 @@ static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
 			IP:
 			packet->app_protocol = 'I';
 			// Parse the IP part
-			parse_packet(next, pool, DLT_RAW);
+			uc_parse_packet(next, pool, DLT_RAW);
 			break;
 		case 0x0806: // ARP
 			packet->app_protocol = 'A';
@@ -234,7 +234,7 @@ static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
 	}
 }
 
-void parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalink) {
+void uc_parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalink) {
 	switch (datalink) {
 		case DLT_EN10MB: // Ethernet II
 			packet->layer = 'E';
