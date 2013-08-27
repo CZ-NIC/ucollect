@@ -48,11 +48,11 @@ for my $plugin (@plugins) {
 	my $sha = Digest::SHA->new(256);
 	$sha->addfile($library);
 	my @digest = parse $sha->hexdigest;
-	for my $i (0..@passwd) {
+	for my $i (0..@passwd - 1) {
 		$passwd[$i] ^= $digest[$i];
 	}
 	rmtree 'usr';
 }
 
-my $result = join '', map sprintf("%X", $_), @passwd;
+my $result = join '', map sprintf("%02X", $_), @passwd;
 say "UPDATE clients SET builtin_passwd = '$result' WHERE tag = '$tag';";
