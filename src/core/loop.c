@@ -1079,7 +1079,7 @@ uint64_t loop_now(struct loop *loop) {
 
 void loop_xor_plugins(struct loop *loop, uint8_t *hash) {
 	LFOR(plugin, plugin, &loop->plugins) {
-		for (size_t i = 0; i < CHALLENGE_LEN / 16; i ++)
+		for (size_t i = 0; i < CHALLENGE_LEN / 2; i ++)
 			hash[i] ^= plugin->hash[i];
 	}
 }
