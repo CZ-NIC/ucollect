@@ -1,6 +1,6 @@
 #!/bin/sh
 
-. dbconfig
+. ./dbconfig
 
 psql -U "$DBADMIN" -d "$DB" <<'ENDSQL'
 BEGIN;

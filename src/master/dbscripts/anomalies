@@ -1,5 +1,5 @@
 #!/bin/sh
 
-. dbconfig
+. ./dbconfig
 
 echo 'SELECT groups.name, anomalies.type, anomalies.timestamp, anomalies.relevance_count, anomalies.relevance_of, anomalies.strength, anomalies.value FROM anomalies JOIN groups ON groups.id = anomalies.from_group ORDER BY anomalies.timestamp, groups.name;' | psql -U "$DBREAD" -d "$DB" -F'	' -q -t -A

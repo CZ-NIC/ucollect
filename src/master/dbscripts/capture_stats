@@ -1,5 +1,5 @@
 #!/bin/sh
 
-. dbconfig
+. ./dbconfig
 
 echo 'SELECT clients.name, count_snapshots.timestamp, capture_stats.interface, capture_stats.captured, capture_stats.dropped, capture_stats.dropped_driver FROM capture_stats JOIN count_snapshots ON count_snapshots.id = capture_stats.snapshot JOIN clients ON clients.id = count_snapshots.client ORDER BY count_snapshots.timestamp, clients.name;' | psql -U "$DBREAD" -d "$DB" -F'	' -q -t -A
