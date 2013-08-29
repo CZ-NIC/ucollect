@@ -3,7 +3,10 @@ DBREAD=ucollect
 # User allowed to do anything (eg. creating tables, etc).
 DBADMIN=ucollect
 # User used for removing old things from database
-DBCLEANER=cleaner
+DBCLEANER=ucollect
 
 # Name of the database
 DB=ucollect
+
+# Purge items older than this many days
+CLEAN_DAYS=14

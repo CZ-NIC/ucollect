@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -ex
+
+. ./dbconfig
+
+TABLES='activities anomalies count_snapshots'
+
+(
+	echo 'BEGIN;'
+	for TABLE in $TABLES ; do
+		echo "DELETE FROM $TABLE WHERE timestamp < DATE(NOW()) - $CLEAN_DAYS;"
+	done
+	echo 'COMMIT;'
+) | psql -U "$DBCLEANER" -d "$DB"
