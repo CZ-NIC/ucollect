@@ -1,0 +1,9 @@
+# The user for reading things from the database
+DBREAD=ucollect
+# User allowed to do anything (eg. creating tables, etc).
+DBADMIN=ucollect
+# User used for removing old things from database
+DBCLEANER=cleaner
+
+# Name of the database
+DB=ucollect

@@ -1,6 +1,8 @@
 #!/bin/sh
 
-psql -U ucollect -d ucollect <<'ENDSQL'
+. dbconfig
+
+psql -U "$DBADMIN" -d "$DB" <<'ENDSQL'
 BEGIN;
 
 DROP TABLE IF EXISTS capture_stats;
@@ -138,7 +140,7 @@ ENDSQL
 
 if [ "$1" = "debug" ] ; then
 	# Provide some debug data (clients for now)
-	psql -U ucollect -d ucollect <<'ENDSQL'
+	psql -U "$DBADMIN" -d "$DB" <<'ENDSQL'
 BEGIN;
 INSERT INTO clients (name, passwd) VALUES ('ruth', '123456'), ('dragonfly', '78910'), ('spider', 'web');
 
