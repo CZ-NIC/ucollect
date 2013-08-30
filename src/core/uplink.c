@@ -106,7 +106,8 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 			exit(1);
 		}
 		close(sockets[1]);
-		execlp("socat", "socat", "STDIO", "TCP-CONNECT:localhost:5678", (char *) NULL);
+		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=/etc/ssl/certs/ucollect.pem,compress=auto", uplink->remote_name, uplink->service);
+		execlp("socat", "socat", "STDIO", remote, (char *) NULL);
 		die("Exec should never exit but it did: %s\n", strerror(errno));
 	}
 }
