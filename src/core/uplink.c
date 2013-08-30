@@ -70,6 +70,7 @@ struct uplink {
 	size_t pings_unanswered; // Number of pings sent without answer (in a row)
 	bool ping_scheduled;
 	bool reconnect_scheduled;
+	bool seen_data;
 	size_t reconnect_id; // The ID of the reconnect timeout
 	int fd;
 	uint64_t last_connect;
@@ -129,7 +130,9 @@ static void uplink_connect(struct uplink *uplink) {
 		return;
 	}
 	// We connected. Reset the reconnect timeout.
-	uplink->reconnect_timeout = 0;
+	if (uplink->seen_data)
+		uplink->reconnect_timeout = 0;
+	uplink->seen_data = false;
 	// Reset the pings.
 	uplink->pings_unanswered = 0;
 	uplink->ping_timeout = loop_timeout_add(uplink->loop, PING_TIMEOUT, NULL, uplink, send_ping);
@@ -468,6 +471,7 @@ CLOSED:
 			uplink_disconnect(uplink, false);
 			return; // We are done with this socket.
 		} else {
+			uplink->seen_data = true;
 			uplink->buffer_pos += amount;
 			uplink->size_rest -= amount;
 			if (uplink->size_rest == 0)
