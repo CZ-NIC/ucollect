@@ -80,7 +80,7 @@ struct uplink {
 	enum auth_status auth_status;
 };
 
-static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo *addrinfo) {
+static bool uplink_connect_internal(struct uplink *uplink) {
 	int sockets[2];
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == -1) {
 		ulog(LLOG_ERROR, "Couldn't create socket pair: %s\n", strerror(errno));
@@ -123,7 +123,7 @@ static void uplink_connect(struct uplink *uplink) {
 		return;
 	}
 	uplink->last_connect = loop_now(uplink->loop);
-	bool connected = uplink_connect_internal(uplink, NULL);
+	bool connected = uplink_connect_internal(uplink);
 	if (!connected) {
 		ulog(LLOG_ERROR, "Failed to connect to any address and port for uplink %s:%s\n", uplink->remote_name, uplink->service);
 		connect_fail(uplink);
