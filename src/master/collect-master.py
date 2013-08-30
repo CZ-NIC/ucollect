@@ -1,6 +1,6 @@
 #!/usr/bin/python2
-from twisted.internet import reactor
-from twisted.internet.endpoints import TCP6ServerEndpoint
+from twisted.internet import reactor, ssl
+from twisted.internet.endpoints import SSL4ServerEndpoint
 import log_extra
 import logging
 import logging.handlers
@@ -31,7 +31,9 @@ for (plugin, config) in master_config.plugins().items():
 	logging.info('Loaded plugin %s from %s', loaded_plugins[plugin].name(), plugin)
 # Some configuration, to load the port from?
 port = master_config.getint('port')
-endpoint = TCP6ServerEndpoint(reactor, port)
+with open(master_config.get('cert')) as key:
+	cert = ssl.PrivateCertificate.loadPEM(key.read())
+endpoint = SSL4ServerEndpoint(reactor, port, cert.options())
 logging.info('Listening on port %s', port)
 endpoint.listen(ClientFactory(plugins))
 logging.info('Init done')
