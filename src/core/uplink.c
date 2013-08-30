@@ -80,39 +80,34 @@ struct uplink {
 };
 
 static bool uplink_connect_internal(struct uplink *uplink, const struct addrinfo *addrinfo) {
-	if (!addrinfo) // No more addresses to try
+	int sockets[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == -1) {
+		ulog(LLOG_ERROR, "Couldn't create socket pair: %s\n", strerror(errno));
 		return false;
-	// Try getting a socket.
-	int sock = socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
-	if (sock == -1) {
-		ulog(LLOG_WARN, "Couldn't create socket of family %d, type %d and protocol %d (%s)\n", addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol, strerror(errno));
-		// Try other
-		return uplink_connect_internal(uplink, addrinfo->ai_next);
 	}
-	// If that works, try connecting it
-	int error = connect(sock, addrinfo->ai_addr, addrinfo->ai_addrlen);
-	if (error != 0) {
-		ulog(LLOG_WARN, "Couldn't connect socket %d (%s)\n", sock, strerror(errno));
-		error = close(sock);
-		if (error != 0)
-			ulog(LLOG_ERROR, "Couldn't close socket %d (%s), leaking FD\n", sock, strerror(errno));
-		return uplink_connect_internal(uplink, addrinfo->ai_next);
+	pid_t socat = fork();
+	if (socat == -1) {
+		close(sockets[0]);
+		close(sockets[1]);
+		ulog(LLOG_ERROR, "Can't fork: %s\n", strerror(errno));
+		return false;
 	}
-	// Hurray, everything worked. Now we are done.
-	ulog(LLOG_DEBUG, "Connected to uplink %s:%s by fd %d\n", uplink->remote_name, uplink->service, sock);
-	uplink->auth_status = NOT_STARTED;
-	uplink->fd = sock;
-	switch (addrinfo->ai_family) {
-		case AF_INET:
-			memcpy(uplink->address, &((struct sockaddr_in *) addrinfo->ai_addr)->sin_addr, 4);
-			uplink->addr_len = 4;
-			break;
-		case AF_INET6:
-			memcpy(uplink->address, &((struct sockaddr_in6 *) addrinfo->ai_addr)->sin6_addr, 16);
-			uplink->addr_len = 16;
-			break;
+	if (socat) {
+		close(sockets[1]);
+		uplink->fd = sockets[0];
+		uplink->auth_status = NOT_STARTED;
+		ulog(LLOG_INFO, "Socat started\n");
+		return true;
+	} else {
+		close(sockets[0]);
+		if (dup2(sockets[1], 0) == -1 || dup2(sockets[1], 1) == -1) {
+			ulog(LLOG_ERROR, "Couldn't dup: %s\n", strerror(errno));
+			exit(1);
+		}
+		close(sockets[1]);
+		execlp("socat", "socat", "STDIO", "TCP-CONNECT:localhost:5678", (char *) NULL);
+		die("Exec should never exit but it did: %s\n", strerror(errno));
 	}
-	return true;
 }
 
 static void connect_fail(struct uplink *uplink);
@@ -127,15 +122,7 @@ static void uplink_connect(struct uplink *uplink) {
 		return;
 	}
 	uplink->last_connect = loop_now(uplink->loop);
-	struct addrinfo *remote;
-	int result = getaddrinfo(uplink->remote_name, uplink->service, &(struct addrinfo) { .ai_socktype = SOCK_STREAM }, &remote);
-	if (result != 0) {
-		ulog(LLOG_ERROR, "Failed to resolve the uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, gai_strerror(result));
-		connect_fail(uplink);
-		return;
-	}
-	bool connected = uplink_connect_internal(uplink, remote);
-	freeaddrinfo(remote);
+	bool connected = uplink_connect_internal(uplink, NULL);
 	if (!connected) {
 		ulog(LLOG_ERROR, "Failed to connect to any address and port for uplink %s:%s\n", uplink->remote_name, uplink->service);
 		connect_fail(uplink);
