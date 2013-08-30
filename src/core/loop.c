@@ -86,12 +86,15 @@ static const int signals[] = {
 	SIGBUS,
 	SIGFPE,
 	SIGSEGV,
-	SIGPIPE,
 	SIGALRM,
 	SIGTTIN,
 	SIGTTOU,
 	SIGHUP
 };
+
+static void chld_handler(int unused) {
+	(void) unused;
+}
 
 static void signal_initialize(void) {
 	ulog(LLOG_INFO, "Initializing emergency signal handlers\n");
@@ -102,6 +105,12 @@ static void signal_initialize(void) {
 	for (size_t i = 0; i < sizeof signals / sizeof signals[0]; i ++)
 		if (sigaction(signals[i], &action, NULL) == -1)
 			die("Sigaction failed for signal %d: %s\n", signals[i], strerror(errno));
+	struct sigaction chld_action = {
+		.sa_handler = chld_handler,
+		.sa_flags = SA_NOCLDSTOP | SA_NOCLDWAIT | SA_NODEFER
+	};
+	if (sigaction(SIGCHLD, &chld_action, NULL) == -1)
+		die("Can't set action for SIGCHLD: %s\n", strerror(errno));
 }
 
 #define PLUGIN_HOLDER_CANARY 0x7a92f998 // Just some random 4-byte number
