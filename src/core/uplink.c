@@ -54,6 +54,15 @@ enum auth_status {
 
 #define IPV6_LEN 16
 
+struct uplink;
+
+struct err_handler {
+	struct epoll_handler handler;
+	struct uplink *uplink;
+	int fd;
+	struct err_handler *next;
+};
+
 struct uplink {
 	// Will always be uplink_read, this is to be able to use it as epoll_handler
 	void (*uplink_read)(struct uplink *uplink, uint32_t events);
@@ -62,6 +71,7 @@ struct uplink {
 	const char *remote_name, *service, *login, *password;
 	const uint8_t *buffer;
 	uint8_t *buffer_pos;
+	struct err_handler *empty_handler;
 	size_t buffer_size, size_rest;
 	uint32_t reconnect_timeout;
 	bool has_size;
@@ -80,32 +90,96 @@ struct uplink {
 	enum auth_status auth_status;
 };
 
+static void err_read(void *data, uint32_t unused) {
+	(void) unused;
+	struct err_handler *handler = data;
+#define bufsize 1024
+	char buffer[bufsize + 1];
+	ssize_t result = recv(handler->fd, buffer, bufsize, MSG_DONTWAIT);
+	switch (result) {
+		case -1:
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				return; // This is OK
+			} else {
+				ulog(LLOG_ERROR, "Error reading errors from socat: %s\n", strerror(errno));
+				// Fall through to close
+			}
+		case 0:
+			close(handler->fd);
+			handler->next = handler->uplink->empty_handler;
+			handler->uplink->empty_handler = handler;
+			break;
+		default: {
+			char *pos = buffer;
+			buffer[result] = '\0';
+			// Split to lines, skip empty ones and print the stuff
+			while (pos && *pos) {
+				char *end = index(pos, '\n');
+				if (end)
+					*end = '\0';
+				if (*(pos + 1))
+					ulog(LLOG_ERROR, "Error from socat: %s\n", pos);
+				pos = end;
+				if (pos)
+					pos ++;
+			}
+			break;
+		}
+	}
+}
+
 static bool uplink_connect_internal(struct uplink *uplink) {
 	int sockets[2];
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == -1) {
 		ulog(LLOG_ERROR, "Couldn't create socket pair: %s\n", strerror(errno));
 		return false;
 	}
+	int errs[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, errs) == -1) {
+		close(sockets[0]);
+		close(sockets[1]);
+		ulog(LLOG_ERROR, "Couldn't create error sockets: %s\n", strerror(errno));
+		return false;
+	}
 	pid_t socat = fork();
 	if (socat == -1) {
 		close(sockets[0]);
 		close(sockets[1]);
+		close(errs[0]);
+		close(errs[1]);
 		ulog(LLOG_ERROR, "Can't fork: %s\n", strerror(errno));
 		return false;
 	}
 	if (socat) {
 		close(sockets[1]);
+		close(errs[1]);
 		uplink->fd = sockets[0];
 		uplink->auth_status = NOT_STARTED;
+		struct err_handler *handler = uplink->empty_handler;
+		if (handler) {
+			uplink->empty_handler = handler->next;
+		} else {
+			handler = mem_pool_alloc(loop_permanent_pool(uplink->loop), sizeof *handler);
+		}
+		*handler = (struct err_handler) {
+			.handler = {
+				.handler = err_read
+			},
+			.fd = errs[0],
+			.uplink = uplink
+		};
+		loop_register_fd(uplink->loop, errs[0], &handler->handler);
 		ulog(LLOG_INFO, "Socat started\n");
 		return true;
 	} else {
 		close(sockets[0]);
-		if (dup2(sockets[1], 0) == -1 || dup2(sockets[1], 1) == -1) {
+		close(errs[0]);
+		if (dup2(sockets[1], 0) == -1 || dup2(sockets[1], 1) == -1 || dup2(errs[1], 2) == -1) {
 			ulog(LLOG_ERROR, "Couldn't dup: %s\n", strerror(errno));
 			exit(1);
 		}
 		close(sockets[1]);
+		close(errs[1]);
 		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=/etc/ssl/ucollect.pem,compress=auto", uplink->remote_name, uplink->service);
 		execlp("socat", "socat", "STDIO", remote, (char *) NULL);
 		die("Exec should never exit but it did: %s\n", strerror(errno));
