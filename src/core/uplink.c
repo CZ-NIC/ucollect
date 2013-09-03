@@ -541,7 +541,7 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 			ulog(LLOG_WARN, "Remote closed the uplink %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
 CLOSED:
 			assert(!uplink->reconnect_scheduled);
-			uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
+			uplink->reconnect_id = loop_timeout_add(uplink->loop, uplink->reconnect_timeout / 1000, NULL, uplink, reconnect_now);
 			uplink->reconnect_scheduled = true;
 			uplink_disconnect(uplink, false);
 			return; // We are done with this socket.
