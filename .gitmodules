@@ -1,0 +1,3 @@
+[submodule "build"]
+	path = build
+	url = git@gitlab.labs.nic.cz:router/buildsystem.git
