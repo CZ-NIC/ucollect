@@ -1,3 +1,9 @@
+ifdef LOGIN_PASSWD_HALF
+	CFLAGS_ALL += -DPASSWD_HALF="$$(cat $(LOGIN_PASSWD_HALF))"
+else
+	CFLAGS_ALL += -DPASSWD_HALF='{0}'
+endif
+
 include $(S)/build/Makefile.top
 
 # List of all makefiles in direct subdirectories. If a new subdirectory is
