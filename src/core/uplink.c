@@ -112,6 +112,10 @@ struct uplink {
 static void err_read(void *data, uint32_t unused) {
 	(void) unused;
 	struct err_handler *handler = data;
+	if (handler->fd == -1) {
+		ulog(LLOG_WARN, "Received stray read on socat error socket\n");
+		return;
+	}
 #define bufsize 1024
 	char buffer[bufsize + 1];
 	ssize_t result = recv(handler->fd, buffer, bufsize, MSG_DONTWAIT);
@@ -125,6 +129,7 @@ static void err_read(void *data, uint32_t unused) {
 			}
 		case 0:
 			close(handler->fd);
+			handler->fd = -1;
 			handler->next = handler->uplink->empty_handler;
 			handler->uplink->empty_handler = handler;
 			break;
@@ -523,6 +528,10 @@ static void handle_buffer(struct uplink *uplink) {
 static void uplink_read(struct uplink *uplink, uint32_t unused) {
 	(void) unused;
 	ulog(LLOG_DEBUG, "Read on uplink %s:%s (%d)\n", uplink->remote_name, uplink->service, uplink->fd);
+	if (uplink->fd == -1) {
+		ulog(LLOG_WARN, "Spurious read on uplink\n");
+		return;
+	}
 	size_t limit = 50; // Max of 50 messages, so we don't block forever. Arbitrary smallish number.
 	while (limit) {
 		limit --;
