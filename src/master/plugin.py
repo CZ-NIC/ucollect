@@ -141,5 +141,5 @@ class Plugins:
 		Forward a message to plugin of given name. Pass the name
 		of client too.
 		"""
-		# TODO: The plugin of that name might not exist.
+		# TODO: The plugin of that name might not exist (#2705)
 		self.__plugins[name].message_from_client(message, client)
