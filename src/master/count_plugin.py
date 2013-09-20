@@ -69,10 +69,9 @@ class CountPlugin(plugin.Plugin):
 			# Store the timestamp here, so all the clients have the same value.
 			t.execute('SELECT NOW()')
 			(now,) = t.fetchone()
-			# FIXME
 			# It seems MySQL complains with insert ... select in some cases.
 			# So we do some insert-select-insert magic here. That is probably
-			# slower, but no idea how to help that.
+			# slower, but no idea how to help that. And it should work.
 			t.execute('SELECT name, id FROM clients WHERE name IN (' + (','.join(['%s'] * len(self.__data))) + ')', self.__data.keys())
 			clients = dict(t.fetchall())
 			# Create a snapshot for each client
