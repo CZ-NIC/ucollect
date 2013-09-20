@@ -3,7 +3,7 @@ use common::sense;
 use Digest::SHA;
 use File::Path;
 
-# FIXME: Get rid of the --no-check-certificate 
+# FIXME: Get rid of the --no-check-certificate (#Depends on #2703)
 
 my ($pass_file, $url, $tag, @plugins) = @ARGV;
 
