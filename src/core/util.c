@@ -30,7 +30,9 @@ void die(const char *format, ...) {
 	va_copy(copy, args);
 	fputs("\x1b[31;1mDIE\x1b[0m:   ", stderr);
 	vfprintf(stderr, format, args);
+	openlog("ucollect", LOG_CONS | LOG_NDELAY | LOG_PID, LOG_DAEMON);
 	vsyslog(LOG_MAKEPRI(LOG_DAEMON, LOG_CRIT), format, copy);
+	closelog(); // Close every time. Otherwise, it still logs to the old one after log rotation :-(
 	va_end(copy);
 	va_end(args);
 	abort();
