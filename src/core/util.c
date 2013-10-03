@@ -38,7 +38,7 @@ void die(const char *format, ...) {
 	abort();
 }
 
-const char *names[] = {
+static const char *names[] = {
 	[LLOG_ERROR] = "\x1b[31mERROR\x1b[0m: ",
 	[LLOG_WARN] =  "\x1b[35mWARN\x1b[0m:  ",
 	[LLOG_INFO] =  "\x1b[34mINFO\x1b[0m:  ",
@@ -46,7 +46,7 @@ const char *names[] = {
 	[LLOG_DEBUG_VERBOSE] = "DEBVE: "
 };
 
-const int prios[] = {
+static const int prios[] = {
 	[LLOG_ERROR] = LOG_ERR,
 	[LLOG_WARN] = LOG_WARNING,
 	[LLOG_INFO] = LOG_INFO,
@@ -55,12 +55,12 @@ const int prios[] = {
 
 void ulog_internal(enum log_level log_level, const char *format, va_list *args) {
 	(void) log_level; // Currently ignored
-	fputs(names[log_level], stderr);
 	if (log_level < LLOG_DEBUG_VERBOSE) {
 		va_list copy;
 		va_copy(copy, *args);
 		vsyslog(prios[log_level], format, copy);
 		va_end(copy);
 	}
+	fputs(names[log_level], stderr);
 	vfprintf(stderr, format, *args);
 }
