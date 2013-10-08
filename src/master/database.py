@@ -19,6 +19,7 @@
 
 import pgdb
 import logging
+import threading
 from master_config import get
 
 logger = logging.getLogger(name='database')
@@ -49,8 +50,7 @@ class __CursorContext:
 			logger.debug('Commit of transaction %s', self)
 			self.__connection.commit()
 
-__connection = None
-__context = None
+__cache = threading.local()
 
 def transaction(reuse=True):
 	"""
@@ -64,17 +64,18 @@ def transaction(reuse=True):
 	If reuse is true, the cursor inside may have been used before and
 	may be used again later.
 	"""
-	global __connection
-	global __context
-	if __connection is None:
-		__connection = pgdb.connect(database=get('db'), user=get('dbuser'), password=get('dbpasswd'))
+	global __cache
+	if 'connection' not in __cache.__dict__:
+		__cache.connection = pgdb.connect(database=get('db'), user=get('dbuser'), password=get('dbpasswd'))
+		logger.debug("Initializing connection to DB")
 
 	if reuse:
-		if __context is None:
-			__context = __CursorContext(__connection)
-		return __context
+		if 'context' not in __cache.__dict__:
+			__cache.context = __CursorContext(__cache.connection)
+			logger.debug("Initializing cursor")
+		return __cache.context
 	else:
-		return __CursorContext(__connection)
+		return __CursorContext(__cache.connection)
 
 def log_activity(client, activity):
 	"""
