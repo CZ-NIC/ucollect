@@ -2,4 +2,4 @@
 
 . ./dbconfig
 
-echo 'SELECT clients.name, activities.timestamp, activity_types.name FROM activities JOIN clients ON activities.client = clients.id JOIN activity_types ON activities.activity = activity_types.id ORDER BY timestamp;' | psql -U "$DBREAD" -d "DB" -F'	' -q -t -A
+echo 'SELECT clients.name, activities.timestamp, activity_types.name FROM activities JOIN clients ON activities.client = clients.id JOIN activity_types ON activities.activity = activity_types.id ORDER BY timestamp;' | psql -U "$DBREAD" -d "$DB" -F'	' -q -t -A

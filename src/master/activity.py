@@ -19,8 +19,36 @@
 
 import logging
 import database
+import threading
 
 logger = logging.getLogger(name='activity')
+
+__queue = []
+# To be initialized on the first use
+__condition = None
+
+def __keep_storing():
+	"""
+	Run in separate thread. It keeps getting stuff from the queue and pushing it to the database.
+	This effectively makes waiting for the databes commit asynchronous.
+	"""
+	global __condition
+	global __queue
+	while True:
+		actions = None
+		with __condition:
+			while not __queue:
+				__condition.wait()
+			actions = __queue
+			__queue = []
+
+		try:
+			with database.transaction() as t:
+				for (client, activity) in actions:
+					logger.debug("Pushing %s of %s", activity, client)
+					t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, NOW(), activity_types.id FROM clients CROSS JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
+		except Exception as e:
+			logger.error("Unexpected exception in activity thread, ignoring: %s", e)
 
 def log_activity(client, activity):
 	"""
@@ -28,5 +56,15 @@ def log_activity(client, activity):
 	of the activity (eg. "login").
 	"""
 	logger.debug("Logging %s activity of %s", activity, client)
-	with database.transaction() as t:
-		t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, NOW(), activity_types.id FROM clients CROSS JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
+	global __queue
+	global __condition
+	if not __condition:
+		# Initialize the thread machinery
+		__condition = threading.Condition(threading.Lock())
+		thread = threading.Thread(target=__keep_storing)
+		thread.daemon = True
+		thread.start()
+	# Postpone it to separate thread
+	with __condition:
+		__queue.append((client, activity))
+		__condition.notify()
