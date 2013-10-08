@@ -22,8 +22,8 @@ CREATE TABLE clients (
 	name TEXT UNIQUE NOT NULL,
 	passwd TEXT NOT NULL,
 	mechanism CHAR NOT NULL DEFAULT 'A',
-	builtin_passwd TEXT NOT NULL,
-	slot_id SMALLINT NOT NULL,
+	builtin_passwd TEXT,
+	slot_id SMALLINT,
 	tag TEXT
 );
 CREATE SEQUENCE clients_id OWNED BY clients.id;
@@ -142,7 +142,7 @@ if [ "$1" = "debug" ] ; then
 	# Provide some debug data (clients for now)
 	psql -U "$DBADMIN" -d "$DB" <<'ENDSQL'
 BEGIN;
-INSERT INTO clients (name, passwd) VALUES ('ruth', '123456'), ('dragonfly', '78910'), ('spider', 'web');
+INSERT INTO clients (name, passwd, mechanism) VALUES ('ruth', '123456', 'S'), ('dragonfly', '78910', 'S'), ('spider', 'web', 'S');
 
 INSERT INTO groups (name) VALUES ('all'), ('ruth'), ('dragonfly'), ('spider');
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
