@@ -25,6 +25,7 @@ import hashlib
 from protocol import extract_string
 import logging
 import database
+import activity
 import atsha204
 
 logger = logging.getLogger(name='client')
@@ -92,7 +93,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			logger.info("Connection lost from %s", self.cid())
 			self.__pinger.stop()
 			self.__plugins.unregister_client(self)
-			database.log_activity(self.cid(), "logout")
+			activity.log_activity(self.cid(), "logout")
 
 	def stringReceived(self, string):
 		(msg, params) = (string[0], string[1:])
@@ -150,7 +151,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 					self.__pinger = LoopingCall(self.__ping)
 					self.__pinger.start(30, False)
 					self.__plugins.register_client(self)
-					database.log_activity(self.cid(), "login")
+					activity.log_activity(self.cid(), "login")
 					logger.debug('Client %s logged in', self.cid())
 				else:
 					login_failure('Asked for session before loging in')

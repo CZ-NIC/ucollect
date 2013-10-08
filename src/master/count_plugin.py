@@ -24,6 +24,7 @@ import plugin
 import time
 import logging
 import database
+import activity
 
 logger = logging.getLogger(name='count')
 
@@ -107,4 +108,4 @@ class CountPlugin(plugin.Plugin):
 		logger.debug("Data: %s", data)
 		if len(self.__data[client]) % 2:
 			logger.error("Odd count of data elements (%s) from %s", len(self.__data[client]), client)
-		database.log_activity(client, "counts")
+		activity.log_activity(client, "counts")
