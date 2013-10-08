@@ -74,7 +74,7 @@ def log_activity(client, activity):
 		logger.info('Starting the activity thread')
 		# Initialize the thread machinery
 		__condition = threading.Condition(threading.Lock())
-		__thread = threading.Thread(target=__keep_storing)
+		__thread = threading.Thread(target=__keep_storing, name='activity')
 		__thread.start()
 	# Postpone it to separate thread
 	with __condition:
