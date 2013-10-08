@@ -26,6 +26,7 @@ import logging.handlers
 from client import ClientFactory
 from plugin import Plugins
 import master_config
+import activity
 import importlib
 
 severity = master_config.get('log_severity')
@@ -56,4 +57,9 @@ endpoint = SSL4ServerEndpoint(reactor, port, cert.options())
 logging.info('Listening on port %s', port)
 endpoint.listen(ClientFactory(plugins))
 logging.info('Init done')
+
 reactor.run()
+
+logging.info('Finishing up')
+activity.shutdown()
+logging.info('Shutdown done')

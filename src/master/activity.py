@@ -26,6 +26,7 @@ logger = logging.getLogger(name='activity')
 __queue = []
 # To be initialized on the first use
 __condition = None
+__thread = None
 
 def __keep_storing():
 	"""
@@ -34,7 +35,9 @@ def __keep_storing():
 	"""
 	global __condition
 	global __queue
-	while True:
+	logger.info('Activity thread started')
+	run = True
+	while run:
 		actions = None
 		with __condition:
 			while not __queue:
@@ -45,10 +48,18 @@ def __keep_storing():
 		try:
 			with database.transaction() as t:
 				for (client, activity) in actions:
-					logger.debug("Pushing %s of %s", activity, client)
-					t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, NOW(), activity_types.id FROM clients CROSS JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
+					if client is None:
+						if activity == 'shutdown':
+							logger.debug('Doing activity thread shutdown')
+							run = False
+						else:
+							logger.error('Unknown global activity: %s', activity)
+					else:
+						logger.debug("Pushing %s of %s", activity, client)
+						t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, NOW(), activity_types.id FROM clients CROSS JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
 		except Exception as e:
 			logger.error("Unexpected exception in activity thread, ignoring: %s", e)
+	logger.info('Activity thread terminated')
 
 def log_activity(client, activity):
 	"""
@@ -58,13 +69,24 @@ def log_activity(client, activity):
 	logger.debug("Logging %s activity of %s", activity, client)
 	global __queue
 	global __condition
+	global __thread
 	if not __condition:
+		logger.info('Starting the activity thread')
 		# Initialize the thread machinery
 		__condition = threading.Condition(threading.Lock())
-		thread = threading.Thread(target=__keep_storing)
-		thread.daemon = True
-		thread.start()
+		__thread = threading.Thread(target=__keep_storing)
+		__thread.start()
 	# Postpone it to separate thread
 	with __condition:
 		__queue.append((client, activity))
 		__condition.notify()
+
+def shutdown():
+	global __condition
+	global __queue
+	if __condition:
+		logger.info('Asking the activity thread to shutdown')
+		with __condition:
+			__queue.append((None, 'shutdown')) # A shutdown marker
+			__condition.notify()
+		__thread.join()
