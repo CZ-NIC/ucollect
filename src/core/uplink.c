@@ -209,7 +209,7 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 		}
 		close(sockets[1]);
 		close(errs[1]);
-		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=/etc/ssl/ucollect.pem,compress=auto", uplink->remote_name, uplink->service);
+		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=/etc/ssl/ucollect.pem,compress=auto,cipher=TLSv1:!MEDIUM:!LOW:!aNULL,", uplink->remote_name, uplink->service);
 		execlp("socat", "socat", "STDIO", remote, (char *) NULL);
 		die("Exec should never exit but it did: %s\n", strerror(errno));
 	}
