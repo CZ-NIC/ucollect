@@ -156,7 +156,7 @@ class Client:
 			# This will be done once the data comes
 			def mycallback(data, success):
 				if not self.__active:
-					logger.warn("Data (%s/%s/%s) for inactive client %s received", generation, criterion, knames, client.name())
+					logger.warn("Data (%s/%s/%s) for inactive client %s received", generation, criterion, knames, self.__name)
 					return
 				logger.trace("Executing callbacks for %s/%s/%s", generation, criterion, knames)
 				callbacks = ccache[knames][1]
