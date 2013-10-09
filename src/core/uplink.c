@@ -109,11 +109,16 @@ struct uplink {
 	enum auth_status auth_status;
 };
 
+static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect);
+static void connect_fail(struct uplink *uplink);
+
 static void err_read(void *data, uint32_t unused) {
 	(void) unused;
 	struct err_handler *handler = data;
 	if (handler->fd == -1) {
-		ulog(LLOG_WARN, "Received stray read on socat error socket\n");
+		ulog(LLOG_DEBUG, "Received stray read on socat error socket\n");
+		uplink_disconnect(handler->uplink, true);
+		connect_fail(handler->uplink);
 		return;
 	}
 #define bufsize 1024
@@ -210,7 +215,6 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 	}
 }
 
-static void connect_fail(struct uplink *uplink);
 static void send_ping(struct context *context, void *data, size_t id);
 
 // Connect to remote. Blocking.
