@@ -46,7 +46,7 @@ class RequestManager:
 		"""
 		nid = self.__id
 		self.__id += 1
-		self.__id %= 2^32
+		self.__id %= 2**32
 		self.__requests[nid] = (timeout, callback)
 		return nid
 
@@ -60,7 +60,7 @@ class RequestManager:
 			if self.__requests[k][0] < t:
 				to_del.append(k)
 		if to_del:
-			logging.debug("Requests timeouted: %s", to_del)
+			logger.debug("Requests timeouted: %s", to_del)
 		for k in to_del:
 			del self.__requests[k]
 
@@ -70,7 +70,7 @@ class RequestManager:
 			self.__requests[rid][1](data, success)
 			del self.__requests[rid]
 		else:
-			logging.warn("Response for unknown request %s received, ignoring", rid)
+			logger.warn("Response for unknown request %s received, ignoring", rid)
 
 	def response(self, rid, data):
 		"""
