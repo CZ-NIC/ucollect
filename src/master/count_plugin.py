@@ -58,21 +58,6 @@ class CountPlugin(plugin.Plugin):
 		self.__stats = {}
 		reactor.callLater(self.__aggregate_delay, self.__process)
 
-	def __truncate(self, data):
-		"""
-		Make sure the data fit into the postgres INT range. If not, truncate it to the maximum.
-
-		If the warning happens in practice often, we should do something about that.
-		Until then, preferring smaller DB and smaller data transfers from users.
-		"""
-		def tdata(data):
-			if data > 2^31-1:
-				logger.warn("Number %s overflow, truncating to 2147483647", data)
-				return 2^31-1
-			else:
-				return data
-		return map(tdata, data)
-
 	def __process(self):
 		if not self.__data:
 			return # No data to store.
@@ -95,13 +80,19 @@ class CountPlugin(plugin.Plugin):
 			t.execute('SELECT client, id FROM count_snapshots WHERE timestamp = %s', (now,))
 			snapshots = dict(t.fetchall())
 			# Push all the data in
+			def truncate(data):
+				if data > 2^31-1:
+					logger.warn("Number %s overflow, truncating to 2147483647", data)
+					return 2^31-1
+				else:
+					return data
 			def clientdata(client):
 				snapshot = snapshots[clients[client]]
 				l = min(len(self.__data[client]) / 2, len(name_order))
-				return map(lambda name, index: (snapshot, names[name], self.__data[client][index * 2], self.__data[client][index * 2 + 1]), name_order[:l], range(0, l))
+				return map(lambda name, index: (snapshot, names[name], truncate(self.__data[client][index * 2]), truncate(self.__data[client][index * 2 + 1])), name_order[:l], range(0, l))
 			def clientcaptures(client):
 				snapshot = snapshots[clients[client]]
-				return map(lambda i: (snapshot, i, self.__stats[client][3 * i], self.__stats[client][3 * i + 1], self.__stats[client][3 * i + 2]), range(0, len(self.__stats[client]) / 3))
+				return map(lambda i: (snapshot, i, truncate(self.__stats[client][3 * i]), truncate(self.__stats[client][3 * i + 1]), truncate(self.__stats[client][3 * i + 2])), range(0, len(self.__stats[client]) / 3))
 			def join_clients(c1, c2):
 				c1.extend(c2)
 				return c1
