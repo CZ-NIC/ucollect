@@ -81,7 +81,7 @@ class CountPlugin(plugin.Plugin):
 			snapshots = dict(t.fetchall())
 			# Push all the data in
 			def truncate(data):
-				if data > 2^31-1:
+				if data > 2**31-1:
 					logger.warn("Number %s overflow, truncating to 2147483647", data)
 					return 2^31-1
 				else:
