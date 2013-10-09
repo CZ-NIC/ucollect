@@ -18,8 +18,10 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet import reactor, ssl
-from twisted.internet.endpoints import SSL4ServerEndpoint
+from twisted.internet import reactor, ssl, protocol
+from twisted.internet.endpoints import UNIXServerEndpoint
+from twisted.internet.error import ReactorNotRunning
+from subprocess import Popen
 import log_extra
 import logging
 import logging.handlers
@@ -28,6 +30,7 @@ from plugin import Plugins
 import master_config
 import activity
 import importlib
+import os
 
 severity = master_config.get('log_severity')
 if severity == 'TRACE':
@@ -50,16 +53,42 @@ for (plugin, config) in master_config.plugins().items():
 	loaded_plugins[plugin] = constructor(plugins, config)
 	logging.info('Loaded plugin %s from %s', loaded_plugins[plugin].name(), plugin)
 # Some configuration, to load the port from?
-port = master_config.getint('port')
-with open(master_config.get('cert')) as key:
-	cert = ssl.PrivateCertificate.loadPEM(key.read())
-endpoint = SSL4ServerEndpoint(reactor, port, cert.options())
-logging.info('Listening on port %s', port)
+endpoint = UNIXServerEndpoint(reactor, './collect-master.sock')
+
+socat = None
+
+class Socat(protocol.ProcessProtocol):
+	def connectionMade(self):
+		global socat
+		socat = self.transport
+		logging.info('Started socat proxy')
+
+	def processEnded(self, status):
+		global socat
+		if socat:
+			socat = None
+			try:
+				reactor.stop()
+				# Don't report lost socat if we're already terminating
+				logging.fatal('Lost socat, terminating')
+			except ReactorNotRunning:
+				pass
+
+	def errReceived(self, data):
+		logging.warn('Socat complained: %s', data)
+
+args = ['/usr/bin/socat', 'OPENSSL-LISTEN:' + str(master_config.getint('port')) + ',fork,backlog=50,key=' + master_config.get('key') + ',cert=' + master_config.get('cert') + ',verify=0,cipher=TLSv1,reuseaddr,pf=ip6', 'UNIX-CONNECT:./collect-master.sock']
+logging.debug('Starting socat with: %s', args)
+reactor.spawnProcess(Socat(), '/usr/bin/socat', args=args, env=os.environ)
 endpoint.listen(ClientFactory(plugins))
 logging.info('Init done')
 
 reactor.run()
 
 logging.info('Finishing up')
+if socat:
+	soc = socat
+	socat = None
+	soc.signalProcess('TERM')
 activity.shutdown()
 logging.info('Shutdown done')

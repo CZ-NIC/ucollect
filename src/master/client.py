@@ -176,7 +176,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		if self.__cid:
 			return self.__cid
 		else:
-			return self.__addr.host
+			return self.__addr.name
 
 class ClientFactory(twisted.internet.protocol.Factory):
 	"""
