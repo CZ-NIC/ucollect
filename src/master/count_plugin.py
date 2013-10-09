@@ -58,6 +58,21 @@ class CountPlugin(plugin.Plugin):
 		self.__stats = {}
 		reactor.callLater(self.__aggregate_delay, self.__process)
 
+	def __truncate(self, data):
+		"""
+		Make sure the data fit into the postgres INT range. If not, truncate it to the maximum.
+
+		If the warning happens in practice often, we should do something about that.
+		Until then, preferring smaller DB and smaller data transfers from users.
+		"""
+		def tdata(data):
+			if data > 2^31-1:
+				logger.warn("Number %s overflow, truncating to 2147483647", data)
+				return 2^31-1
+			else:
+				return data
+		return map(tdata, data)
+
 	def __process(self):
 		if not self.__data:
 			return # No data to store.
@@ -90,8 +105,8 @@ class CountPlugin(plugin.Plugin):
 			def join_clients(c1, c2):
 				c1.extend(c2)
 				return c1
-			t.executemany('INSERT INTO counts(snapshot, type, count, size) VALUES(%s, %s, %s, %s)', reduce(join_clients, map(clientdata, self.__data.keys())))
-			t.executemany('INSERT INTO capture_stats(snapshot, interface, captured, dropped, dropped_driver) VALUES(%s, %s, %s, %s, %s)', reduce(join_clients, map(clientcaptures, self.__stats.keys())))
+			t.executemany('INSERT INTO counts(snapshot, type, count, size) VALUES(%s, %s, %s, %s)', self.__truncate(reduce(join_clients, map(clientdata, self.__data.keys()))))
+			t.executemany('INSERT INTO capture_stats(snapshot, interface, captured, dropped, dropped_driver) VALUES(%s, %s, %s, %s, %s)', self.__truncate(reduce(join_clients, map(clientcaptures, self.__stats.keys()))))
 
 	def name(self):
 		return 'Count'
