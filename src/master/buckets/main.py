@@ -212,7 +212,7 @@ class BucketsPlugin(plugin.Plugin):
 					client.get_keys(cindex, generation, examine, callback)
 				# Send it to all the clients.
 				for client in group.members():
-					ask_client(criterion)
+					ask_client(client)
 			else:
 				logger.debug('No anomaly asked on criterion %s and group %s at %s', criterion.code(), group_name, generation)
 
