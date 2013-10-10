@@ -58,7 +58,7 @@ def process_group(criterion, group):
 	# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
 	logger.debug('Anomalous indices: %s', anomalies)
 	examine = []
-	do_send = generation
+	do_send = True
 	for an in anomalies:
 		if not an:
 			# If there's no anomaly in at least one bucket, we would get nothing back anyway
@@ -180,7 +180,7 @@ class BucketsPlugin(plugin.Plugin):
 			logger.debug("Background jobs done")
 			reactor.callLater(self.__process_delay, self.__process_keys)
 
-	def __one_group(self, criterion, group, group_name, cindex):
+	def __one_group(self, criterion, group, group_name, cindex, generation):
 		"""
 		Process one group. Part of the __process.
 		"""
@@ -194,7 +194,7 @@ class BucketsPlugin(plugin.Plugin):
 			# TODO Check if it is an error
 			(examine, strengths) = group_result
 
-			if examine:
+			if examine and generation:
 				logger.debug('Asking for keys %s on criterion %s and group %s at %s', examine, criterion.code(), group_name, generation)
 				def ask_client(client):
 					# The same trick with scope.
@@ -237,7 +237,7 @@ class BucketsPlugin(plugin.Plugin):
 		for crit in self.__criteria:
 			for g in self.__groups[crit.code()]:
 				group = self.__groups[crit.code()][g]
-				self.__one_group(crit, group, g, cindex)
+				self.__one_group(crit, group, g, cindex, generation)
 
 			cindex += 1
 
