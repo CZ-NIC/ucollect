@@ -169,6 +169,52 @@ class BucketsPlugin(plugin.Plugin):
 		deferred = threads.deferToThread(store_keys, self.__groups)
 		deferred.addCallback(done)
 
+	def __dec_background(self):
+		"""
+		Decrease the count of background jobs. If it runs to zero,
+		run the rest of processing ‒ wait for the keys to come and
+		then process them.
+		"""
+		self.__group_processing_count -= 1
+		if self.__group_processing_count == 0:
+			logger.debug("Background jobs done")
+			reactor.callLater(self.__process_delay, self.__process_keys)
+
+	def __one_group(self, criterion, group, group_name, cindex):
+		"""
+		Process one group. Part of the __process.
+		"""
+		# Get a new scope, so we preserve copies of variables in parameters.
+		# Otherwise, next iteratioun would overwrite the variables and all
+		# the functions would use the same ones.
+		self.__group_processing_count += 1
+		(examine, strengths) = process_group(criterion, group)
+
+		def group_done(group_result):
+			# TODO Check if it is an error
+			(examine, strengths) = group_result
+
+			if examine:
+				logger.debug('Asking for keys %s on criterion %s and group %s at %s', examine, criterion.code(), group_name, generation)
+				def ask_client(client):
+					# The same trick with scope.
+					def callback(message, success):
+						if success:
+							if self.__aggregating_keys:
+								group.keys_aggregate(client.name(), criterion.decode_multiple(message), strengths, criterion.decode_raw_multiple(message))
+							else:
+								logger.debug("Late reply for keys ignored")
+						else:
+							logger.warn("Client %s doesn't have keys for generation %s on criterion %s", client.name(), generation, criterion.code())
+					client.get_keys(cindex, generation, examine, callback)
+				# Send it to all the clients.
+				for client in group.members():
+					ask_client(criterion)
+			else:
+				logger.debug('No anomaly asked on criterion %s and group %s at %s', criterion.code(), group_name, generation)
+
+		group_done((examine, strengths))
+
 	def __process(self):
 		"""
 		Process the gathered data.
@@ -183,38 +229,21 @@ class BucketsPlugin(plugin.Plugin):
 		# Start aggregating the keys
 		self.__aggregating_keys = True
 		self.__have_keys = False
-		reactor.callLater(self.__process_delay, self.__process_keys)
+		self.__group_processing_count = 0
+		# This is not a background task. But we should make sure we don't commit it until
+		# we push it all to to the background processing. The background threads might
+		# be faster than this one.
+		self.__group_processing_count += 1
 		for crit in self.__criteria:
 			for g in self.__groups[crit.code()]:
 				group = self.__groups[crit.code()][g]
-				def one_group(criterion, group, group_name, cindex):
-					# Get a new scope, so we preserve copies of variables in parameters.
-					# Otherwise, next iteratioun would overwrite the variables and all
-					# the functions would use the same ones.
-					(examine, strengths) = process_group(criterion, group)
-
-					if examine:
-						logger.debug('Asking for keys %s on criterion %s and group %s at %s', examine, criterion.code(), group_name, generation)
-						def ask_client(client):
-							# The same trick with scope.
-							def callback(message, success):
-								if success:
-									if self.__aggregating_keys:
-										group.keys_aggregate(client.name(), criterion.decode_multiple(message), strengths, criterion.decode_raw_multiple(message))
-									else:
-										logger.debug("Late reply for keys ignored")
-								else:
-									logger.warn("Client %s doesn't have keys for generation %s on criterion %s", client.name(), generation, criterion.code())
-							client.get_keys(cindex, generation, examine, callback)
-						# Send it to all the clients.
-						for client in group.members():
-							ask_client(criterion, self.__clients[client], group, strengths)
-					else:
-						logger.debug('No anomaly asked on criterion %s and group %s at %s', criterion.code(), group_name, generation)
-
-				one_group(crit, group, g, cindex)
+				self.__one_group(crit, group, g, cindex)
 
 			cindex += 1
+
+		# Pushing done. If all is done, wait for the answers. If not, wait for the
+		# rest to be done before waiting for the answers.
+		self.__dec_background()
 
 	def name(self):
 		return "Buckets"
