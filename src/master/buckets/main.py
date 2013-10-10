@@ -33,6 +33,7 @@ import plugin
 import buckets.group
 import buckets.client
 import buckets.rng
+import buckets.batch
 
 logger = logging.getLogger(name='buckets')
 
@@ -220,8 +221,8 @@ class BucketsPlugin(plugin.Plugin):
 			else:
 				logger.debug('No anomaly asked on criterion %s and group %s at %s', criterion.code(), group_name, generation)
 
-		deferred = threads.deferToThread(process_group, criterion, group)
-		deferred.addCallback(group_done)
+		# Execute the computation asynchronously, once done, call the group_done in the main thread
+		buckets.batch.submit(process_group, group_done, criterion, group)
 
 	def __process(self):
 		"""
@@ -244,6 +245,9 @@ class BucketsPlugin(plugin.Plugin):
 				self.__one_group(crit, group, g, cindex, generation)
 
 			cindex += 1
+
+		# Make sure everything should be called now
+		buckets.batch.flush()
 
 		# Pushing done. If all is done, wait for the answers. If not, wait for the
 		# rest to be done before waiting for the answers.
