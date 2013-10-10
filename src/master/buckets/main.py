@@ -291,7 +291,7 @@ class BucketsPlugin(plugin.Plugin):
 		elif kind == 'K':
 			# Got keys from the plugin
 			(req_id,) = struct.unpack('!L', message[1:5])
-			logger.info('Received keys from %s', client)
+			logger.debug('Received keys from %s', client)
 			buckets.client.manager.response(req_id, message[5:])
 			self.__have_keys = True
 		elif kind == 'M':
