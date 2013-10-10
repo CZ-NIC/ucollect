@@ -35,6 +35,22 @@ import buckets.rng
 
 logger = logging.getLogger(name='buckets')
 
+def store_keys(groups):
+	with database.transaction() as t:
+		t.execute('SELECT NOW()')
+		(now,) = t.fetchone()
+		def aggregate(l1, l2):
+			l1.extend(l2)
+			return l1
+		def cdata(crit):
+			def gdata(gname):
+				group = groups[crit][gname]
+				(keys, count, strengths) = group.keys_extract()
+				return map(lambda key: (crit, now, key, len(keys[key]), count, strengths[key], gname), keys.keys())
+			return reduce(aggregate, map(gdata, groups[crit].keys()))
+		data = reduce(aggregate, map(cdata, groups.keys()))
+		t.executemany('INSERT INTO anomalies(from_group, type, timestamp, value, relevance_count, relevance_of, strength) SELECT groups.id, %s, %s, %s, %s, %s, %s FROM groups WHERE groups.name = %s', data)
+
 class BucketsPlugin(plugin.Plugin):
 	"""
 	Counterpart of the "buckets" plugin in the client. It does
@@ -74,6 +90,8 @@ class BucketsPlugin(plugin.Plugin):
 		self.__aggregating_keys = False
 		self.__have_keys = False
 		self.__hasher = buckets.rng.Hash(self.__seed, self.__hash_count, 256 * max(map(lambda c: c.item_len(), self.__criteria)))
+		# Do we have keys to commit?
+		self.__background_processing = False
 
 	def client_connected(self, client):
 		name = client.cid()
@@ -126,31 +144,18 @@ class BucketsPlugin(plugin.Plugin):
 		self.__aggregating_keys = False
 		if not self.__have_keys:
 			return
-		logger.debug("Storing bucket keys")
-		with database.transaction() as t:
-			t.execute('SELECT NOW()')
-			(now,) = t.fetchone()
-			def aggregate(l1, l2):
-				l1.extend(l2)
-				return l1
-			def cdata(crit):
-				def gdata(gname):
-					group = self.__groups[crit][gname]
-					(keys, count, strengths) = group.keys_extract()
-					return map(lambda key: (crit, now, key, len(keys[key]), count, strengths[key], gname), keys.keys())
-				return reduce(aggregate, map(gdata, self.__groups[crit].keys()))
-			data = reduce(aggregate, map(cdata, self.__groups.keys()))
-			t.executemany('INSERT INTO anomalies(from_group, type, timestamp, value, relevance_count, relevance_of, strength) SELECT groups.id, %s, %s, %s, %s, %s, %s FROM groups WHERE groups.name = %s', data)
+		self.__background_processing = True
+		store_keys(self.groups)
+		self.__background_processing = False
 
 	def __process(self):
 		"""
 		Process the gathered data.
 		"""
 		self.__gathering = False
-		if not self.__lower_time:
-			# We are not yet fully initialized and filled up (for example, the lower_time is wrong, so
-			# we couldn't request the keys)
-			logger.info('Starting up, waiting for at least one more generation')
+		if self.__background_processing:
+			logger.error("Previous data not committed yet, skipping one generation")
+			return
 		generation = self.__lower_time
 		cindex = 0
 		# Start aggregating the keys
