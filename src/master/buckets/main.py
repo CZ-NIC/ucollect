@@ -52,6 +52,25 @@ def store_keys(groups):
 		data = reduce(aggregate, map(cdata, groups.keys()))
 		t.executemany('INSERT INTO anomalies(from_group, type, timestamp, value, relevance_count, relevance_of, strength) SELECT groups.id, %s, %s, %s, %s, %s, %s FROM groups WHERE groups.name = %s', data)
 
+def process_group(criterion, group):
+	logger.info('Processing criterion %s', criterion.code())
+	anomalies = group.anomalies()
+	# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
+	logger.debug('Anomalous indices: %s', anomalies)
+	examine = []
+	do_send = generation
+	for an in anomalies:
+		if not an:
+			# If there's no anomaly in at least one bucket, we would get nothing back anyway
+			do_send = False
+			break
+		examine.append(len(an))
+		examine.extend(map(lambda (index, anomality): index, an))
+	if do_send:
+		return (examine, map(dict, anomalies))
+	else:
+		return (None, None)
+
 class BucketsPlugin(plugin.Plugin):
 	"""
 	Counterpart of the "buckets" plugin in the client. It does
@@ -145,7 +164,6 @@ class BucketsPlugin(plugin.Plugin):
 		self.__aggregating_keys = False
 		if not self.__have_keys:
 			return
-		self.__background_processing = True
 		def done(ignore_param):
 			self.__background_processing = False
 		deferred = threads.deferToThread(store_keys, self.__groups)
@@ -159,6 +177,7 @@ class BucketsPlugin(plugin.Plugin):
 		if self.__background_processing:
 			logger.error("Previous data not committed yet, skipping one generation")
 			return
+		self.__background_processing = True
 		generation = self.__lower_time
 		cindex = 0
 		# Start aggregating the keys
@@ -168,43 +187,33 @@ class BucketsPlugin(plugin.Plugin):
 		for crit in self.__criteria:
 			for g in self.__groups[crit.code()]:
 				group = self.__groups[crit.code()][g]
-				logger.info('Processing criterion %s', crit.code())
-				anomalies = group.anomalies()
-				# We computed the anomalies of all clients. Get the keys for the anomalies from each of them.
-				logger.debug('Anomalous indices: %s', anomalies)
-				examine = []
-				do_send = generation
-				for an in anomalies:
-					if not an:
-						# If there's no anomaly in at least one bucket, we would get nothing back anyway
-						do_send = False
-						break
-					examine.append(len(an))
-					examine.extend(map(lambda (index, anomality): index, an))
-				# The lower_time is the timestamp/ID of this batch. Or, with the clients that are connected
-				# for the time of the batch at least.
-				# We could try asking for the older ones too (we have them in local history).
-				if do_send:
-					logger.debug('Asking for keys %s on criterion %s and group %s at %s', examine, crit.code(), g, generation)
-					strengths = map(dict, anomalies)
-					def ask_client(criterion, client, group, strengths):
-						# Separate function, so the variables are copied to the parameters.
-						# Otherwise, the value in all criteria were for the last one,
-						# as the function remembered the variable here, which got changed.
-						def callback(message, success):
-							if success:
-								if self.__aggregating_keys:
-									group.keys_aggregate(client.name(), criterion.decode_multiple(message), strengths, criterion.decode_raw_multiple(message))
+				def one_group(criterion, group, group_name, cindex):
+					# Get a new scope, so we preserve copies of variables in parameters.
+					# Otherwise, next iteratioun would overwrite the variables and all
+					# the functions would use the same ones.
+					(examine, strengths) = process_group(criterion, group)
+
+					if examine:
+						logger.debug('Asking for keys %s on criterion %s and group %s at %s', examine, criterion.code(), group_name, generation)
+						def ask_client(client):
+							# The same trick with scope.
+							def callback(message, success):
+								if success:
+									if self.__aggregating_keys:
+										group.keys_aggregate(client.name(), criterion.decode_multiple(message), strengths, criterion.decode_raw_multiple(message))
+									else:
+										logger.debug("Late reply for keys ignored")
 								else:
-									logger.debug("Late reply for keys ignored")
-							else:
-								logger.warn("Client %s doesn't have keys for generation %s on criterion %s", client.name(), generation, criterion.code())
-						client.get_keys(cindex, generation, examine, callback)
-					# Send it to all the clients.
-					for client in group.members():
-						ask_client(crit, self.__clients[client], group, strengths)
-				else:
-					logger.debug('No anomaly asked on criterion %s and group %s at %s', crit.code(), g, generation)
+									logger.warn("Client %s doesn't have keys for generation %s on criterion %s", client.name(), generation, criterion.code())
+							client.get_keys(cindex, generation, examine, callback)
+						# Send it to all the clients.
+						for client in group.members():
+							ask_client(criterion, self.__clients[client], group, strengths)
+					else:
+						logger.debug('No anomaly asked on criterion %s and group %s at %s', criterion.code(), group_name, generation)
+
+				one_group(crit, group, g, cindex)
+
 			cindex += 1
 
 	def name(self):
