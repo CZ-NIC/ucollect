@@ -172,7 +172,7 @@ class BucketsPlugin(plugin.Plugin):
 	def __dec_background(self):
 		"""
 		Decrease the count of background jobs. If it runs to zero,
-		run the rest of processing ‒ wait for the keys to come and
+		run the rest of processing -- wait for the keys to come and
 		then process them.
 		"""
 		self.__group_processing_count -= 1
