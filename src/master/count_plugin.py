@@ -28,6 +28,45 @@ import activity
 
 logger = logging.getLogger(name='count')
 
+def store_counts(data, stats):
+	logger.info('Storing count snapshot')
+	with database.transaction() as t:
+		t.execute('SELECT name, id FROM count_types ORDER BY ord')
+		name_data = t.fetchall()
+		name_order = map(lambda x: x[0], name_data)
+		names = dict(name_data)
+		# Store the timestamp here, so all the clients have the same value.
+		t.execute('SELECT NOW()')
+		(now,) = t.fetchone()
+		# It seems MySQL complains with insert ... select in some cases.
+		# So we do some insert-select-insert magic here. That is probably
+		# slower, but no idea how to help that. And it should work.
+		t.execute('SELECT name, id FROM clients WHERE name IN (' + (','.join(['%s'] * len(data))) + ')', data.keys())
+		clients = dict(t.fetchall())
+		# Create a snapshot for each client
+		t.executemany('INSERT INTO count_snapshots (timestamp, client) VALUES(%s, %s)', map(lambda client: (now, client), clients.values()))
+		t.execute('SELECT client, id FROM count_snapshots WHERE timestamp = %s', (now,))
+		snapshots = dict(t.fetchall())
+		# Push all the data in
+		def truncate(data):
+			if data > 2**31-1:
+				logger.warn("Number %s overflow, truncating to 2147483647", data)
+				return 2^31-1
+			else:
+				return data
+		def clientdata(client):
+			snapshot = snapshots[clients[client]]
+			l = min(len(data[client]) / 2, len(name_order))
+			return map(lambda name, index: (snapshot, names[name], truncate(data[client][index * 2]), truncate(data[client][index * 2 + 1])), name_order[:l], range(0, l))
+		def clientcaptures(client):
+			snapshot = snapshots[clients[client]]
+			return map(lambda i: (snapshot, i, truncate(stats[client][3 * i]), truncate(stats[client][3 * i + 1]), truncate(stats[client][3 * i + 2])), range(0, len(stats[client]) / 3))
+		def join_clients(c1, c2):
+			c1.extend(c2)
+			return c1
+		t.executemany('INSERT INTO counts(snapshot, type, count, size) VALUES(%s, %s, %s, %s)', reduce(join_clients, map(clientdata, data.keys())))
+		t.executemany('INSERT INTO capture_stats(snapshot, interface, captured, dropped, dropped_driver) VALUES(%s, %s, %s, %s, %s)', reduce(join_clients, map(clientcaptures, stats.keys())))
+
 class CountPlugin(plugin.Plugin):
 	"""
 	The plugin providing basic statisticts, like speed, number of
@@ -61,43 +100,9 @@ class CountPlugin(plugin.Plugin):
 	def __process(self):
 		if not self.__data:
 			return # No data to store.
-		logger.info('Storing count snapshot')
-		with database.transaction() as t:
-			t.execute('SELECT name, id FROM count_types ORDER BY ord')
-			name_data = t.fetchall()
-			name_order = map(lambda x: x[0], name_data)
-			names = dict(name_data)
-			# Store the timestamp here, so all the clients have the same value.
-			t.execute('SELECT NOW()')
-			(now,) = t.fetchone()
-			# It seems MySQL complains with insert ... select in some cases.
-			# So we do some insert-select-insert magic here. That is probably
-			# slower, but no idea how to help that. And it should work.
-			t.execute('SELECT name, id FROM clients WHERE name IN (' + (','.join(['%s'] * len(self.__data))) + ')', self.__data.keys())
-			clients = dict(t.fetchall())
-			# Create a snapshot for each client
-			t.executemany('INSERT INTO count_snapshots (timestamp, client) VALUES(%s, %s)', map(lambda client: (now, client), clients.values()))
-			t.execute('SELECT client, id FROM count_snapshots WHERE timestamp = %s', (now,))
-			snapshots = dict(t.fetchall())
-			# Push all the data in
-			def truncate(data):
-				if data > 2**31-1:
-					logger.warn("Number %s overflow, truncating to 2147483647", data)
-					return 2^31-1
-				else:
-					return data
-			def clientdata(client):
-				snapshot = snapshots[clients[client]]
-				l = min(len(self.__data[client]) / 2, len(name_order))
-				return map(lambda name, index: (snapshot, names[name], truncate(self.__data[client][index * 2]), truncate(self.__data[client][index * 2 + 1])), name_order[:l], range(0, l))
-			def clientcaptures(client):
-				snapshot = snapshots[clients[client]]
-				return map(lambda i: (snapshot, i, truncate(self.__stats[client][3 * i]), truncate(self.__stats[client][3 * i + 1]), truncate(self.__stats[client][3 * i + 2])), range(0, len(self.__stats[client]) / 3))
-			def join_clients(c1, c2):
-				c1.extend(c2)
-				return c1
-			t.executemany('INSERT INTO counts(snapshot, type, count, size) VALUES(%s, %s, %s, %s)', reduce(join_clients, map(clientdata, self.__data.keys())))
-			t.executemany('INSERT INTO capture_stats(snapshot, interface, captured, dropped, dropped_driver) VALUES(%s, %s, %s, %s, %s)', reduce(join_clients, map(clientcaptures, self.__stats.keys())))
+		store_counts(self.__data, self.__stats)
+		self.__data = {}
+		self.__stats = {}
 
 	def name(self):
 		return 'Count'
