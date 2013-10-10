@@ -190,7 +190,6 @@ class BucketsPlugin(plugin.Plugin):
 		# Otherwise, next iteratioun would overwrite the variables and all
 		# the functions would use the same ones.
 		self.__group_processing_count += 1
-		(examine, strengths) = process_group(criterion, group)
 
 		def group_done(group_result):
 			self.__dec_background()
@@ -216,7 +215,8 @@ class BucketsPlugin(plugin.Plugin):
 			else:
 				logger.debug('No anomaly asked on criterion %s and group %s at %s', criterion.code(), group_name, generation)
 
-		group_done((examine, strengths))
+		deferred = threads.deferToThread(process_group, criterion, group)
+		deferred.addCallback(group_done)
 
 	def __process(self):
 		"""
