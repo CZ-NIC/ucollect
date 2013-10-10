@@ -18,6 +18,9 @@
 #
 
 from twisted.internet import threads
+import logging
+
+logger = logging.getLogger(name='buckets')
 
 __batch = []
 __limit = 50
@@ -31,9 +34,11 @@ def __execute(batch):
 	"""
 	Execute batch of tasks, return the results. To be called in the thread.
 	"""
+	logger.debug("Batch execute")
 	return map(__process, batch)
 
 def __distribute(result):
+	logger.debug("Batch distribute")
 	for (callback, tresult) in result:
 		callback(tresult)
 
@@ -41,6 +46,7 @@ def flush():
 	"""
 	Submit all work to execution, even if it doesn't make a full batch yet.
 	"""
+	logger.debug("Batch flush")
 	if __batch:
 		deferred = threads.deferToThread(__execute, __batch)
 		deferred.addCallback(__distribute)
@@ -50,6 +56,7 @@ def submit(f, callback, *args):
 	"""
 	Add another function for thread execution. Call calback once finished.
 	"""
+	logger.debug("Batch submit")
 	__batch.append((f, args, callback))
 	if len(__batch) >= __limit:
 		flush()
