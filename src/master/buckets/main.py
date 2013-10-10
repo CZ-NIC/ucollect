@@ -18,7 +18,7 @@
 #
 
 from twisted.internet.task import LoopingCall
-from twisted.internet import reactor
+from twisted.internet import reactor, threads
 import time
 import struct
 import socket
@@ -145,8 +145,10 @@ class BucketsPlugin(plugin.Plugin):
 		if not self.__have_keys:
 			return
 		self.__background_processing = True
-		store_keys(self.groups)
-		self.__background_processing = False
+		def done():
+			self.__background_processing = False
+		deferred = threads.deferToThread(store_keys, self.__grops)
+		deferred.addCallback(done)
 
 	def __process(self):
 		"""
