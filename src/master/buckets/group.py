@@ -19,6 +19,7 @@
 
 import buckets.stats
 import logging
+import threading
 
 logger = logging.getLogger(name='buckets')
 
@@ -55,6 +56,7 @@ class Group:
 		self.__strengths = {}
 		self.__key_submitted_cnt = 0
 		self.__hasher = hasher
+		self.__lock = threading.Lock()
 
 	def __empty_data(self):
 		"""
@@ -66,19 +68,22 @@ class Group:
 		"""
 		Return clients present in this group.
 		"""
-		return self.__members
+		with self.__lock:
+			return set(self.__members)
 
 	def add(self, client):
 		"""
 		Add a client (by name) to the group.
 		"""
-		self.__members.add(client)
+		with self.__lock:
+			self.__members.add(client)
 
 	def remove(self, client):
 		"""
 		Remove a client (by name) from the group.
 		"""
-		self.__members.remove(client)
+		with self.__lock:
+			self.__members.remove(client)
 
 	def merge(self, counts):
 		"""
@@ -88,23 +93,24 @@ class Group:
 		# [hash = [bucket = [value in timeslot]]]. Transpose that.
 		# TODO: If we wanted to optimise, we could put this outside, so it's not
 		# done for each group. But for now, we don't care.
-		new = map(lambda hnum:
-			map(lambda bnum:
-				map(lambda tslot: tslot[hnum][bnum], counts),
-			range(0, self.__bucket_count)),
-		range(0, self.__hash_count))
-		assert(len(self.__current) == len(new) and len(self.__current) == self.__hash_count)
-		for (chash, nhash) in zip(self.__current, new):
-			assert(len(chash) == len(nhash) and len(chash) == self.__bucket_count)
-			for (cbucket, nbucket) in zip(chash, nhash):
-				# Extend them so they are of the same length. As new clients start
-				# later, we extend with zeroes on the left side.
-				mlen = max(len(cbucket), len(nbucket))
-				cbucket[:0] = [0] * (mlen - len(cbucket))
-				nbucket[:0] = [0] * (mlen - len(nbucket))
-				assert(len(cbucket) == len(nbucket) and len(cbucket) == mlen)
-				for i in range(0, len(cbucket)):
-					cbucket[i] += nbucket[i]
+		with self.__lock:
+			new = map(lambda hnum:
+				map(lambda bnum:
+					map(lambda tslot: tslot[hnum][bnum], counts),
+				range(0, self.__bucket_count)),
+			range(0, self.__hash_count))
+			assert(len(self.__current) == len(new) and len(self.__current) == self.__hash_count)
+			for (chash, nhash) in zip(self.__current, new):
+				assert(len(chash) == len(nhash) and len(chash) == self.__bucket_count)
+				for (cbucket, nbucket) in zip(chash, nhash):
+					# Extend them so they are of the same length. As new clients start
+					# later, we extend with zeroes on the left side.
+					mlen = max(len(cbucket), len(nbucket))
+					cbucket[:0] = [0] * (mlen - len(cbucket))
+					nbucket[:0] = [0] * (mlen - len(nbucket))
+					assert(len(cbucket) == len(nbucket) and len(cbucket) == mlen)
+					for i in range(0, len(cbucket)):
+						cbucket[i] += nbucket[i]
 
 	def anomalies(self):
 		"""
@@ -112,19 +118,20 @@ class Group:
 
 		Switch to new history window afterwards, to start gathering anew.
 		"""
-		self.__history.append(self.__current)
-		# Concatenate the windows together.
-		batch = map(lambda hnum:
-				map(lambda bnum:
-					reduce(lambda a, b: a + b, map(lambda hist: hist[hnum][bnum], self.__history)),
-				range(0, self.__bucket_count)),
-			range(0, self.__hash_count))
-		anomalies = map(lambda bucket: buckets.stats.anomalies(bucket, self.__treshold), batch)
-		# Clean old history.
-		if len(self.__history) > self.__window_backlog:
-			self.__history = self.__history[len(self.__history) - self.__window_backlog:]
-		self.__current = self.__empty_data()
-		return anomalies
+		with self.__lock:
+			self.__history.append(self.__current)
+			# Concatenate the windows together.
+			batch = map(lambda hnum:
+					map(lambda bnum:
+						reduce(lambda a, b: a + b, map(lambda hist: hist[hnum][bnum], self.__history)),
+					range(0, self.__bucket_count)),
+				range(0, self.__hash_count))
+			anomalies = map(lambda bucket: buckets.stats.anomalies(bucket, self.__treshold), batch)
+			# Clean old history.
+			if len(self.__history) > self.__window_backlog:
+				self.__history = self.__history[len(self.__history) - self.__window_backlog:]
+			self.__current = self.__empty_data()
+			return anomalies
 
 	def keys_extract(self):
 		"""
@@ -133,21 +140,23 @@ class Group:
 
 		The order of clients is arbitrary.
 		"""
-		result = (self.__keys, self.__key_submitted_cnt, dict(map(lambda (k, sts): (k, min(sts)), self.__strengths.iteritems())))
-		self.__keys = {}
-		self.__strengths = {}
-		self.__key_submitted_cnt = 0
-		return result
+		with self.__lock:
+			result = (self.__keys, self.__key_submitted_cnt, dict(map(lambda (k, sts): (k, min(sts)), self.__strengths.iteritems())))
+			self.__keys = {}
+			self.__strengths = {}
+			self.__key_submitted_cnt = 0
+			return result
 
 	def keys_aggregate(self, client, keys, strengths, binary_keys):
 		"""
 		Add list of keys received from the client to the current gathered set.
 		"""
 		logger.trace("Strengths: %s/%s/%s", strengths, keys, repr(binary_keys))
-		for (k, b) in zip(keys, binary_keys):
-			try:
-				self.__strengths.setdefault(k, []).extend(map(lambda hindex: strengths[hindex][self.__hasher.get(b, hindex) % self.__bucket_count], range(0, self.__hash_count)))
-				self.__keys.setdefault(k, []).append(client)
-			except KeyError:
-				logger.error("Client %s sent invalid key data (for buckets we didn't ask for): keys", client, keys)
-		self.__key_submitted_cnt += 1
+		with self.__lock:
+			for (k, b) in zip(keys, binary_keys):
+				try:
+					self.__strengths.setdefault(k, []).extend(map(lambda hindex: strengths[hindex][self.__hasher.get(b, hindex) % self.__bucket_count], range(0, self.__hash_count)))
+					self.__keys.setdefault(k, []).append(client)
+				except KeyError:
+					logger.error("Client %s sent invalid key data (for buckets we didn't ask for): keys", client, keys)
+			self.__key_submitted_cnt += 1
