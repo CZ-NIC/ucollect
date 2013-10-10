@@ -47,6 +47,7 @@ def flush():
 	Submit all work to execution, even if it doesn't make a full batch yet.
 	"""
 	logger.debug("Batch flush")
+	global __batch
 	if __batch:
 		deferred = threads.deferToThread(__execute, __batch)
 		deferred.addCallback(__distribute)
@@ -57,6 +58,8 @@ def submit(f, callback, *args):
 	Add another function for thread execution. Call calback once finished.
 	"""
 	logger.debug("Batch submit")
+	global __batch
+	global __limit
 	__batch.append((f, args, callback))
 	if len(__batch) >= __limit:
 		flush()
