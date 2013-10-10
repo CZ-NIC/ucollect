@@ -36,6 +36,7 @@ import buckets.rng
 logger = logging.getLogger(name='buckets')
 
 def store_keys(groups):
+	logger.info("Storing buckets")
 	with database.transaction() as t:
 		t.execute('SELECT NOW()')
 		(now,) = t.fetchone()
