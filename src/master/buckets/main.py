@@ -19,6 +19,7 @@
 
 from twisted.internet.task import LoopingCall
 from twisted.internet import reactor, threads
+from twisted.python.failure import Failure
 import time
 import struct
 import socket
@@ -166,8 +167,10 @@ class BucketsPlugin(plugin.Plugin):
 			# We are done with NOP now.
 			self.__background_processing = False
 			return
-		def done(ignore_param):
+		def done(result):
 			self.__background_processing = False
+			if result is Failure:
+				logger.error("Failed to push anomalies to DB: %s", result.value)
 		deferred = threads.deferToThread(store_keys, self.__groups)
 		deferred.addCallback(done)
 
@@ -193,7 +196,9 @@ class BucketsPlugin(plugin.Plugin):
 
 		def group_done(group_result):
 			self.__dec_background()
-			# TODO Check if it is an error
+			if group_result is Failure:
+				logger.error("Error processing group %s on %s: %s", group_name, criterion.code(), group_result.value);
+				return
 			(examine, strengths) = group_result
 
 			if examine and generation:
