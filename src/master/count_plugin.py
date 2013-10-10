@@ -100,7 +100,11 @@ class CountPlugin(plugin.Plugin):
 	def __process(self):
 		if not self.__data:
 			return # No data to store.
-		store_counts(self.__data, self.__stats)
+		# As manipulation with DM might be time consuming (as it may be blocking, etc),
+		# move it to a separate thread, so we don't block the communication. This is
+		# safe -- we pass all the needed data to it as parameters and get rid of our
+		# copy, passing the ownership to the task.
+		reactor.callInThread(store_counts, self.__data, self.__stats)
 		self.__data = {}
 		self.__stats = {}
 
