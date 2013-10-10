@@ -163,6 +163,8 @@ class BucketsPlugin(plugin.Plugin):
 		"""
 		self.__aggregating_keys = False
 		if not self.__have_keys:
+			# We are done with NOP now.
+			self.__background_processing = False
 			return
 		def done(ignore_param):
 			self.__background_processing = False
