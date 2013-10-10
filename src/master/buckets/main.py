@@ -92,6 +92,11 @@ class BucketsPlugin(plugin.Plugin):
 
 	def client_disconnected(self, client):
 		name = client.cid()
+		if not name in self.__clients:
+			# Generally, this should not happen. It could if the database manipulation
+			# in above routine fails, but that should be rare. Anyway, we have seen this.
+			logger.warn("Client %s not found, can't disconnect it", name)
+			return
 		cobj = self.__clients[name]
 		# Remove the client from all the groups
 		for g in cobj.groups():
