@@ -191,6 +191,7 @@ class BucketsPlugin(plugin.Plugin):
 		(examine, strengths) = process_group(criterion, group)
 
 		def group_done(group_result):
+			self.__dec_background()
 			# TODO Check if it is an error
 			(examine, strengths) = group_result
 
