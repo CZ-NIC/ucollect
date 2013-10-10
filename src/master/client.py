@@ -81,7 +81,6 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.sendString('P')
 
 	def connectionMade(self):
-		logger.info("Connection made from %s", self.cid())
 		# Send challenge for login.
 		self.__challenge = ''
 		for i in range(0, challenge_len / 8):
@@ -152,7 +151,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 					self.__pinger.start(30, False)
 					self.__plugins.register_client(self)
 					activity.log_activity(self.cid(), "login")
-					logger.debug('Client %s logged in', self.cid())
+					logger.info('Client %s logged in', self.cid())
 				else:
 					login_failure('Asked for session before loging in')
 					return
