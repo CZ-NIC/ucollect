@@ -145,7 +145,7 @@ class BucketsPlugin(plugin.Plugin):
 		if not self.__have_keys:
 			return
 		self.__background_processing = True
-		def done():
+		def done(ignore_param):
 			self.__background_processing = False
 		deferred = threads.deferToThread(store_keys, self.__groups)
 		deferred.addCallback(done)
