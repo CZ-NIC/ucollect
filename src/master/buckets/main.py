@@ -223,10 +223,6 @@ class BucketsPlugin(plugin.Plugin):
 		Process the gathered data.
 		"""
 		self.__gathering = False
-		if self.__background_processing:
-			logger.error("Previous data not committed yet, skipping one generation")
-			return
-		self.__background_processing = True
 		generation = self.__lower_time
 		cindex = 0
 		# Start aggregating the keys
@@ -312,6 +308,10 @@ class BucketsPlugin(plugin.Plugin):
 		"""
 		Ask the clients to provide some data.
 		"""
+		if self.__background_processing:
+			logger.error("Previous data not committed yet, skipping one generation")
+			return
+		self.__background_processing = True
 		now = int(time.time())
 		logger.info('Asking for generation, starting new one at %s', now)
 		self.__gather_start(now)
