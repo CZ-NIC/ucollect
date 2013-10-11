@@ -18,6 +18,7 @@
 #
 
 from twisted.internet import threads
+from twisted.python.failure import Failure
 import logging
 
 logger = logging.getLogger(name='buckets')
@@ -26,9 +27,11 @@ __batch = []
 __limit = 50
 
 def __process(task):
-	# TODO: Exception handling
 	(f, args, callback) = task
-	return (callback, f(*args))
+	try:
+		return (callback, f(*args))
+	except Exception as e:
+		return (callback, Failure())
 
 def __execute(batch):
 	"""
