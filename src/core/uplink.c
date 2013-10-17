@@ -87,7 +87,7 @@ struct uplink {
 	void (*uplink_read)(struct uplink *uplink, uint32_t events);
 	struct loop *loop;
 	struct mem_pool *buffer_pool;
-	const char *remote_name, *service, *login, *password;
+	const char *remote_name, *service, *login, *password, *cert;
 	const uint8_t *buffer;
 	uint8_t *buffer_pos;
 	struct err_handler *empty_handler;
@@ -209,7 +209,7 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 		}
 		close(sockets[1]);
 		close(errs[1]);
-		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=/etc/ssl/ucollect.pem,compress=auto,cipher=TLSv1:!MEDIUM:!LOW:!aNULL,", uplink->remote_name, uplink->service);
+		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=%s,compress=auto,cipher=TLSv1:!MEDIUM:!LOW:!aNULL,", uplink->remote_name, uplink->service, uplink->cert);
 		execlp("socat", "socat", "STDIO", remote, (char *) NULL);
 		die("Exec should never exit but it did: %s\n", strerror(errno));
 	}
@@ -601,10 +601,11 @@ struct uplink *uplink_create(struct loop *loop) {
 	return result;
 }
 
-void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, const char *login, const char *password) {
+void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, const char *login, const char *password, const char *cert) {
 	bool same =
 		uplink->remote_name && strcmp(uplink->remote_name, remote_name) == 0 &&
 		uplink->service && strcmp(uplink->service, service) == 0 &&
+		uplink->cert && strcmp(uplink->cert, cert) == 0 &&
 		(uplink->login == login || (uplink->login && strcmp(uplink->login, login) == 0)) &&
 		(uplink->password == password || (uplink->password && strcmp(uplink->password, password)) == 0);
 	// Set the new remote endpoint
@@ -612,6 +613,7 @@ void uplink_configure(struct uplink *uplink, const char *remote_name, const char
 	uplink->service = service;
 	uplink->login = login;
 	uplink->password = password;
+	uplink->cert = cert;
 	// If it is the same, we don't need to reconnect (but we need to store the new pointers, the old might die soon)
 	if (same) {
 		ulog(LLOG_DEBUG, "Not changing remote uplink as it is the same\n");

@@ -330,7 +330,7 @@ struct loop_configurator {
 	struct mem_pool *config_pool;
 	struct pcap_list pcap_interfaces;
 	struct plugin_list plugins;
-	const char *remote_name, *remote_service, *login, *password;
+	const char *remote_name, *remote_service, *login, *password, *cert;
 };
 
 // Handle one packet.
@@ -1067,7 +1067,7 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	}
 	// Change the uplink config or copy it
 	if (configurator->remote_name)
-		uplink_configure(loop->uplink, configurator->remote_name, configurator->remote_service, configurator->login, configurator->password);
+		uplink_configure(loop->uplink, configurator->remote_name, configurator->remote_service, configurator->login, configurator->password, configurator->cert);
 	else
 		uplink_realloc_config(loop->uplink, configurator->config_pool);
 	// Destroy the old configuration and merge the new one
@@ -1094,11 +1094,12 @@ void loop_plugin_reinit(struct context *context) {
 	longjmp(jump_env, 1);
 }
 
-void loop_uplink_configure(struct loop_configurator *configurator, const char *remote, const char *service, const char *login, const char *password) {
+void loop_uplink_configure(struct loop_configurator *configurator, const char *remote, const char *service, const char *login, const char *password, const char *cert) {
 	configurator->remote_name = mem_pool_strdup(configurator->config_pool, remote);
 	configurator->remote_service = mem_pool_strdup(configurator->config_pool, service);
 	configurator->login = login ? mem_pool_strdup(configurator->config_pool, login) : NULL;
 	configurator->password = password ? mem_pool_strdup(configurator->config_pool, password) : NULL;
+	configurator->cert = cert ? mem_pool_strdup(configurator->config_pool, cert) : NULL;
 }
 
 uint64_t loop_now(struct loop *loop) {

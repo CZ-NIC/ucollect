@@ -42,7 +42,7 @@ struct uplink *uplink_create(struct loop *loop) __attribute__((malloc)) __attrib
  * The remote_name and service must be allocated so it lasts until destroy or next configure.
  * It is not copied.
  */
-void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, const char *login, const char *password) __attribute__((nonnull));
+void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, const char *login, const char *password, const char *cert);
 // Move configuration to the provided pool (so the old may be reset)
 void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) __attribute__((nonnull));
 /*
