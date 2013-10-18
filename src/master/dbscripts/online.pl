@@ -10,9 +10,7 @@ my $green = color 'bold green';
 my $red = color 'bold red';
 my $blue = color 'bold blue';
 my $reset = color 'reset';
-my ($online, $offline) = (0, 0);
 
-print "${blue}ID\t\t\tStatus\tAct.\tTime\t\t\t\tNote$reset\n";
 my $stmt = $dbh->prepare(<<'ENDSQL');
 SELECT
 	aggregate.name,
@@ -42,26 +40,32 @@ ORDER BY
 	aggregate.tag ASC,
 	aggregate.devel_note ASC;
 ENDSQL
-$stmt->execute;
-my $now = time;
-my $stuck = $now - 3600;
-while (my ($name, $note, $tag, $last, $activity) = $stmt->fetchrow_array) {
-	my $status = (defined $activity && $activity ne 'logout') ? "${green}online" : "${red}offline";
-	$last //= '-';
-	$activity //= '-';
-	my $time = str2time($last // '0');
-	if ($time <= $stuck) {
-		$status = "${red}stuck" unless $status eq "${red}offline";
-		$activity = "$red$activity";
+while (1) {
+	my ($online, $offline) = (0, 0);
+	$stmt->execute;
+	print "${blue}ID\t\t\tStatus\tAct.\tTime\t\t\t\tNote$reset\n";
+	my $now = time;
+	my $stuck = $now - 3600;
+	while (my ($name, $note, $tag, $last, $activity) = $stmt->fetchrow_array) {
+		my $status = (defined $activity && $activity ne 'logout') ? "${green}online" : "${red}offline";
+		$last //= '-';
+		$activity //= '-';
+		my $time = str2time($last // '0');
+		if ($time <= $stuck) {
+			$status = "${red}stuck" unless $status eq "${red}offline";
+			$activity = "$red$activity";
+		}
+		if ($status eq "${green}online") {
+			$online ++;
+		} else {
+			$offline ++;
+		}
+		printf "%-16s\t%s$reset\t%s\t%-30s$reset\t%s\n", $name, $status, $activity, $last, $note;
 	}
-	if ($status eq "${green}online") {
-		$online ++;
-	} else {
-		$offline ++;
-	}
-	printf "%-16s\t%s$reset\t%s\t%-30s$reset\t%s\n", $name, $status, $activity, $last, $note;
+	print "${green}Online:\t\t\t$online\n${red}Offline:\t\t$offline$reset\n";
+
+	$dbh->rollback;
+	last if ($ARGV[0] ne '-f');
+	sleep 3;
+	print "\033[2J";
 }
-
-$dbh->rollback;
-
-print "${green}Online:\t\t\t$online\n${red}Offline:\t\t$offline$reset\n";
