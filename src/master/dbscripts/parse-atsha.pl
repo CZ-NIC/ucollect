@@ -18,7 +18,8 @@ for my $input (@input) {
 	my $id = join '', @data[17..18];
 	$id =~ s/[: ]//g;
 	$id = lc($id);
-	print "INSERT INTO clients (name, passwd, mechanism, slot_id, tag, devel_note) VALUES('$id', '$data[$slot]', 'A', $slot, '$tag', '$name');\n";
+	my $data = $data[$slot + 1];
+	print "INSERT INTO clients (name, passwd, mechanism, slot_id, tag, devel_note) VALUES('$id', '$keys[$slot]', 'A', $slot, '$tag', '$name');\n";
 	print "INSERT INTO groups (name) VALUES('bb$start');\n";
 	print "INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE clients.name = '$id' AND groups.name = 'all';\n";
 	print "INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE clients.name = '$id' AND groups.name = 'blackbox';\n";
