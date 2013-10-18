@@ -11,7 +11,7 @@ my $red = color 'bold red';
 my $blue = color 'bold blue';
 my $reset = color 'reset';
 
-print "${blue}ID\t\t\tStatus\tAct.\tTime\t\t\tNote$reset\n";
+print "${blue}ID\t\t\tStatus\tAct.\tTime\t\t\t\tNote$reset\n";
 my $stmt = $dbh->prepare(<<'ENDSQL');
 SELECT
 	aggregate.name,
