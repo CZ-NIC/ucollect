@@ -10,6 +10,7 @@ my $green = color 'bold green';
 my $red = color 'bold red';
 my $blue = color 'bold blue';
 my $reset = color 'reset';
+my ($online, $offline) = (0, 0);
 
 print "${blue}ID\t\t\tStatus\tAct.\tTime\t\t\t\tNote$reset\n";
 my $stmt = $dbh->prepare(<<'ENDSQL');
@@ -53,7 +54,14 @@ while (my ($name, $note, $tag, $last, $activity) = $stmt->fetchrow_array) {
 		$status = "${red}stuck" unless $status eq "${red}offline";
 		$activity = "$red$activity";
 	}
+	if ($status eq "${green}online") {
+		$online ++;
+	} else {
+		$offline ++;
+	}
 	printf "%-16s\t%s$reset\t%s\t%-30s$reset\t%s\n", $name, $status, $activity, $last, $note;
 }
 
 $dbh->rollback;
+
+print "${green}Online:\t\t\t$online\n${red}Offline:\t\t$offline$reset\n";
