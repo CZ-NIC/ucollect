@@ -19,7 +19,6 @@
 
 from twisted.internet.task import LoopingCall
 from twisted.internet import reactor, threads
-from twisted.python.failure import Failure
 import time
 import struct
 import socket
@@ -197,10 +196,11 @@ class BucketsPlugin(plugin.Plugin):
 
 		def group_done(group_result):
 			self.__dec_background()
-			if group_result is Failure:
+			try:
+				(examine, strengths) = group_result
+			except Exception:
 				logger.error("Error processing group %s on %s: %s", group_name, criterion.code(), group_result.value);
 				return
-			(examine, strengths) = group_result
 
 			if examine and generation:
 				logger.debug('Asking for keys %s on criterion %s and group %s at %s', examine, criterion.code(), group_name, generation)
