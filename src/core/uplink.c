@@ -274,6 +274,10 @@ static void buffer_reset(struct uplink *uplink) {
 }
 
 static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect) {
+	if (uplink->reconnect_scheduled && reset_reconnect) {
+		loop_timeout_cancel(uplink->loop, uplink->reconnect_id);
+		uplink->reconnect_scheduled = false;
+	}
 	if (uplink->fd != -1) {
 		ulog(LLOG_DEBUG, "Closing uplink connection %d to %s:%s\n", uplink->fd, uplink->remote_name, uplink->service);
 		loop_uplink_disconnected(uplink->loop);
@@ -285,10 +289,6 @@ static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect) {
 		if (uplink->ping_scheduled)
 			loop_timeout_cancel(uplink->loop, uplink->ping_timeout);
 		uplink->ping_scheduled = false;
-		if (uplink->reconnect_scheduled && reset_reconnect) {
-			loop_timeout_cancel(uplink->loop, uplink->reconnect_id);
-			uplink->reconnect_scheduled = false;
-		}
 		uplink->addr_len = 0;
 	} else
 		ulog(LLOG_DEBUG, "Uplink connection to %s:%s not open\n", uplink->remote_name, uplink->service);
