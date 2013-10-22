@@ -160,10 +160,15 @@ def distance_one(bucket_params, reference_params):
 	# First get a matrix of the reference parameters:
 	# | var(shape),		covar(sh,sc) |
 	# | covar(sh, sc),	var(scale)   |
-	m = [
-		[ reference_params[1].shape(), reference_params[2] ],
-		[ reference_params[2], reference_params[1].scale() ]
-	]
+	try:
+		m = [
+			[ reference_params[1].shape(), reference_params[2] ],
+			[ reference_params[2], reference_params[1].scale() ]
+		]
+	except IndexError:
+		# OK, some of the reference params are invalid. Rare thing, but it can
+		# happen. So, just return 0 instead
+		return 0
 	# Compute inverse of m (using determinant)
 	det = m[0][0] * m[1][1] - m[1][0] * m[0][1]
 	if not det:
