@@ -116,7 +116,7 @@ static void err_read(void *data, uint32_t unused) {
 	(void) unused;
 	struct err_handler *handler = data;
 	if (handler->fd == -1) {
-		ulog(LLOG_DEBUG, "Received stray read on socat error socket\n");
+		ulog(LLOG_WARN, "Received stray read on socat error socket\n");
 		uplink_disconnect(handler->uplink, true);
 		connect_fail(handler->uplink);
 		return;
