@@ -18,6 +18,7 @@
 #
 
 from twisted.internet.task import LoopingCall
+from twisted.internet import reactor
 import twisted.internet.protocol
 import twisted.protocols.basic
 import random
@@ -86,13 +87,22 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		for i in range(0, challenge_len / 8):
 			self.__challenge += chr(sysrand.getrandbits(8))
 		self.sendString('C' + self.__challenge)
+		self.__connected = True
+		reactor.callLater(60, self.__check_logged)
 
 	def connectionLost(self, reason):
+		self.__connected = False
 		if self.__logged_in:
 			logger.info("Connection lost from %s", self.cid())
 			self.__pinger.stop()
 			self.__plugins.unregister_client(self)
 			activity.log_activity(self.cid(), "logout")
+
+	def __check_logged(self):
+		if not self.__logged_in:
+			logger.warn("Client %s didn't log in 60 seconds, dropping", self.cid())
+			self.transport.abortConnection()
+			self.__connected = False
 
 	def stringReceived(self, string):
 		(msg, params) = (string[0], string[1:])
