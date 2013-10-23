@@ -118,9 +118,10 @@ class Plugins:
 		"""
 		When a client disconnects.
 		"""
-		for p in self.__plugins.values():
-			p.client_disconnected(client)
-		del self.__clients[client.cid()]
+		if not client.cid in self.__clients:
+			for p in self.__plugins.values():
+				p.client_disconnected(client)
+			del self.__clients[client.cid()]
 
 	def broadcast(self, message):
 		"""

@@ -19,6 +19,7 @@
 
 from twisted.internet.task import LoopingCall
 from twisted.internet import reactor, threads
+from twisted.python.failure import Failure
 import time
 import struct
 import socket
