@@ -110,6 +110,12 @@ class Plugins:
 		"""
 		When a client connects.
 		"""
+		if client.cid() in self.__clients:
+			# Currently connected. Close the connection and unregister.
+			# Pass the client in the dict, not the new one.
+			old = self.__clients[client.cid()]
+			self.unregister_client(old)
+			old.transport.abortConnection()
 		self.__clients[client.cid()] = client
 		for p in self.__plugins.values():
 			p.client_connected(client)
@@ -118,7 +124,8 @@ class Plugins:
 		"""
 		When a client disconnects.
 		"""
-		if not client.cid in self.__clients:
+		if not client.cid() in self.__clients and client == self.__clients[client.cid()]:
+			# If the client is not there, or if the client is some newer version, don't remove it.
 			for p in self.__plugins.values():
 				p.client_disconnected(client)
 			del self.__clients[client.cid()]
