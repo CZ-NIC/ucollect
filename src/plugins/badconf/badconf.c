@@ -18,15 +18,42 @@
 */
 
 #include "../../core/plugin.h"
+#include "../../core/packet.h"
+#include "../../core/context.h"
+#include "../../core/loop.h"
+#include "../../core/mem_pool.h"
+#include "../../core/util.h"
+
+// Warn at most every 15 minutes
+#define WARN_TIMEOUT 15 * 60 * 1000
 
 enum warn_type {
 	W_PPPOE,
+	W_LAYER,
+	W_DIRECTION,
 	W_MAX
 };
 
 static uint64_t warn_times[W_MAX];
 
+#define WARN(WTYPE, ...) do {\
+	uint64_t now = loop_now(context->loop); \
+	if (now - WARN_TIMEOUT > warn_times[WTYPE]) { \
+		warn_times[WTYPE] = now; \
+		const char *message = mem_pool_printf(context->temp_pool, __VA_ARGS__); \
+		ulog(LLOG_WARN, "Possible misconfiguration on interface %s: %s\n", info->interface, message); \
+	} \
+} while (0)
+
 static void packet_handle(struct context *context, const struct packet_info *info) {
+	for (; info; info = info->next) {
+		if (info->layer == '?')
+			WARN(W_LAYER, "packet on unknown layer %d", info->layer_raw);
+		if (info->direction >= DIR_UNKNOWN)
+			WARN(W_DIRECTION, "packet of unknown direction");
+		if (info->app_protocol == 'P')
+			WARN(W_PPPOE, "a PPPoE packet seen");
+	}
 }
 
 #ifdef STATIC
