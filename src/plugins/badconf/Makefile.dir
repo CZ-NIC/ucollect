@@ -1,0 +1,2 @@
+LIBRARIES += src/plugins/badconf/libplugin_badconf
+libplugin_badconf_MODULES := badconf

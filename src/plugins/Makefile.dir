@@ -1,1 +1,1 @@
-include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,count buckets crash)
+include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,count buckets crash badconf)
