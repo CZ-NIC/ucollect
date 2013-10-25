@@ -74,6 +74,9 @@ static void packet_handle_internal(struct context *context, const struct packet_
 			break;
 		default:;// Ignore others (and silence warning)
 	}
+	if (info->layer != 'I')
+		// Not an IP packet. Don't try to interpret it as so.
+		return;
 	switch (info->ip_protocol) {
 		case 4:
 			update(d, V4, size);

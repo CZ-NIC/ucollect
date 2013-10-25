@@ -412,6 +412,8 @@ static void packet(struct context *context, const struct packet_info *packet) {
 	// Get the real packet, if it is in some tunnel
 	while (packet->next)
 		packet = packet->next;
+	if (packet->layer != 'I')
+		return; // Not an IP packet. Ignore.
 	// Into which timeslot does the packet belong?
 	size_t slot = (loop_now(context->loop) - u->timeslot_start) / u->time_granularity;
 	if (slot < u->biggest_timeslot)
