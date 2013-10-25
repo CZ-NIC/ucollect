@@ -80,8 +80,11 @@ struct packet_info {
 	 * The layer of the packet:
 	 * - 'E': Ethernet.
 	 * - 'I': IP layer.
+	 * - '?': Some other layer (unknown).
 	 */
 	char layer;
+	// The raw value of the datalink of the layer.
+	int layer_raw;
 	// As in iphdr, 6 for IPv6, 4 for IPv4. Others may be present.
 	unsigned char ip_protocol;
 	/*

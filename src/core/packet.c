@@ -261,6 +261,7 @@ static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
 }
 
 void uc_parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalink) {
+	packet->layer_raw = datalink;
 	switch (datalink) {
 		case DLT_EN10MB: // Ethernet II
 			packet->layer = 'E';
@@ -272,7 +273,7 @@ void uc_parse_packet(struct packet_info *packet, struct mem_pool *pool, int data
 			postprocess(packet);
 			break;
 		default:
-			ulog(LLOG_WARN, "Packet on unknown layer %d\n", datalink);
-			// We should be called with zeroed-out packet, except for the basic values. Leave that be.
+			packet->layer = '?';
+			break;
 	}
 }
