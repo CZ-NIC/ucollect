@@ -237,6 +237,9 @@ static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
 			// Parse the IP part
 			uc_parse_packet(next, pool, DLT_RAW);
 			break;
+		case 0x08035: // Reverse ARP
+			packet->app_protocol = 'a';
+			break;
 		case 0x0806: // ARP
 			packet->app_protocol = 'A';
 			break;
@@ -249,6 +252,10 @@ static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
 			break;
 		case 0x888E: // EAP (authentication)
 			packet->app_protocol = 'E';
+			break;
+		case 0x8863: // PPPoE (all kinds of messages)
+		case 0x8864:
+			packet->app_protocol = 'P';
 			break;
 	}
 }

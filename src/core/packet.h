@@ -100,9 +100,12 @@ struct packet_info {
 	 * These are on the ethernet layer:
 	 * - 'I': An IP packet is below.
 	 * - 'A': ARP.
+	 * - 'R': Reverse ARP.
 	 * - 'W': Wake On Lan
 	 * - 'X': IPX
 	 * - 'E': EAP
+	 * - 'P': PPPoE
+	 * - '?': Unrecognized
 	 * Beware that we may add more known protocols in future.
 	 */
 	char app_protocol;
