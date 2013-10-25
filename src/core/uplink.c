@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <openssl/sha.h>
 #include <atsha204.h>
+#include <time.h>
 
 #ifdef SOFT_LOGIN
 static const uint8_t *compute_response_soft(const uint8_t *challenge, size_t clen, const char *password, struct mem_pool *pool) {
@@ -116,9 +117,20 @@ static void err_read(void *data, uint32_t unused) {
 	(void) unused;
 	struct err_handler *handler = data;
 	if (handler->fd == -1) {
+		/*
+		 * This is some kind of strange race condition. Unfortunately,
+		 * it could lead to producing a large amount of error messages
+		 * here, spamming the log. It usually gets fixed soon by itself.
+		 * So we just sleep a little while to give it time. This is a
+		 * hack, but no idea how to solve that :-(.
+		 */
 		ulog(LLOG_WARN, "Received stray read on socat error socket\n");
 		uplink_disconnect(handler->uplink, true);
 		connect_fail(handler->uplink);
+		nanosleep(&(struct timespec) {
+			.tv_sec = STRAY_READ_SLEEP / 1000,
+			.tv_nsec = 1000000 * (STRAY_READ_SLEEP % 1000)
+		}, NULL);
 		return;
 	}
 #define bufsize 1024

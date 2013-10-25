@@ -61,4 +61,7 @@
 // Minimum time between connection attempts
 #define RECONN_TIME 1000
 
+// Time to sleep when we receive the stray read (milliseconds)
+#define STRAY_READ_SLEEP 500
+
 #endif
