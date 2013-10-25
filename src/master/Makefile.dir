@@ -1,3 +1,4 @@
+ifndef NO_MASTER
 SCRIPTS += src/master/collectmaster
 DOCS += src/master/collectmaster
 LIBRARIES += src/master/atsha204
@@ -15,3 +16,4 @@ endif
 
 clean-master:
 	rm -f $(wildcard $(S)/src/master/*.pyc $(S)/src/master/*/*.pyc)
+endif
