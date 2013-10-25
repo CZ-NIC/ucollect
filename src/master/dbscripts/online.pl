@@ -93,6 +93,6 @@ while (1) {
 
 	$dbh->rollback;
 	last if ($ARGV[0] ne '-f');
-	sleep 3;
+	sleep 15;
 	print "\033[2J";
 }
