@@ -203,7 +203,7 @@ static void parse_type(struct packet_info *packet, struct mem_pool *pool, const 
 	data += 2;
 	// Prepare the packet below
 	struct packet_info *next = mem_pool_alloc(pool, sizeof *packet->next);
-	packet->next = next;
+	packet->next = NULL; // No packet yet, it might be something else than IP.
 	(*next) = (struct packet_info) {
 		.data = data,
 		.length = packet->length - skipped,
@@ -221,6 +221,8 @@ static void parse_type(struct packet_info *packet, struct mem_pool *pool, const 
 			packet->app_protocol = 'I';
 			// Parse the IP part
 			uc_parse_packet(next, pool, DLT_RAW);
+			// Put the packet in.
+			packet->next = next;
 			break;
 		case 0x08035: // Reverse ARP
 			packet->app_protocol = 'a';
