@@ -322,6 +322,7 @@ struct loop {
 	volatile sig_atomic_t reconfigure_full; // De-initialize first.
 	struct context *reinitialize_plugin; // Please reinitialize this plugin on return from jump
 	bool retry_reconfigure_on_failure;
+	bool fd_invalidated; // Did we invalidate any FD during this loop iteration? If so, skip the rest.
 };
 
 // Some stuff for yet uncommited configuration
@@ -565,6 +566,7 @@ void loop_run(struct loop *loop) {
 		}
 		int ready = epoll_pwait(loop->epoll_fd, events, MAX_EVENTS, wait_time, &original_mask);
 		loop_get_now(loop);
+		loop->fd_invalidated = false;
 		if (loop->reconfigure) { // We are asked to reconfigure
 			jump_ready = 0;
 			loop->reconfigure = 0;
@@ -608,6 +610,8 @@ void loop_run(struct loop *loop) {
 			ulog(LLOG_WARN, "epoll_wait on %d returned 0 events and 0 timeouts\n", loop->epoll_fd);
 		} else if (!timeouts_called) { // In case some timeouts happened, get new events. The timeouts could have manipulated existing file descriptors and what we have might be invalid.
 			for (size_t i = 0; i < (size_t) ready; i ++) {
+				if (loop->fd_invalidated)
+					break; // We invalidated a FD. There's a risk it would be one in the batch, which is wrong to call. Get fresh events instead.
 				/*
 				 * We have the event. Now, the data has the pointer to the handler
 				 * as the first element. Therefore, we can cast it to the handler.
@@ -875,6 +879,12 @@ void loop_register_fd(struct loop *loop, int fd, struct epoll_handler *handler) 
 	};
 	if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_ADD, fd, &event) == -1)
 		die("Can't register fd %d to epoll fd %d (%s)\n", fd, loop->epoll_fd, strerror(errno));
+}
+
+void loop_unregister_fd(struct loop *loop, int fd) {
+	if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_DEL, fd, NULL) == -1)
+		die("Couldn't remove fd %d from epoll %d (%s)\n", fd, loop->epoll_fd, strerror(errno));
+	loop->fd_invalidated = true;
 }
 
 struct mem_pool *loop_pool_create(struct loop *loop, struct context *context, const char *name) {

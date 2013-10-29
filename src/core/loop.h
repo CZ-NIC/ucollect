@@ -99,6 +99,14 @@ void loop_uplink_disconnected(struct loop *loop) __attribute__((nonnull));
 
 // Register a file descriptor for reading & closing events. Removed on close.
 void loop_register_fd(struct loop *loop, int fd, struct epoll_handler *handler) __attribute__((nonnull));
+/*
+ * Remove the FD from epoll.
+ *
+ * This is a good idea to do so, even when epoll removes closed ones by itself.
+ * It may happen the file descriptor would be still called, due to various reasons.
+ * After this, the handler won't get falled for this file descriptor any more.
+ */
+void loop_unregister_fd(struct loop *loop, int fd) __attribute__((nonnull));
 
 /*
  * Create a new memory pool.
