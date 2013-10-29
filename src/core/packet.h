@@ -80,6 +80,7 @@ struct packet_info {
 	 * The layer of the packet:
 	 * - 'E': Ethernet.
 	 * - 'I': IP layer.
+	 * - 'S': Linux SLL.
 	 * - '?': Some other layer (unknown).
 	 */
 	char layer;
@@ -100,7 +101,7 @@ struct packet_info {
 	 * This is set only with ip_protocol == 4 || 6, otherwise it is
 	 * zero.
 	 *
-	 * These are on the ethernet layer:
+	 * These are on the ethernet and SLL layer:
 	 * - 'I': An IP packet is below.
 	 * - 'A': ARP.
 	 * - 'R': Reverse ARP.

@@ -187,22 +187,7 @@ static void postprocess(struct packet_info *packet) {
 		packet->tcp_flags = 0;
 }
 
-static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
-	const unsigned char *data = packet->data;
-	if (packet->length < 14)
-		return;
-	/*
-	 * The ethernet frame defines that we should have the peramble and
-	 * start of frame delimiter. But these are probably on the wire only,
-	 * as it seems the 8 bytes are not in the data we got. Similarly, the
-	 * frame check sequence/CRC is not present in the data.
-	 */
-	// Point out the addresses
-	packet->addresses[END_DST] = data;
-	data += 6;
-	packet->addresses[END_SRC] = data;
-	data += 6;
-	packet->addr_len = 6;
+static void parse_type(struct packet_info *packet, struct mem_pool *pool, const unsigned char *data) {
 	uint16_t type = ntohs(*(uint16_t *) data);
 	// VLAN tagging
 	if (type == 0x8100) // IEEE 802.1q
@@ -260,10 +245,49 @@ static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
 	}
 }
 
+static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
+	const unsigned char *data = packet->data;
+	if (packet->length < 14)
+		return;
+	/*
+	 * The ethernet frame defines that we should have the peramble and
+	 * start of frame delimiter. But these are probably on the wire only,
+	 * as it seems the 8 bytes are not in the data we got. Similarly, the
+	 * frame check sequence/CRC is not present in the data.
+	 */
+	// Point out the addresses
+	packet->addresses[END_DST] = data;
+	data += 6;
+	packet->addresses[END_SRC] = data;
+	data += 6;
+	packet->addr_len = 6;
+	parse_type(packet, pool, data);
+}
+
+/*
+ * The linux cooked capture. Slightly different than ethernet, but not that much.
+ */
+static void parse_cooked(struct packet_info *packet, struct mem_pool *pool) {
+	const unsigned char *data = packet->data;
+	if (packet->length < 16)
+		return;
+	//uint16_t ptype = ntohs(*(uint16_t *) data);
+	data += 2;
+	//uint16_t atype = ntohs(*(uint16_t *) data);
+	data += 2;
+	packet->addr_len = ntohs(*(uint16_t *) data);
+	data += 2;
+	packet->addresses[END_DST] = NULL;
+	packet->addresses[END_SRC] = data;
+	data += 8;
+	parse_type(packet, pool, data);
+}
+
 void uc_parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalink) {
 	packet->layer_raw = datalink;
 	switch (datalink) {
 		case DLT_EN10MB: // Ethernet II
+		case DLT_IEEE802: // The same format, but different signalling which we're not interested in.
 			packet->layer = 'E';
 			parse_ethernet(packet, pool);
 			break;
@@ -272,6 +296,9 @@ void uc_parse_packet(struct packet_info *packet, struct mem_pool *pool, int data
 			parse_internal(packet, pool);
 			postprocess(packet);
 			break;
+		case DLT_LINUX_SLL: // Linux cooked capture
+			packet->layer = 'S';
+			parse_cooked(packet, pool);
 		default:
 			packet->layer = '?';
 			break;
