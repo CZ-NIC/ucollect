@@ -606,7 +606,7 @@ void loop_run(struct loop *loop) {
 		} else if (!ready && !timeouts_called) {
 			// This is strange. We wait for 1 event idefinitelly and get 0
 			ulog(LLOG_WARN, "epoll_wait on %d returned 0 events and 0 timeouts\n", loop->epoll_fd);
-		} else {
+		} else if (!timeouts_called) { // In case some timeouts happened, get new events. The timeouts could have manipulated existing file descriptors and what we have might be invalid.
 			for (size_t i = 0; i < (size_t) ready; i ++) {
 				/*
 				 * We have the event. Now, the data has the pointer to the handler
