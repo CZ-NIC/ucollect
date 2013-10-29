@@ -567,11 +567,12 @@ void loop_run(struct loop *loop) {
 		loop_get_now(loop);
 		if (loop->reconfigure) { // We are asked to reconfigure
 			jump_ready = 0;
-			loop->reconfigure = false;
+			loop->reconfigure = 0;
 			ulog(LLOG_INFO, "Reconfiguring\n");
 			if (loop->reconfigure_full)
 				// Wipe out current configuration, so we start clean
 				loop_config_commit(loop_config_start(loop));
+			loop->reconfigure_full = 0;
 			if (load_config(loop))
 				loop->retry_reconfigure_on_failure = false;
 			else {
