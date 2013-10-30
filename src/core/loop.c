@@ -636,8 +636,11 @@ static void pcap_destroy(struct pcap_interface *interface) {
 	ulog(LLOG_INFO, "Closing both PCAPs on %s\n", interface->name);
 	if (interface->watchdog_initialized)
 		loop_timeout_cancel(interface->loop, interface->watchdog_timer);
-	for (size_t i = 0; i < 2; i ++)
+	for (size_t i = 0; i < 2; i ++) {
+		int fd = pcap_get_selectable_fd(interface->directions[i].pcap);
+		loop_unregister_fd(interface->loop, fd);
 		pcap_close(interface->directions[i].pcap);
+	}
 }
 
 void loop_destroy(struct loop *loop) {
