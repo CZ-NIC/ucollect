@@ -145,6 +145,7 @@ static void err_read(void *data, uint32_t unused) {
 				// Fall through to close
 			}
 		case 0:
+			loop_unregister_fd(handler->uplink->loop, handler->fd);
 			close(handler->fd);
 			handler->fd = -1;
 			handler->next = handler->uplink->empty_handler;
@@ -293,6 +294,7 @@ static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect) {
 	if (uplink->fd != -1) {
 		ulog(LLOG_DEBUG, "Closing uplink connection %d to %s:%s\n", uplink->fd, uplink->remote_name, uplink->service);
 		loop_uplink_disconnected(uplink->loop);
+		loop_unregister_fd(uplink->loop, uplink->fd);
 		int result = close(uplink->fd);
 		if (result != 0)
 			ulog(LLOG_ERROR, "Couldn't close uplink connection to %s:%s, leaking file descriptor %d (%s)\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
