@@ -26,6 +26,9 @@
 #include "../../core/loop.h"
 
 #include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 #include <assert.h>
 #include <string.h>
 #include <endian.h>
@@ -110,11 +113,25 @@ static void packet_handle_internal(struct context *context, const struct packet_
 	if (remote != END_COUNT) {
 		if (info->ports[remote] <= 1024 && info->ports[remote] != 0)
 			update(d, LOW_PORT, size);
-		const uint8_t *address = uplink_address(context->uplink);
-		size_t addr_len = uplink_addr_len(context->uplink);
-		// Communication with the server. Hardcoded for now. Exclude ssh (at least for current development)
-		if (info->addr_len == addr_len && memcmp(address, info->addresses[remote], addr_len) == 0 && info->ports[remote] != 22)
-			update(d, SERVER, size);
+		for (struct addrinfo *addr = uplink_addrinfo(context->uplink); addr; addr = addr->ai_next) {
+			size_t size = 0;
+			void *pos = NULL;
+			switch (addr->ai_family) {
+				case AF_INET:
+					size = 4;
+					pos = &((struct sockaddr_in *) addr->ai_addr)->sin_addr;
+					break;
+				case AF_INET6:
+					size = 16;
+					pos = &((struct sockaddr_in6 *) addr->ai_addr)->sin6_addr;
+					break;
+			}
+			if (pos && size == info->addr_len && memcmp(pos, info->addresses[remote], size) == 0 && info->ports[remote] != 22) {
+				// One of the addresses matched.
+				update(d, SERVER, size);
+				break; // Count it at most once, even if the address would be there more than once.
+			}
+		}
 	}
 }
 
