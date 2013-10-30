@@ -5,7 +5,7 @@ use File::Path;
 
 # FIXME: Get rid of the --no-check-certificate (#Depends on #2703)
 
-my ($pass_file, $url, $tag, @plugins) = @ARGV;
+my ($pass_file, $url, $list, $tag, @plugins) = @ARGV;
 
 sub parse($) {
 	my ($hexes) = @_;
@@ -24,7 +24,7 @@ $passwd =~ s/0x//g;
 my @passwd = parse $passwd;
 
 # Get versions of packages
-open my $packages, '-|', 'wget', '--no-check-certificate', "$url/lists/generic", '-O', '-' or die "Couldn't download package list: $!\n";
+open my $packages, '-|', 'wget', '--no-check-certificate', "$url/lists/list", '-O', '-' or die "Couldn't download package list: $!\n";
 my @packages = <$packages>;
 close $packages or die "Error downloading package list: $!\n";
 
