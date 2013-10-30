@@ -89,6 +89,7 @@ struct uplink {
 	struct loop *loop;
 	struct mem_pool *buffer_pool;
 	const char *remote_name, *service, *login, *password, *cert;
+	struct addrinfo *addrinfo;
 	const uint8_t *buffer;
 	uint8_t *buffer_pos;
 	struct err_handler *empty_handler;
@@ -112,6 +113,26 @@ struct uplink {
 
 static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect);
 static void connect_fail(struct uplink *uplink);
+
+static void update_addrinfo(struct uplink *uplink) {
+	if (uplink->addrinfo) {
+		freeaddrinfo(uplink->addrinfo);
+		uplink->addrinfo = NULL;
+	}
+	if (!uplink->remote_name || !uplink->service)
+		return; // No info to run through.
+	int result = getaddrinfo(uplink->remote_name, uplink->service, &(struct addrinfo) {
+		.ai_family = AF_UNSPEC,
+		.ai_socktype = 0,
+		.ai_protocol = 0,
+		.ai_flags = AI_ALL | AI_V4MAPPED
+	}, &uplink->addrinfo);
+	if (result) {
+		ulog(LLOG_ERROR, "Failed to resolve uplink %s:%s: %s\n", uplink->remote_name, uplink->service, gai_strerror(result));
+		freeaddrinfo(uplink->addrinfo);
+		uplink->addrinfo = NULL;
+	}
+}
 
 static void err_read(void *data, uint32_t unused) {
 	(void) unused;
@@ -254,6 +275,7 @@ static void uplink_connect(struct uplink *uplink) {
 	uplink->ping_timeout = loop_timeout_add(uplink->loop, PING_TIMEOUT, NULL, uplink, send_ping);
 	uplink->ping_scheduled = true;
 	loop_register_fd(uplink->loop, uplink->fd, (struct epoll_handler *) uplink);
+	update_addrinfo(uplink);
 }
 
 static void reconnect_now(struct context *unused, void *data, size_t id_unused) {
@@ -642,6 +664,7 @@ void uplink_configure(struct uplink *uplink, const char *remote_name, const char
 		uplink->reconnect_scheduled = true;
 	}
 	uplink_disconnect(uplink, false);
+	update_addrinfo(uplink);
 }
 
 void uplink_destroy(struct uplink *uplink) {
@@ -724,4 +747,8 @@ const uint8_t *uplink_address(struct uplink *uplink) {
 
 size_t uplink_addr_len(struct uplink *uplink) {
 	return uplink->addr_len;
+}
+
+struct addrinfo *uplink_addrinfo(struct uplink *uplink) {
+	return uplink->addrinfo;
 }

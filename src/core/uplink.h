@@ -84,4 +84,8 @@ const uint8_t *uplink_address(struct uplink *uplink) __attribute__((nonnull));
 // Get the length of address returned by uplink_address. 0 if not connected.
 size_t uplink_addr_len(struct uplink *uplink) __attribute__((nonnull));
 
+// Get the addresses of uplink, to check the values against packets. It should include all available addresses.
+struct addrinfo;
+struct addrinfo *uplink_addrinfo(struct uplink *uplink) __attribute__((nonnull));
+
 #endif
