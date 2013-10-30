@@ -738,17 +738,6 @@ void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) {
 		uplink->password = mem_pool_strdup(pool, uplink->password);
 }
 
-const uint8_t *uplink_address(struct uplink *uplink) {
-	if (uplink->addr_len)
-		return uplink->address;
-	else
-		return NULL;
-}
-
-size_t uplink_addr_len(struct uplink *uplink) {
-	return uplink->addr_len;
-}
-
 struct addrinfo *uplink_addrinfo(struct uplink *uplink) {
 	return uplink->addrinfo;
 }
