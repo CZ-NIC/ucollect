@@ -645,15 +645,15 @@ static void pcap_destroy(struct pcap_interface *interface) {
 
 void loop_destroy(struct loop *loop) {
 	ulog(LLOG_INFO, "Releasing the main loop\n");
-	// Close the epoll
-	int result = close(loop->epoll_fd);
-	assert(result == 0);
 	// Close all PCAPs
 	for (struct pcap_interface *interface = loop->pcap_interfaces.head; interface; interface = interface->next)
 		pcap_destroy(interface);
 	// Remove all the plugins.
 	for (struct plugin_holder *plugin = loop->plugins.head; plugin; plugin = plugin->next)
 		plugin_destroy(plugin, false);
+	// Close the epoll
+	int result = close(loop->epoll_fd);
+	assert(result == 0);
 	pool_list_destroy(&loop->pool_list);
 	// This mempool must be destroyed last, as the loop is allocated from it
 	mem_pool_destroy(loop->permanent_pool);
