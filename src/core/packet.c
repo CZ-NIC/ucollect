@@ -301,6 +301,7 @@ void uc_parse_packet(struct packet_info *packet, struct mem_pool *pool, int data
 		case DLT_LINUX_SLL: // Linux cooked capture
 			packet->layer = 'S';
 			parse_cooked(packet, pool);
+			break;
 		default:
 			packet->layer = '?';
 			break;
