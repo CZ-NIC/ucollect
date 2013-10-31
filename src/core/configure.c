@@ -55,7 +55,7 @@ static bool load_uplink(struct loop_configurator *configurator, struct uci_secti
 	const char *name = uci_lookup_option_string(ctx, section, "name");
 	const char *service = uci_lookup_option_string(ctx, section, "service");
 	const char *cert = uci_lookup_option_string(ctx, section, "cert");
-#ifdef SOFt_LOGIN
+#ifdef SOFT_LOGIN
 	const char *login = uci_lookup_option_string(ctx, section, "login");
 	const char *password = uci_lookup_option_string(ctx, section, "password");
 	if (!name || !service || !login || !password || !cert) {

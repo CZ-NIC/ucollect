@@ -450,7 +450,7 @@ static void handle_buffer(struct uplink *uplink) {
 				if (command == 'C' && uplink->auth_status == NOT_STARTED) {
 					ulog(LLOG_DEBUG, "Sending login info\n");
 					// We received the challenge. Compute the response.
-					const uint8_t *response = compute_response(uplink->buffer, uplink->buffer_size, uplink->password, temp_pool);
+					const uint8_t *response = compute_response_soft(uplink->buffer, uplink->buffer_size, uplink->password, temp_pool);
 					gen_random(uplink->server_login, CHALLENGE_LEN);
 					/*
 					 * Compose the message. There are 1 char and 3 strings in there ‒ the version used (currently hardcoded
@@ -470,7 +470,7 @@ static void handle_buffer(struct uplink *uplink) {
 				} else if (command == 'L' && uplink->auth_status == SENT) {
 					ulog(LLOG_DEBUG, "Received server login info\n");
 					// We got the server response. Compute our own version and check they are the same.
-					const uint8_t *response = compute_response(uplink->server_login, CHALLENGE_LEN, uplink->password, temp_pool);
+					const uint8_t *response = compute_response_soft(uplink->server_login, CHALLENGE_LEN, uplink->password, temp_pool);
 					if (uplink->buffer_size == CHALLENGE_LEN && memcmp(uplink->buffer, response, CHALLENGE_LEN) == 0) {
 						ulog(LLOG_DEBUG, "Server authenticated\n");
 						// OK, Login complete. Send hello and tell the rest of the program we're connected.

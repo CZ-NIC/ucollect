@@ -3,6 +3,9 @@ ifdef LOGIN_PASSWD_HALF
 else
 	CFLAGS_ALL += -DPASSWD_HALF='{0}'
 endif
+ifdef SOFT_LOGIN
+	CFLAGS_ALL += -DSOFT_LOGIN=1
+endif
 
 include $(S)/build/Makefile.top
 
