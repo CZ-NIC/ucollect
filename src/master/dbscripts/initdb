@@ -2,7 +2,7 @@
 
 . ./dbconfig
 
-psql -U "$DBADMIN" -d "$DB" <<'ENDSQL'
+psql -U "$DBADMIN" -d "$DB" <<ENDSQL
 BEGIN;
 
 DROP TABLE IF EXISTS capture_stats;
@@ -135,6 +135,32 @@ INSERT INTO count_types (name, description, ord) VALUES
 	('ACK', 'TCP packets with ACK flag set.', 13),
 	('PUSH', 'TCP packets with the PUSH flag set.', 14),
 	('SERVER', 'Communication with the server', 15);
+
+GRANT SELECT (id, passwd, mechanism, builtin_passwd, slot_id, name) ON clients to $DBUPDATER;
+GRANT SELECT ON activity_types TO $DBUPDATER;
+GRANT INSERT ON activities TO $DBUPDATER;
+GRANT SELECT ON groups TO $DBUPDATER;
+GRANT SELECT ON group_members TO $DBUPDATER;
+GRANT SELECT ON anomaly_types TO $DBUPDATER;
+GRANT INSERT ON anomalies TO $DBUPDATER;
+GRANT SELECT ON count_types TO $DBUPDATER;
+GRANT INSERT ON count_snapshots TO $DBUPDATER;
+GRANT SELECT ON count_snapshots TO $DBUPDATER;
+GRANT SELECT ON SEQUENCE count_snapshots_id TO $DBUPDATER;
+GRANT UPDATE ON SEQUENCE count_snapshots_id TO $DBUPDATER;
+GRANT INSERT ON counts TO $DBUPDATER;
+GRANT INSERT ON capture_stats TO $DBUPDATER;
+
+GRANT SELECT (tag) ON clients TO $DBJENKINS;
+GRANT UPDATE (builtin_passwd) ON clients TO $DBJENKINS;
+
+GRANT SELECT (timestamp) ON activities TO $DBCLEANER;
+GRANT SELECT (timestamp) ON anomalies TO $DBCLEANER;
+GRANT SELECT (timestamp) ON count_snapshots TO $DBCLEANER;
+GRANT DELETE ON activities to $DBCLEANER;
+GRANT DELETE ON anomalies TO $DBCLEANER;
+GRANT DELETE ON count_snapshots TO $DBCLEANER;
+
 COMMIT;
 ENDSQL
 

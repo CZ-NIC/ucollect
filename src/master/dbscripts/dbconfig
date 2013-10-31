@@ -1,9 +1,13 @@
 # The user for reading things from the database
-DBREAD=ucollect
+DBREAD=read
 # User allowed to do anything (eg. creating tables, etc).
 DBADMIN=ucollect
 # User used for removing old things from database
-DBCLEANER=ucollect
+DBCLEANER=cleaner
+# User for updating from ucollect
+DBUPDATER=updater
+# User for jenkins ‒ updates the passwords
+DBJENKINS=jenkins
 
 # Name of the database
 DB=ucollect
