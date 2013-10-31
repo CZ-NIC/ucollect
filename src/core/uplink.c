@@ -122,16 +122,24 @@ static void update_addrinfo(struct uplink *uplink) {
 	if (!uplink->remote_name || !uplink->service)
 		return; // No info to run through.
 	int result = getaddrinfo(uplink->remote_name, uplink->service, &(struct addrinfo) {
-		.ai_family = AF_UNSPEC,
-		.ai_socktype = 0,
-		.ai_protocol = 0,
-		.ai_flags = AI_ALL | AI_V4MAPPED
+		.ai_family = AF_UNSPEC
 	}, &uplink->addrinfo);
 	if (result) {
 		ulog(LLOG_ERROR, "Failed to resolve uplink %s:%s: %s\n", uplink->remote_name, uplink->service, gai_strerror(result));
 		freeaddrinfo(uplink->addrinfo);
 		uplink->addrinfo = NULL;
 	}
+	bool seen_v4 = false, seen_v6 = false;
+	for (struct addrinfo *info = uplink->addrinfo; info; info = info->ai_next) {
+		if (info->ai_family == AF_INET)
+			seen_v4 = true;
+		else if (info->ai_family == AF_INET6)
+			seen_v6 = true;
+	}
+	if (!seen_v4)
+		ulog(LLOG_WARN, "Didn't get any V4 address in resolution of %s\n", uplink->remote_name);
+	if (!seen_v6)
+		ulog(LLOG_WARN, "Didn't get any V6 address in resolution of %s\n", uplink->remote_name);
 }
 
 static void err_read(void *data, uint32_t unused) {
