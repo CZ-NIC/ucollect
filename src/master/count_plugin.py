@@ -114,7 +114,7 @@ class CountPlugin(plugin.Plugin):
 	def message_from_client(self, message, client):
 		count = len(message) / 4 - 2 # 2 for the timestamp
 		data = struct.unpack('!Q' + str(count) + 'L', message)
-		if (data[0] < self.__last):
+		if data[0] < self.__last:
 			logger.info("Data snapshot on %s too old, ignoring (%s vs. %s)", client, data[0], self.__last)
 			return
 		if_count = data[1]
@@ -124,3 +124,11 @@ class CountPlugin(plugin.Plugin):
 		if len(self.__data[client]) % 2:
 			logger.error("Odd count of data elements (%s) from %s", len(self.__data[client]), client)
 		activity.log_activity(client, "counts")
+
+	def client_connected(self, client):
+		"""
+		A client connected. Ask for the current counts. It will get ignored (because it'll have time of
+		0 probably, or something old anyway), but it resets the client, so we'll get the counts for the
+		current snapshot.
+		"""
+		self.send(struct.pack('!Q', int(time.time())), client.cid())
