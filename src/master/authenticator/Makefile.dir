@@ -1,0 +1,19 @@
+ifndef NO_MASTER
+SCRIPTS += src/master/authenticator/authenticator
+#DOCS += src/master/authenticator/authenticator
+LIBRARIES += src/master/authenticator/atsha204
+
+authenticator_SOURCE = authenticator.py
+
+atsha204_MODULES := atsha204
+atsha204_SO_LIBS := crypto ssl unbound atsha204
+
+ifneq (,$(findstring ^$(RESTRICT),^src/master))
+clean: clean-authenticator
+endif
+
+.PHONY: clean-authenticator
+
+clean-authenticator:
+	rm -f $(wildcard $(S)/src/master/authenticator/*.pyc)
+endif

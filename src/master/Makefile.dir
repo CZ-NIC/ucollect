@@ -1,12 +1,8 @@
 ifndef NO_MASTER
 SCRIPTS += src/master/collectmaster
 DOCS += src/master/collectmaster
-LIBRARIES += src/master/atsha204
 
 collectmaster_SOURCE = collect-master.py
-
-atsha204_MODULES := atsha204
-atsha204_SO_LIBS := crypto ssl unbound atsha204
 
 ifneq (,$(findstring ^$(RESTRICT),^src/master))
 clean: clean-master
@@ -16,4 +12,8 @@ endif
 
 clean-master:
 	rm -f $(wildcard $(S)/src/master/*.pyc $(S)/src/master/*/*.pyc)
+
+include $(S)/src/master/authenticator/Makefile.dir
+
 endif
+
