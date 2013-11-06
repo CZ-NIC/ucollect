@@ -68,6 +68,8 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__logged_in = False
 		self.__authenticated = False
 		self.__cid = None
+		self.__auth_buffer = []
+		self.__wait_auth = False
 
 	def __ping(self):
 		"""
@@ -98,12 +100,15 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			activity.log_activity(self.cid(), "logout")
 
 	def __check_logged(self):
-		if self.__connect and not self.__logged_in:
+		if self.__connected and not self.__logged_in:
 			logger.warn("Client %s didn't log in 60 seconds, dropping", self.cid())
 			self.transport.abortConnection()
 			self.__connected = False
 
 	def stringReceived(self, string):
+		if self.__wait_auth:
+			self.__auth_buffer.append(string)
+			return
 		(msg, params) = (string[0], string[1:])
 		logger.trace("Received from %s: %s", self.cid(), repr(string))
 		if not self.__logged_in:
@@ -127,29 +132,23 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 					login_failure('Protocol violation')
 					return
 				log_info = None
-				# Get the password from DB
-				with database.transaction() as t:
-					t.execute('SELECT passwd, mechanism, builtin_passwd, slot_id FROM clients WHERE name = %s', (self.__cid,))
-					log_info = t.fetchone()
-					if not log_info:
-						login_failure('Unknown user')
-						return
-				if version != log_info[1]:
-					login_failure("Mechanism doesn't match")
-					return
-				if version == 'O':
-					if len(log_info[0]) != 64 or len(log_info[2]) != 32: # 32, but it's in hexa there
-						login_failure('Database corruption?')
-						return
-				else:
+				if version != 'O':
 					login_failure('Login scheme not implemented')
 					return
-				# Check his hash
-				correct = compute_response(version, cid, self.__challenge, log_info[0], log_info[3], log_info[2])
-				if not correct or correct != response:
-					login_failure('Incorrect password')
-					return
-				self.__authenticated = True
+				# A callback once we receive decision if the client is allowed
+				def auth_finished(allowed):
+					self.__wait_auth = False
+					if allowed:
+						self.__authenticated = True
+						# Replay the bufferend messages
+						for message in self.__auth_buffer:
+							self.stringReceived(message)
+					else:
+						login_failure('Incorrect password')
+					self.__auth_buffer = None
+				# Ask the authenticator
+				auth.auth(auth_finished, self.__cid, self.__challenge.encode('hex'), response.encode('hex'))
+				self.__wait_auth = True
 			elif msg == 'H':
 				if self.__authenticated:
 					self.__logged_in = True

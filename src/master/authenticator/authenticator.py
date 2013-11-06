@@ -51,7 +51,7 @@ class AuthClient(basic.LineReceiver):
 			log_info = cursor.fetchone()
 			db.rollback()
 			if log_info:
-				if mode == 'half':
+				if mode.lower() == 'half':
 					challenge = log_info[2] + challenge
 				# TODO: Other mechanisms, for debug.
 				if len(challenge) != 64 or len(client) != 16 or len(log_info[0]) != 64:
@@ -69,7 +69,7 @@ class AuthClient(basic.LineReceiver):
 				print "No user"
 				self.sendLine('NO')
 		else:
-			print "Parse error"
+			print "Parse error: " + line
 			self.sendLine('Parse error')
 
 factory = protocol.ServerFactory()
