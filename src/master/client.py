@@ -27,6 +27,7 @@ from protocol import extract_string
 import logging
 import database
 import activity
+import auth
 import atsha204
 
 logger = logging.getLogger(name='client')
