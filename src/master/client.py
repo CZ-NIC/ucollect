@@ -47,9 +47,7 @@ def compute_response(version, login, challenge, password, slot, local_passwd):
 	"""
 	if not challenge:
 		return None
-	if version == 'S':
-		return hashlib.sha256(password + challenge + password).digest()
-	elif version == 'A':
+	elif version == 'O':
 		full_c = local_passwd.decode('hex') + challenge
 		return atsha204.hmac(slot, login, password.decode('hex'), full_c)
 	else:
@@ -121,9 +119,8 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				(version, params) = (params[0], params[1:])
 				(cid, params) = extract_string(params)
 				(response, params) = extract_string(params)
-				(challenge, params) = extract_string(params)
 				self.__cid = cid
-				if version == 'A':
+				if version == 'O':
 					self.__cid = self.__cid.encode('hex')
 				if params != '':
 					login_failure('Protocol violation')
@@ -139,21 +136,19 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				if version != log_info[1]:
 					login_failure("Mechanism doesn't match")
 					return
-				if version == 'A':
-					if len(challenge) != 16:
-						login_failure('Wrong challenge length')
-						return
+				if version == 'O':
 					if len(log_info[0]) != 64 or len(log_info[2]) != 32: # 32, but it's in hexa there
 						login_failure('Database corruption?')
 						return
+				else:
+					login_failure('Login scheme not implemented')
+					return
 				# Check his hash
 				correct = compute_response(version, cid, self.__challenge, log_info[0], log_info[3], log_info[2])
 				if not correct or correct != response:
 					login_failure('Incorrect password')
 					return
 				self.__authenticated = True
-				# Send our hash
-				self.sendString('L' + compute_response(version, cid, challenge, log_info[0], log_info[3], log_info[2]))
 			elif msg == 'H':
 				if self.__authenticated:
 					self.__logged_in = True
