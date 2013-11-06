@@ -97,7 +97,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			activity.log_activity(self.cid(), "logout")
 
 	def __check_logged(self):
-		if not self.__logged_in:
+		if self.__connect and not self.__logged_in:
 			logger.warn("Client %s didn't log in 60 seconds, dropping", self.cid())
 			self.transport.abortConnection()
 			self.__connected = False

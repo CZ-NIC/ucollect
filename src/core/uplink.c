@@ -415,6 +415,9 @@ static void handle_buffer(struct uplink *uplink) {
 					case 'p': // Pong. Reset the number of unanswered pings, we got some answer, the link works
 						  uplink->pings_unanswered = 0;
 						  break;
+					case 'F':
+						  ulog(LLOG_ERROR, "Server rejected our authentication\n");
+						  break;
 					default:
 						  ulog(LLOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
 						  break;
@@ -464,9 +467,7 @@ static void handle_buffer(struct uplink *uplink) {
 					uplink->auth_status = AUTHENTICATED;
 					uplink_send_message(uplink, 'H', NULL, 0);
 					loop_uplink_connected(uplink->loop);
-				} else if (command == 'F')
-					ulog(LLOG_ERROR, "Server rejected our authentication\n");
-				else
+				} else
 					// This is an insult, and we won't talk to the other side any more!
 					ulog(LLOG_ERROR, "Protocol violation at login\n");
 			}
