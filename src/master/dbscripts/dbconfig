@@ -8,6 +8,8 @@ DBCLEANER=cleaner
 DBUPDATER=updater
 # User for jenkins ‒ updates the passwords
 DBJENKINS=jenkins
+# Authenticator that has access to the keys
+DBAUTHENTICATOR=authenticator
 
 # Name of the database
 DB=ucollect

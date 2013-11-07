@@ -136,7 +136,7 @@ INSERT INTO count_types (name, description, ord) VALUES
 	('PUSH', 'TCP packets with the PUSH flag set.', 14),
 	('SERVER', 'Communication with the server', 15);
 
-GRANT SELECT (id, passwd, mechanism, builtin_passwd, slot_id, name) ON clients to $DBUPDATER;
+GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
 GRANT INSERT ON activities TO $DBUPDATER;
 GRANT SELECT ON groups TO $DBUPDATER;
@@ -150,6 +150,8 @@ GRANT SELECT ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT UPDATE ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT INSERT ON counts TO $DBUPDATER;
 GRANT INSERT ON capture_stats TO $DBUPDATER;
+
+GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
 GRANT SELECT (tag) ON clients TO $DBJENKINS;
 GRANT UPDATE (builtin_passwd) ON clients TO $DBJENKINS;
