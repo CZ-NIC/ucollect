@@ -28,31 +28,10 @@ import logging
 import database
 import activity
 import auth
-import atsha204
 
 logger = logging.getLogger(name='client')
 sysrand = random.SystemRandom()
 challenge_len = 128 # 128 bits of random should be enough for log-in to protect against replay attacks
-
-def compute_response(version, login, challenge, password, slot, local_passwd):
-	"""
-	Compute hash response for the challenge.
-	- version: The version of hash to use.
-	  * S: Software.
-	    (No more versions implemented now)
-	  * A: Atsha204
-	- challenge: The original challenge
-	- password: The shared secret
-
-	Returns None if something failed. Make sure you check for it.
-	"""
-	if not challenge:
-		return None
-	elif version == 'O':
-		full_c = local_passwd.decode('hex') + challenge
-		return atsha204.hmac(slot, login, password.decode('hex'), full_c)
-	else:
-		return None
 
 class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 	"""
