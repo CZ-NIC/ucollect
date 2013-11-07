@@ -21,6 +21,7 @@ from twisted.internet import reactor
 from twisted.protocols.basic import LineReceiver
 from twisted.internet.protocol import ClientFactory
 import logging
+import master_config
 
 logger = logging.getLogger(name='auth')
 
@@ -104,7 +105,7 @@ class Factory(ClientFactory):
 		else:
 			if not connecting:
 				connecting = True
-				reactor.connectTCP('localhost', 8888, self)
+				reactor.connectTCP(master_config.get('authenticator_host'), master_config.getint('authenticator_port'), self)
 			self.__queue.append((line, cback))
 
 factory = Factory()
