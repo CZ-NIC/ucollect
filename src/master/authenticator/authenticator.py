@@ -74,5 +74,5 @@ class AuthClient(basic.LineReceiver):
 
 factory = protocol.ServerFactory()
 factory.protocol = AuthClient
-reactor.listenTCP(8888, factory)
+reactor.listenTCP(config_data.getint('main', 'port'), factory)
 reactor.run()
