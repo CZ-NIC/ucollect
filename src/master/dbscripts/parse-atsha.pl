@@ -15,6 +15,7 @@ for my $input (@input) {
 	my @data = split /\n/, $input;
 	my $name = $data[0];
 	my @keys = @data[1..16];
+	s/\s//g for @keys;
 	my $id = join '', @data[17..18];
 	$id =~ s/[: ]//g;
 	$id = lc($id);
