@@ -5,7 +5,7 @@ use Data::Dumper;
 $/ = "\n\n";
 my @input = <STDIN>;
 
-my $slot = 8;
+my $slot = 0;
 my $tag = 'blackbox';
 my $start = 3;
 
