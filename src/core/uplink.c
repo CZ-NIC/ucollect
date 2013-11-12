@@ -425,6 +425,15 @@ static void handle_buffer(struct uplink *uplink) {
 			} else {
 				if (command == 'C' && uplink->auth_status == NOT_STARTED) {
 					ulog(LLOG_DEBUG, "Sending login info\n");
+					// Prepare data
+#define HALF_SIZE 16
+					atsha_big_int server_challenge, client_response;
+					uint8_t local_half[HALF_SIZE] = PASSWD_HALF;
+					loop_xor_plugins(uplink->loop, local_half);
+					assert(HALF_SIZE + uplink->buffer_size == sizeof(server_challenge.data));
+					server_challenge.bytes = HALF_SIZE + uplink->buffer_size;
+					memcpy(server_challenge.data, local_half, HALF_SIZE);
+					memcpy(server_challenge.data + HALF_SIZE, uplink->buffer, uplink->buffer_size);
 					// Get the chip handle
 					atsha_set_log_callback(atsha_log_callback);
 					struct atsha_handle *cryptochip = atsha_open();
@@ -436,18 +445,12 @@ static void handle_buffer(struct uplink *uplink) {
 					if (result != ATSHA_ERR_OK)
 						die("Don't known my own name: %s\n", atsha_error_name(result));
 
-#define HALF_SIZE 16
 					// Compute response to the server challenge
-					atsha_big_int server_challenge, client_response;
-					uint8_t local_half[HALF_SIZE] = PASSWD_HALF;
-					loop_xor_plugins(uplink->loop, local_half);
-					assert(HALF_SIZE + uplink->buffer_size == sizeof(server_challenge.data));
-					server_challenge.bytes = HALF_SIZE + uplink->buffer_size;
-					memcpy(server_challenge.data, local_half, HALF_SIZE);
-					memcpy(server_challenge.data + HALF_SIZE, uplink->buffer, uplink->buffer_size);
 					result = atsha_challenge_response(cryptochip, server_challenge, &client_response);
 					if (result != ATSHA_ERR_OK)
 						die("Can't answer challenge: %s\n", atsha_error_name(result));
+					// Close the chip (and unlock)
+					atsha_close(cryptochip);
 
 					// Send all computed stuff
 					size_t len = 1 + 2*sizeof(uint32_t) + serial.bytes + client_response.bytes;
