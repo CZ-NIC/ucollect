@@ -22,6 +22,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <syslog.h>
+#include <sys/types.h>
+#include <signal.h>
+#include <unistd.h>
 
 void die(const char *format, ...) {
 	va_list args;
@@ -33,7 +36,15 @@ void die(const char *format, ...) {
 	vsyslog(LOG_MAKEPRI(LOG_DAEMON, LOG_CRIT), format, copy);
 	va_end(copy);
 	va_end(args);
+	// Make sure die means really die, no signal handler for this now.
+	// No checking the sigaction here. We would have no way to handle that
+	// anyway.
+	sigaction(SIGABRT, &(struct sigaction) {
+		.sa_handler = SIG_DFL
+	}, NULL);
 	abort();
+	// Last resort
+	kill(getpid(), SIGKILL);
 }
 
 static const char *names[] = {
