@@ -44,6 +44,10 @@ class AuthClient(basic.LineReceiver):
 		self.delimiter = "\n"
 
 	def lineReceived(self, line):
+		if line == "QUIT":
+			self.transport.loseConnection()
+			print "Asked to terminate"
+			return
 		match = auth.match(line)
 		if match:
 			mode, client, challenge, response = match.groups()
