@@ -2,7 +2,7 @@
 
 . ./dbconfig
 
-psql -U "$DBADMIN" -d "$DB" <<ENDSQL
+psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
 DROP TABLE IF EXISTS capture_stats;
@@ -168,7 +168,7 @@ ENDSQL
 
 if [ "$1" = "debug" ] ; then
 	# Provide some debug data (clients for now)
-	psql -U "$DBADMIN" -d "$DB" <<'ENDSQL'
+	psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<'ENDSQL'
 BEGIN;
 INSERT INTO clients (name, passwd, mechanism) VALUES ('ruth', '123456', 'S'), ('dragonfly', '78910', 'S'), ('spider', 'web', 'S');
 

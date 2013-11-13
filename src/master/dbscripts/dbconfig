@@ -1,3 +1,4 @@
+DBPARAMS=
 # The user for reading things from the database
 DBREAD=read
 # User allowed to do anything (eg. creating tables, etc).
@@ -16,3 +17,4 @@ DB=ucollect
 
 # Purge items older than this many days
 CLEAN_DAYS=14
+
