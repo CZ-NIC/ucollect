@@ -51,7 +51,7 @@ class AuthClient(basic.LineReceiver):
 		match = auth.match(line)
 		if match:
 			mode, client, challenge, response = match.groups()
-			cursor.execute('SELECT passwd, mechanism, builtin_passwd, slot_id FROM clients WHERE name = %s', (client,))
+			cursor.execute('SELECT passwd, mechanism, builtin_passwd, slot_id FROM clients WHERE name = %s', (client.lower(),))
 			log_info = cursor.fetchone()
 			db.rollback()
 			if log_info:
