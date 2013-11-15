@@ -12,4 +12,4 @@ TABLES='activities anomalies count_snapshots'
 		echo "DELETE FROM $TABLE WHERE timestamp < DATE(NOW()) - $CLEAN_DAYS;"
 	done
 	echo 'COMMIT;'
-) | psql -U "$DBCLEANER" -d "$DB"
+) | psql -U "$DBCLEANER" -d "$DB" $DBPARAMS
