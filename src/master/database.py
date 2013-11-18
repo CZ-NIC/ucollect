@@ -66,7 +66,7 @@ def transaction(reuse=True):
 	"""
 	global __cache
 	if 'connection' not in __cache.__dict__:
-		__cache.connection = pgdb.connect(database=get('db'), user=get('dbuser'), password=get('dbpasswd'))
+		__cache.connection = pgdb.connect(database=get('db'), user=get('dbuser'), password=get('dbpasswd'), host=get('dbhost'))
 		logger.debug("Initializing connection to DB")
 
 	if reuse:
