@@ -132,7 +132,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				if self.__authenticated:
 					self.__logged_in = True
 					self.__pinger = LoopingCall(self.__ping)
-					self.__pinger.start(30, False)
+					self.__pinger.start(120, False)
 					self.__plugins.register_client(self)
 					activity.log_activity(self.cid(), "login")
 					logger.info('Client %s logged in', self.cid())
