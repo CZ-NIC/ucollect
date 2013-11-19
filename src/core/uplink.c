@@ -225,7 +225,7 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 		}
 		close(sockets[1]);
 		close(errs[1]);
-		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=%s,compress=auto,cipher=TLSv1:!MEDIUM:!LOW:!aNULL,", uplink->remote_name, uplink->service, uplink->cert);
+		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=%s,cipher=HIGH:!MEDIUM:!LOW:!aNULL,compress=auto,method=TLS", uplink->remote_name, uplink->service, uplink->cert);
 		execlp("socat", "socat", "STDIO", remote, (char *) NULL);
 		die("Exec should never exit but it did: %s\n", strerror(errno));
 	}
