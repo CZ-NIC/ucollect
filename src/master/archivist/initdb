@@ -1,0 +1,96 @@
+#!/bin/sh
+
+psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
+BEGIN;
+
+DROP TABLE IF EXISTS anomalies;
+DROP TABLE IF EXISTS anomaly_types;
+DROP TABLE IF EXISTS counts;
+DROP TABLE IF EXISTS count_snapshots;
+DROP TABLE IF EXISTS count_types;
+DROP TABLE IF EXISTS groups;
+DROP TABLE IF EXISTS last_data;
+
+CREATE TABLE groups (
+	id INT PRIMARY KEY NOT NULL,
+	name TEXT NOT NULL,
+	UNIQUE (name)
+);
+
+CREATE TABLE anomaly_types (
+	code CHAR PRIMARY KEY NOT NULL,
+	description TEXT NOT NULL
+);
+CREATE TABLE anomalies (
+	from_group INT NOT NULL,
+	type CHAR NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	value TEXT NOT NULL,
+	relevance_count SMALLINT NOT NULL,
+	relevance_of SMALLINT NOT NULL,
+	strength REAL DEFAULT 0,
+	FOREIGN KEY (from_group) REFERENCES groups(id),
+	FOREIGN KEY (type) REFERENCES anomaly_types(code),
+	CHECK(relevance_count <= relevance_of)
+);
+CREATE INDEX ON anomalies (from_group, type, timestamp);
+
+CREATE TABLE count_types (
+	name TEXT UNIQUE NOT NULL,
+	description TEXT NOT NULL,
+	ord SMALLINT PRIMARY KEY NOT NULL,
+	UNIQUE (ord)
+);
+CREATE TABLE count_snapshots (
+	id BIGINT PRIMARY KEY NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	from_group INT NOT NULL,
+	FOREIGN KEY (from_group) REFERENCES groups(id),
+	UNIQUE (timestamp, from_group)
+);
+CREATE SEQUENCE count_snapshots_id OWNED BY count_snapshots.id;
+ALTER TABLE count_snapshots ALTER COLUMN id SET DEFAULT NEXTVAL('count_snapshots_id');
+
+CREATE TABLE counts (
+	snapshot BIGINT NOT NULL,
+	type SMALLINT NOT NULL,
+	count_sum BIGINT NOT NULL,
+	count_avg DOUBLE PRECISION NOT NULL,
+	count_var DOUBLE PRECISION NOT NULL,
+	count_min INT NOT NULL,
+	count_max INT NOT NULL,
+	size_sum BIGINT NOT NULL,
+	size_avg DOUBLE PRECISION NOT NULL,
+	size_var DOUBLE PRECISION NOT NULL,
+	size_min INT NOT NULL,
+	size_max INT NOT NULL,
+	FOREIGN KEY (snapshot) REFERENCES count_snapshots(id) ON DELETE CASCADE,
+	FOREIGN KEY (type) REFERENCES count_types(ord),
+	CHECK(count_sum >= 0),
+	CHECK(count_avg >= 0),
+	CHECK(count_min >= 0),
+	CHECK(count_max >= count_min),
+	CHECK(size_sum >= 0),
+	CHECK(size_avg >= 0),
+	CHECK(size_min >= 0),
+	CHECK(size_max >= size_min),
+	UNIQUE (snapshot, type)
+);
+CREATE TABLE last_data (
+	kind TEXT PRIMARY KEY NOT NULL,
+	timestamp TIMESTAMP NOT NULL
+);
+INSERT INTO last_data (kind, timestamp) VALUES ('anomalies', TO_TIMESTAMP(0)), ('counts', TO_TIMESTAMP(0));
+GRANT INSERT ON anomalies TO archivist;
+GRANT INSERT ON anomaly_types TO archivist;
+GRANT SELECT ON anomaly_types TO archivist;
+GRANT INSERT ON counts TO archivist;
+GRANT INSERT ON count_types TO archivist;
+GRANT SELECT ON count_types TO archivist;
+GRANT INSERT ON count_snapshots TO archivist;
+GRANT INSERT ON groups TO archivist;
+GRANT SELECT ON groups TO archivist;
+GRANT SELECT ON last_data TO archivist;
+GRANT UPDATE ON last_data TO archivist;
+COMMIT;
+END_SQL
