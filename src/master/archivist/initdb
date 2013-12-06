@@ -34,6 +34,7 @@ CREATE TABLE anomalies (
 	CHECK(relevance_count <= relevance_of)
 );
 CREATE INDEX ON anomalies (from_group, type, timestamp);
+CREATE INDEX ON anomalies (timestamp);
 
 CREATE TABLE count_types (
 	name TEXT UNIQUE NOT NULL,
@@ -76,12 +77,8 @@ CREATE TABLE counts (
 	CHECK(size_max >= size_min),
 	UNIQUE (snapshot, type)
 );
-CREATE TABLE last_data (
-	kind TEXT PRIMARY KEY NOT NULL,
-	timestamp TIMESTAMP NOT NULL
-);
-INSERT INTO last_data (kind, timestamp) VALUES ('anomalies', TO_TIMESTAMP(0)), ('counts', TO_TIMESTAMP(0));
 GRANT INSERT ON anomalies TO archivist;
+GRANT SELECT (timestamp) ON anomalies TO archivist;
 GRANT INSERT ON anomaly_types TO archivist;
 GRANT SELECT ON anomaly_types TO archivist;
 GRANT INSERT ON counts TO archivist;
@@ -90,7 +87,5 @@ GRANT SELECT ON count_types TO archivist;
 GRANT INSERT ON count_snapshots TO archivist;
 GRANT INSERT ON groups TO archivist;
 GRANT SELECT ON groups TO archivist;
-GRANT SELECT ON last_data TO archivist;
-GRANT UPDATE ON last_data TO archivist;
 COMMIT;
 END_SQL
