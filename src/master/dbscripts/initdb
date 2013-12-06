@@ -167,6 +167,7 @@ GRANT DELETE ON count_snapshots TO $DBCLEANER;
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
 GRANT SELECT ON anomaly_types TO $DBARCHIVIST;
+GRANT SELECT (from_group, type, timestamp, value, value, relevance_count, relevance_of, strength) ON anomalies TO $DBARCHIVIST;
 
 COMMIT;
 ENDSQL
