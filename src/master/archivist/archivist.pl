@@ -52,3 +52,21 @@ while (my($table, $columns) = each %config_tables) {
 		# We don't mind rows in destination but not in source. After all, destination is archive.
 	}
 }
+
+# Migrate anomalies.
+# First, look for the newest one stored. They are stored in batches in transaction some time from each other, so we wont lose anything.
+my ($max_anom) = $destination->selectrow_array('SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM anomalies');
+print "Getting anomalies newer than $max_anom\n";
+# Keep reading and putting it to the other DB
+my $store_anomaly = $destination->prepare('INSERT INTO anomalies (from_group, type, timestamp, value, relevance_count, relevance_of, strength) VALUES (?, ?, ?, ?, ?, ?, ?)');
+my $get_anomalies = $source->prepare('SELECT from_group, type, timestamp, value, relevance_count, relevance_of, strength FROM anomalies WHERE timestamp > ?');
+$get_anomalies->execute($max_anom);
+my $count = 0;
+while (my @row = $get_anomalies->fetchrow_array) {
+	$store_anomaly->execute(@row);
+	$count ++;
+}
+print "Stored $count anomalies\n";
+
+$source->rollback;
+$destination->commit;
