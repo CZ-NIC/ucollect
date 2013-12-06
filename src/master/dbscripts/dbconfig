@@ -11,6 +11,8 @@ DBUPDATER=updater
 DBJENKINS=jenkins
 # Authenticator that has access to the keys
 DBAUTHENTICATOR=authenticator
+# Something that aggregates the data to archives
+DBARCHIVIST=archivist
 
 # Name of the database
 DB=ucollect
