@@ -69,5 +69,51 @@ $store_anomaly->execute_for_fetch(sub {
 });
 print "Stored $count anomalies\n";
 
+# Migrate the counts. We let the source database do the aggregation.
+my ($max_count) = $destination->selectrow_array('SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM count_snapshots');
+print "Getting counts newer than $max_count\n";
+# Select all the counts for snapshots and expand the snapshots.
+# Then join with the groups and generate all pairs count-group for the client it is in the group.
+# Then aggregate over the (type, time, group) and produce that.
+my $get_counts = $source->prepare('
+SELECT
+        timestamp, in_group, type, COUNT(*),
+        SUM(count), AVG(count), stddev(count), MIN(count), MAX(count),
+        SUM(size), AVG(size), stddev(size), MIN(size), MAX(size)
+FROM
+        counts
+JOIN count_snapshots ON counts.snapshot = count_snapshots.id
+JOIN group_members ON count_snapshots.client = group_members.client
+WHERE timestamp > ?
+GROUP BY timestamp, in_group, type
+ORDER BY timestamp, in_group
+');
+$get_counts->execute($max_count);
+my $store_snapshot = $destination->prepare('INSERT INTO count_snapshots (timestamp, from_group) VALUES(?, ?)');
+my $store_count = $destination->prepare('
+INSERT INTO counts (
+        snapshot, type, client_count,
+        count_sum, count_avg, count_dev, count_min, count_max,
+        size_sum, size_avg, size_dev, size_min, size_max
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+');
+my ($last_group, $last_timestamp);
+my $snapshot;
+my ($snap_count, $stat_count) = (0, 0);
+while (my ($timestamp, $in_group, $type, @stats) = $get_counts->fetchrow_array) {
+        my $snap_id = "$timestamp/$in_group";
+        if ($timestamp ne $last_timestamp or $last_group ne $in_group) {
+                $store_snapshot->execute($timestamp, $in_group);
+                $snapshot = $destination->last_insert_id(undef, undef, 'count_snapshots', undef);
+                $snap_count ++;
+                $last_timestamp = $timestamp;
+                $last_group = $in_group;
+        }
+        $store_count->execute($snapshot, $type, @stats);
+        $stat_count ++;
+}
+
+print "Stored $stat_count count statistics in $snap_count snapshots\n";
+
 $source->rollback;
 $destination->commit;
