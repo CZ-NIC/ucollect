@@ -50,23 +50,26 @@ CREATE TABLE count_snapshots (
 	UNIQUE (timestamp, from_group)
 );
 CREATE SEQUENCE count_snapshots_id OWNED BY count_snapshots.id;
+CREATE INDEX ON count_snapshots (timestamp);
 ALTER TABLE count_snapshots ALTER COLUMN id SET DEFAULT NEXTVAL('count_snapshots_id');
 
 CREATE TABLE counts (
 	snapshot BIGINT NOT NULL,
 	type SMALLINT NOT NULL,
+	client_count INT NOT NULL,
 	count_sum BIGINT NOT NULL,
 	count_avg DOUBLE PRECISION NOT NULL,
-	count_var DOUBLE PRECISION NOT NULL,
+	count_dev DOUBLE PRECISION,
 	count_min INT NOT NULL,
 	count_max INT NOT NULL,
 	size_sum BIGINT NOT NULL,
 	size_avg DOUBLE PRECISION NOT NULL,
-	size_var DOUBLE PRECISION NOT NULL,
+	size_dev DOUBLE PRECISION,
 	size_min INT NOT NULL,
 	size_max INT NOT NULL,
 	FOREIGN KEY (snapshot) REFERENCES count_snapshots(id) ON DELETE CASCADE,
 	FOREIGN KEY (type) REFERENCES count_types(ord),
+	CHECK(client_count > 0),
 	CHECK(count_sum >= 0),
 	CHECK(count_avg >= 0),
 	CHECK(count_min >= 0),
@@ -85,7 +88,9 @@ GRANT INSERT ON counts TO archivist;
 GRANT INSERT ON count_types TO archivist;
 GRANT SELECT ON count_types TO archivist;
 GRANT INSERT ON count_snapshots TO archivist;
+GRANT SELECT (timestamp) ON count_snapshots TO archivist;
 GRANT INSERT ON groups TO archivist;
 GRANT SELECT ON groups TO archivist;
+GRANT ALL ON count_snapshots_id TO archivist;
 COMMIT;
 END_SQL
