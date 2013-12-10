@@ -62,10 +62,11 @@ my $store_anomaly = $destination->prepare('INSERT INTO anomalies (from_group, ty
 my $get_anomalies = $source->prepare('SELECT from_group, type, timestamp, value, relevance_count, relevance_of, strength FROM anomalies WHERE timestamp > ?');
 $get_anomalies->execute($max_anom);
 my $count = 0;
-while (my @row = $get_anomalies->fetchrow_array) {
-	$store_anomaly->execute(@row);
-	$count ++;
-}
+$store_anomaly->execute_for_fetch(sub {
+        my $data = $get_anomalies->fetchrow_arrayref;
+        $count ++ if $data;
+        return $data;
+});
 print "Stored $count anomalies\n";
 
 $source->rollback;
