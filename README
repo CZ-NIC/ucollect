@@ -1,0 +1,15 @@
+Ucollect
+========
+
+Ucollect is small daemon for collecting and analyzing network data. It is
+written in C (with some unusual conventions about memory allocation) and
+provides plugins for doing the actuall analyzis.
+
+The repository also contains the server port (in srv/master) and various
+support utilities.
+
+To build, type `make`. You may need to supply some dependencies (guess from
+possible compiler errors).
+
+For further documentation, look into `docs` subdirectory (after you built it)
+or into .txt files scattered in the source tree.
