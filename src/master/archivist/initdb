@@ -8,8 +8,9 @@ DROP TABLE IF EXISTS anomaly_types;
 DROP TABLE IF EXISTS counts;
 DROP TABLE IF EXISTS count_snapshots;
 DROP TABLE IF EXISTS count_types;
+DROP TABLE IF EXISTS firewall_groups;
+DROP TABLE IF EXISTS firewall_packets;
 DROP TABLE IF EXISTS groups;
-DROP TABLE IF EXISTS last_data;
 
 CREATE TABLE groups (
 	id INT PRIMARY KEY NOT NULL,
@@ -80,6 +81,27 @@ CREATE TABLE counts (
 	CHECK(size_max >= size_min),
 	UNIQUE (snapshot, type)
 );
+
+CREATE TABLE firewall_packets (
+	id BIGINT PRIMARY KEY NOT NULL,
+	time TIMESTAMP WITH TIME ZONE NOT NULL,
+	port INTEGER,
+	addr INET NOT NULL,
+	protocol VARCHAR(10),
+	count INTEGER NOT NULL
+	CHECK(port >= 0),
+	CHECK(count >= 0)
+);
+CREATE SEQUENCE firewall_packets_id OWNED BY firewall_packets.id;
+ALTER TABLE firewall_packets ALTER COLUMN id SET DEFAULT NEXTVAL('firewall_packets_id');
+CREATE TABLE firewall_groups (
+	packet BIGINT NOT NULL,
+	for_group INTEGER NOT NULL,
+	FOREIGN KEY (packet) REFERENCES firewall_packets(id) ON DELETE CASCADE,
+	FOREIGN KEY (for_group) REFERENCES groups(id) ON DELETE CASCADE,
+	UNIQUE (packet, for_group)
+);
+
 GRANT INSERT ON anomalies TO archivist;
 GRANT SELECT (timestamp) ON anomalies TO archivist;
 GRANT INSERT ON anomaly_types TO archivist;
@@ -92,5 +114,8 @@ GRANT SELECT (timestamp) ON count_snapshots TO archivist;
 GRANT INSERT ON groups TO archivist;
 GRANT SELECT ON groups TO archivist;
 GRANT ALL ON count_snapshots_id TO archivist;
+GRANT INSERT ON firewall_packets TO archivist;
+GRANT ALL ON firewall_packets_id TO archivist;
+GRANT INSERT ON firewall_groups TO archivist;
 COMMIT;
 END_SQL

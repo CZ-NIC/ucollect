@@ -171,6 +171,9 @@ GRANT SELECT (from_group, type, timestamp, value, value, relevance_count, releva
 GRANT SELECT ON counts TO $DBARCHIVIST;
 GRANT SELECT ON count_snapshots TO $DBARCHIVIST;
 GRANT SELECT ON group_members TO $DBARCHIVIST;
+GRANT SELECT (id, router_id, time, src_port, src_addr, protocol, count, archived) ON router_loggedpacket TO $DBARCHIVIST;
+GRANT UPDATE (archived) ON router_loggedpacket TO $DBARCHIVIST;
+GRANT SELECT (id, client_id) ON router_router TO $DBARCHIVIST;
 
 COMMIT;
 ENDSQL
