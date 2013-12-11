@@ -78,8 +78,8 @@ print "Getting counts newer than $max_count\n";
 my $get_counts = $source->prepare('
 SELECT
         timestamp, in_group, type, COUNT(*),
-        SUM(count), AVG(count), stddev(count), MIN(count), MAX(count),
-        SUM(size), AVG(size), stddev(size), MIN(size), MAX(size)
+        SUM(count), AVG(count), STDDEV(count), MIN(count), MAX(count),
+        SUM(size), AVG(size), STDDEV(size), MIN(size), MAX(size)
 FROM
         counts
 JOIN count_snapshots ON counts.snapshot = count_snapshots.id
