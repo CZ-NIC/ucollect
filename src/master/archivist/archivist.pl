@@ -115,10 +115,8 @@ while (my ($timestamp, $in_group, $type, @stats) = $get_counts->fetchrow_array) 
 
 print "Stored $stat_count count statistics in $snap_count snapshots\n";
 
-# FIXME: This'll need to be updated after #2963 is fixed. We may lose the columns or we may need
-# to determine which column to use based on the direction of the packet.
 my $get_packets = $source->prepare('
-SELECT router_loggedpacket.id, group_members.in_group, router_loggedpacket.time, router_loggedpacket.src_port, router_loggedpacket.src_addr, router_loggedpacket.protocol, router_loggedpacket.count FROM router_loggedpacket
+SELECT router_loggedpacket.id, group_members.in_group, router_loggedpacket.rule_id, router_loggedpacket.time, router_loggedpacket.direction, router_loggedpacket.remote_port, router_loggedpacket.remote_address, router_loggedpacket.local_port, router_loggedpacket.protocol, router_loggedpacket.count FROM router_loggedpacket
 JOIN router_router ON router_loggedpacket.router_id = router_router.id
 JOIN group_members ON router_router.client_id = group_members.client
 WHERE NOT archived
@@ -126,7 +124,7 @@ ORDER BY id
 ');
 print "Getting new firewall packets\n";
 $get_packets->execute;
-my $store_packet = $destination->prepare('INSERT INTO firewall_packets (time, port, addr, protocol, count) VALUES (?, ?, ?, ?, ?)');
+my $store_packet = $destination->prepare('INSERT INTO firewall_packets (rule_id, time, direction, port_rem, addr_rem, port_loc, protocol, count) VALUES (?, ?, ?, ?, ?, ?, ?)');
 my $packet_group = $destination->prepare('INSERT INTO firewall_groups (packet, for_group) VALUES (?, ?)');
 my ($last_id, $id_dest);
 $count = 0;

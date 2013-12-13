@@ -84,13 +84,18 @@ CREATE TABLE counts (
 
 CREATE TABLE firewall_packets (
 	id BIGINT PRIMARY KEY NOT NULL,
+	rule_id INTEGER,
 	time TIMESTAMP WITH TIME ZONE NOT NULL,
-	port INTEGER,
-	addr INET NOT NULL,
+	direction CHAR NOT NULL,
+	port_loc INTEGER,
+	port_rem INTEGER,
+	addr_rem INET NOT NULL,
 	protocol VARCHAR(10),
 	count INTEGER NOT NULL
-	CHECK(port >= 0),
-	CHECK(count >= 0)
+	CHECK(port_loc >= 0),
+	CHECK(port_rem >= 0),
+	CHECK(count >= 0),
+	CHECK(rule_id >= 0)
 );
 CREATE SEQUENCE firewall_packets_id OWNED BY firewall_packets.id;
 ALTER TABLE firewall_packets ALTER COLUMN id SET DEFAULT NEXTVAL('firewall_packets_id');
