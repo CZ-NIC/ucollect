@@ -70,7 +70,7 @@ class AuthClient(basic.LineReceiver):
 					print "Doesn't match"
 					self.sendLine('NO')
 			else:
-				print "No user"
+				print "No user " + client.lower()
 				self.sendLine('NO')
 		else:
 			print "Parse error: " + line
