@@ -332,6 +332,7 @@ struct loop_configurator {
 	struct pcap_list pcap_interfaces;
 	struct plugin_list plugins;
 	const char *remote_name, *remote_service, *login, *password, *cert;
+	bool need_reconnect;
 };
 
 // Handle one packet.
@@ -863,6 +864,7 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	jump_ready = 0;
 	// Store the plugin structure.
 	plugin_insert_after(&configurator->plugins, new, configurator->plugins.tail);
+	configurator->need_reconnect = true;
 	return true;
 }
 
@@ -1061,8 +1063,10 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	 * Take the ones from loop, not configurator.
 	 */
 	LFOR(plugin, plugin, &loop->plugins)
-		if (plugin->mark)
+		if (plugin->mark) {
 			plugin_destroy(plugin, false);
+			configurator->need_reconnect = true;
+		}
 	LFOR(pcap, interface, &loop->pcap_interfaces)
 		if (interface->mark)
 			pcap_destroy(interface);
@@ -1084,6 +1088,8 @@ void loop_config_commit(struct loop_configurator *configurator) {
 		uplink_configure(loop->uplink, configurator->remote_name, configurator->remote_service, configurator->login, configurator->password, configurator->cert);
 	else
 		uplink_realloc_config(loop->uplink, configurator->config_pool);
+	if (configurator->need_reconnect)
+		uplink_reconnect(loop->uplink);
 	// Destroy the old configuration and merge the new one
 	if (loop->config_pool)
 		mem_pool_destroy(configurator->loop->config_pool);

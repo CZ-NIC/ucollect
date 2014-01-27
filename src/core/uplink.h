@@ -45,6 +45,8 @@ struct uplink *uplink_create(struct loop *loop) __attribute__((malloc)) __attrib
 void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, const char *login, const char *password, const char *cert);
 // Move configuration to the provided pool (so the old may be reset)
 void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) __attribute__((nonnull));
+// Disconnect and connect.
+void uplink_reconnect(struct uplink *uplink);
 /*
  * Disconnect and destroy an uplink. It is expected to be called just before the loop
  * is destroyed.

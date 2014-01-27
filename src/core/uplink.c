@@ -562,6 +562,15 @@ struct uplink *uplink_create(struct loop *loop) {
 	return result;
 }
 
+void uplink_reconnect(struct uplink *uplink) {
+	// Reconnect
+	if (!uplink->reconnect_scheduled) {
+		uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
+		uplink->reconnect_scheduled = true;
+	}
+	uplink_disconnect(uplink, false);
+}
+
 void uplink_configure(struct uplink *uplink, const char *remote_name, const char *service, const char *login, const char *password, const char *cert) {
 	bool same =
 		uplink->remote_name && strcmp(uplink->remote_name, remote_name) == 0 &&
@@ -581,12 +590,7 @@ void uplink_configure(struct uplink *uplink, const char *remote_name, const char
 		return;
 	}
 	ulog(LLOG_INFO, "Changing remote uplink address to %s:%s\n", remote_name, service);
-	// Reconnect
-	if (!uplink->reconnect_scheduled) {
-		uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
-		uplink->reconnect_scheduled = true;
-	}
-	uplink_disconnect(uplink, false);
+	uplink_reconnect(uplink);
 	update_addrinfo(uplink);
 }
 
