@@ -55,13 +55,13 @@ class AuthClient(basic.LineReceiver):
 			log_info = cursor.fetchone()
 			db.rollback()
 			if log_info:
-				if log_info[1] == 'Y' # Always answer yes, DEBUG ONLY!
+				if log_info[1] == 'Y': # Always answer yes, DEBUG ONLY!
 					print "Debug YES"
 					self.sendLine('YES')
-				elif log_info[1] == 'N' # Always send no, DEBUG ONLY!
+				elif log_info[1] == 'N': # Always send no, DEBUG ONLY!
 					print "Debug NO"
 					self.sendLine('NO')
-				elif log_info[1] == 'A' # Atsha authentication
+				elif log_info[1] == 'A': # Atsha authentication
 					if mode.lower() == 'half':
 						challenge = log_info[2] + challenge
 					# TODO: Other mechanisms, for debug.
