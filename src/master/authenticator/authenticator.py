@@ -55,19 +55,29 @@ class AuthClient(basic.LineReceiver):
 			log_info = cursor.fetchone()
 			db.rollback()
 			if log_info:
-				if mode.lower() == 'half':
-					challenge = log_info[2] + challenge
-				# TODO: Other mechanisms, for debug.
-				if len(challenge) != 64 or len(client) != 16 or len(log_info[0]) != 64:
-					print "Wrong length"
-					self.sendLine('NO')
-					return
-				expected = atsha204.hmac(log_info[3], client.decode('hex'), log_info[0].decode('hex'), challenge.decode('hex'))
-				if expected == response.decode('hex'):
-					print "Login of " + client
+				if log_info[1] == 'Y' # Always answer yes, DEBUG ONLY!
+					print "Debug YES"
 					self.sendLine('YES')
+				elif log_info[1] == 'N' # Always send no, DEBUG ONLY!
+					print "Debug NO"
+					self.sendLine('NO')
+				elif log_info[1] == 'A' # Atsha authentication
+					if mode.lower() == 'half':
+						challenge = log_info[2] + challenge
+					# TODO: Other mechanisms, for debug.
+					if len(challenge) != 64 or len(client) != 16 or len(log_info[0]) != 64:
+						print "Wrong length"
+						self.sendLine('NO')
+						return
+					expected = atsha204.hmac(log_info[3], client.decode('hex'), log_info[0].decode('hex'), challenge.decode('hex'))
+					if expected == response.decode('hex'):
+						print "Login of " + client
+						self.sendLine('YES')
+					else:
+						print "Doesn't match"
+						self.sendLine('NO')
 				else:
-					print "Doesn't match"
+					print "Bad mechanism " + log_info[1]
 					self.sendLine('NO')
 			else:
 				print "No user " + client.lower()
