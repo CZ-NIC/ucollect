@@ -10,7 +10,7 @@ GetOptions
 	'url=s' => \$url,
 	'default=s' => \$default,
 	'serie=s' => \$serie,
-	'pass-fille=s' => \$pass_file,
+	'pass-file=s' => \$pass_file,
 	"branch=s%" => \%branches,
 	'categories=s' => \$categories,
 	"plugins=s" => \@plugins or die "Bad params";
