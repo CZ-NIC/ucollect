@@ -1,4 +1,4 @@
-#!iusr/bin/perl
+#!/usr/bin/perl
 use common::sense;
 use Digest::SHA;
 use File::Path;
@@ -84,6 +84,6 @@ sub get_hash($) {
 my $hash = get_hash $default;
 my %hashes = map {
 	$_ => get_hash $_
-} keys %branches;
-say "UPDATE clients SET builtin_passwd = '$hash' WHERE name like '$default%'";
-say "UPDATE clients SET builtin_passwd = '$hashes{$branches{$_}}' WHERE name = '$_'" for grep { /^$serie/ } keys %hashes;
+} values %branches;
+say "UPDATE clients SET builtin_passwd = '$hash' WHERE name like '$serie%';";
+say "UPDATE clients SET builtin_passwd = '$hashes{$branches{$categories{$_}}}' WHERE name = '" . lc($_) . "'" for grep { /^$serie/ } keys %categories;
