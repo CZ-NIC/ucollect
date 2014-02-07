@@ -29,8 +29,6 @@ $passwd =~ s/[,{}]//g;
 $passwd =~ s/\s//g;
 $passwd =~ s/0x//g;
 
-my @passwd = parse $passwd;
-
 open my $cfile, '<', $categories or die "Could not read category file '$categories': $!\n";
 my %categories;
 my $current;
@@ -64,6 +62,8 @@ sub get_hash($) {
 		$file =~ s/-/_/;
 		$name => "usr/lib/libplugin_${file}_${version}.so"
 	} @packages;
+
+	my @passwd = parse $passwd;
 
 	for my $plugin (@plugins) {
 		system 'wget', ($packages{$plugin} // next), '-O', 'package.ipk' and die "Couldn't download package $packages{$plugin}\n";
