@@ -86,4 +86,4 @@ my %hashes = map {
 	$_ => get_hash $_
 } values %branches;
 say "UPDATE clients SET builtin_passwd = '$hash' WHERE name like '$serie%';";
-say "UPDATE clients SET builtin_passwd = '$hashes{$branches{$categories{$_}}}' WHERE name = '" . lc($_) . "'" for grep { /^$serie/ } keys %categories;
+say "UPDATE clients SET builtin_passwd = '$hashes{$branches{$categories{$_}}}' WHERE name = '" . lc($_) . "';" for grep { /^$serie/ } keys %categories;
