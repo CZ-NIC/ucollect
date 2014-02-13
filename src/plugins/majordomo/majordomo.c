@@ -25,6 +25,7 @@
 #include <string.h>
 #include <endian.h>
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "../../core/plugin.h"
 #include "../../core/context.h"
@@ -44,6 +45,7 @@ struct key {
 	unsigned char to[16];
 	unsigned char addr_len;
 	char protocol;
+	uint16_t port;
 };
 
 struct value {
@@ -138,17 +140,17 @@ static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_l
 	}
 }
 
-static bool key_equals(struct comm_item *item, unsigned char *from, unsigned char *to, char protocol, unsigned char addr_len) {
-	if (item->key.addr_len == addr_len && item->key.protocol == protocol && memcmp(item->key.from, from, addr_len) == 0 && memcmp(item->key.to, to, addr_len) == 0 ) {
+static bool key_equals(struct comm_item *item, unsigned char *from, unsigned char *to, char protocol, uint16_t port, unsigned char addr_len) {
+	if (item->key.addr_len == addr_len && item->key.protocol == protocol && item->key.port == port && memcmp(item->key.from, from, addr_len) == 0 && memcmp(item->key.to, to, addr_len) == 0 ) {
 		return true;
 	}
 
 	return false;
 }
 
-static struct comm_item *find_item(struct comm_items *comm, unsigned char *from, unsigned char *to, unsigned char protocol,  unsigned char addr_len) {
+static struct comm_item *find_item(struct comm_items *comm, unsigned char *from, unsigned char *to, unsigned char protocol, uint16_t port, unsigned char addr_len) {
 	for (struct comm_item *it = comm->head; it; it = it->next) {
-		if (key_equals(it, from, to, protocol, addr_len)) {
+		if (key_equals(it, from, to, protocol, port, addr_len)) {
 			return it;
 		}
 	}
@@ -174,7 +176,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		return;
 	}
 
-	struct comm_item *item = find_item(d->communication, (unsigned char *) info->addresses[END_SRC], (unsigned char *) info->addresses[END_DST], info->app_protocol, info->addr_len);
+	struct comm_item *item = find_item(d->communication, (unsigned char *) info->addresses[END_SRC], (unsigned char *) info->addresses[END_DST], info->app_protocol, info->ports[END_DST], info->addr_len);
 	if (item == NULL) {
 		if (d->communication->count == LIST_SIZE_LIMIT) {
 			item = d->communication->tail;
@@ -188,13 +190,13 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		//create item
 		item = items_append_pool(d->communication, d->list_pool);
 		//update position
-		//TODO: create it manualy and push to the front... this way isn't efficient
 		items_remove(d->communication, item);
 		items_insert_after(d->communication, item, NULL);
 		//fill item's data
 		memcpy(item->key.from, info->addresses[END_SRC], info->addr_len);
 		memcpy(item->key.to, info->addresses[END_DST], info->addr_len);
 		item->key.protocol = info->app_protocol;
+		item->key.port = info->ports[END_DST];
 		item->key.addr_len = info->addr_len;
 		item->value.packets_count = 1;
 		item->value.packets_size = info->length;
@@ -255,10 +257,10 @@ static void dump(struct context *context) {
 			app_protocol = "UDP";
 		}
 
-		fprintf(dump_file, "%s,%s,%s,%llu,%llu,%llu\n", app_protocol, src_str, dst_str, it->value.packets_count, it->value.packets_size, it->value.data_size);
+		fprintf(dump_file, "%s,%s,%s,%" PRIu16 ",%llu,%llu,%llu\n", app_protocol, src_str, dst_str, it->key.port, it->value.packets_count, it->value.packets_size, it->value.data_size);
 	}
 
-	fprintf(dump_file, "%s,%s,%s,%llu,%llu,%llu\n", "both", "other", "other", d->communication->other.packets_count, d->communication->other.packets_size, d->communication->other.data_size);
+	fprintf(dump_file, "%s,%s,%s,%s,%llu,%llu,%llu\n", "both", "other", "other", "all", d->communication->other.packets_count, d->communication->other.packets_size, d->communication->other.data_size);
 
 	//Cleanup
 	//Reiniti list
