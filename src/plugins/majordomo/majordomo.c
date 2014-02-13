@@ -88,33 +88,6 @@ struct user_data {
 	size_t timeout;
 };
 
-/*
-static void get_string_from_raw_ip(const struct packet_info *info, int endpoint, char *output) {
-	if (info->ip_protocol == 4) {
-		struct in_addr addr;
-
-		memcpy(&addr, info->addresses[endpoint], info->addr_len);
-
-		if (inet_ntop(AF_INET, (void *)&addr, output, INET_ADDRSTRLEN) == NULL) {
-			//OK, any reason why it could failed?
-			strcpy(output, "FAILED");
-			ulog(LLOG_DEBUG_VERBOSE, "MAJORDOMO: conversion failed\n");
-		}
-
-	} else if (info->ip_protocol == 6) {
-		struct in6_addr addr;
-
-		memcpy(&addr, info->addresses[endpoint], info->addr_len);
-
-		if (inet_ntop(AF_INET6, (void *)&addr, output, INET6_ADDRSTRLEN) == NULL) {
-			//OK, any reason why it could failed?
-			strcpy(output, "FAILED");
-			ulog(LLOG_DEBUG_VERBOSE, "MAJORDOMO: conversion failed\n");
-		}
-	}
-}
-*/
-
 static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_len, char *output) {
 	if (addr_len == 4) {
 		struct in_addr addr;
@@ -211,26 +184,6 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		items_remove(d->communication, item);
 		items_insert_after(d->communication, item, NULL);
 	}
-
-/*
-	//IPv6 has longer strings, use them - don't care about few bytes overhead
-	char src_str[INET6_ADDRSTRLEN];
-	char dst_str[INET6_ADDRSTRLEN];
-
-	//Get IP representation of strings
-	get_string_from_raw_ip(info, END_SRC, src_str);
-	get_string_from_raw_ip(info, END_DST, dst_str);
-
-	//Get protocol string
-	char *app_protocol;
-	if (info->app_protocol == 'T') {
-		app_protocol = "TCP";
-	} else if (info->app_protocol == 'U') {
-		app_protocol = "UDP";
-	}
-
-	ulog(LLOG_DEBUG_VERBOSE, "[MAJORDOMO] IPv%d %s packet from %s:%u to %s:%u - packet size = %zu; payload size = %zu\n", info->ip_protocol, app_protocol, src_str, info->ports[END_SRC], dst_str, info->ports[END_DST], info->length, info->length-info->hdr_length);
-*/
 }
 
 static void dump(struct context *context) {
