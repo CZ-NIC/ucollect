@@ -74,7 +74,7 @@ class AuthClient(basic.LineReceiver):
 						print "Login of " + client
 						self.sendLine('YES')
 					else:
-						print "Doesn't match"
+						print "Doesn't match for " + client
 						self.sendLine('NO')
 				else:
 					print "Bad mechanism " + log_info[1]
