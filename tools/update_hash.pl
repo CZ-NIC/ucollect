@@ -72,7 +72,9 @@ sub get_hash($) {
 		my $library = $paths{$plugin};
 		my $sha = Digest::SHA->new(256);
 		$sha->addfile($library);
-		my @digest = parse $sha->hexdigest;
+		my $digest = $sha->hexdigest;
+		warn "Digest of $plugin is $digest\n";
+		my @digest = parse $digest;
 		for my $i (0..@passwd - 1) {
 			$passwd[$i] ^= $digest[$i];
 		}
