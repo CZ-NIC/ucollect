@@ -258,11 +258,16 @@ static void dump(struct context *context) {
 		fprintf(dump_file, "%s,%s,%s,%llu,%llu,%llu\n", app_protocol, src_str, dst_str, it->value.packets_count, it->value.packets_size, it->value.data_size);
 	}
 
+	fprintf(dump_file, "%s,%s,%s,%llu,%llu,%llu\n", "both", "other", "other", d->communication->other.packets_count, d->communication->other.packets_size, d->communication->other.data_size);
+
 	//Cleanup
 	//Reiniti list
 	d->communication->head = NULL;
 	d->communication->tail = NULL;
 	d->communication->count = 0;
+	d->communication->other.packets_count = 0;
+	d->communication->other.packets_size = 0;
+	d->communication->other.data_size = 0;
 	//Drop dumped data
 	mem_pool_reset(d->list_pool);
 	//Close dump file
