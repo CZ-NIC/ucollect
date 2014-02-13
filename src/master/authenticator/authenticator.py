@@ -66,7 +66,7 @@ class AuthClient(basic.LineReceiver):
 						challenge = log_info[2] + challenge
 					# TODO: Other mechanisms, for debug.
 					if len(challenge) != 64 or len(client) != 16 or len(log_info[0]) != 64:
-						print "Wrong length"
+						print "Wrong length" + str(len(challenge)) + '/' + str(len(client)) + '/' + str(len(log_info[0]))
 						self.sendLine('NO')
 						return
 					expected = atsha204.hmac(log_info[3], client.decode('hex'), log_info[0].decode('hex'), challenge.decode('hex'))
