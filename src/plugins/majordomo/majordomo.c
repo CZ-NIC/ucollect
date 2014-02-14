@@ -40,9 +40,11 @@
 //in ms - 1 minute
 #define DUMP_TIMEOUT 60000
 
+#define KEYS_ADDR_LEN 16
+
 struct key {
-	unsigned char from[16];
-	unsigned char to[16];
+	unsigned char from[KEYS_ADDR_LEN];
+	unsigned char to[KEYS_ADDR_LEN];
 	unsigned char addr_len;
 	char protocol;
 	uint16_t port;
