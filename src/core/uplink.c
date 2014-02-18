@@ -44,7 +44,8 @@ static void atsha_log_callback(const char *msg) {
 enum auth_status {
 	AUTHENTICATED,
 	SENT,
-	NOT_STARTED
+	NOT_STARTED,
+	FAILED
 };
 
 #define IPV6_LEN 16
@@ -271,7 +272,10 @@ static void reconnect_now(struct context *unused, void *data, size_t id_unused) 
 
 static void connect_fail(struct uplink *uplink) {
 	assert(!uplink->reconnect_scheduled);
-	if (uplink->reconnect_timeout) {
+	if (uplink->auth_status == FAILED) {
+		uplink->auth_status = NOT_STARTED;
+		uplink->reconnect_timeout = RECONNECT_AUTH;
+	} else if (uplink->reconnect_timeout) {
 		// Some subsequent reconnect.
 		uplink->reconnect_timeout *= RECONNECT_MULTIPLY;
 		if (uplink->reconnect_timeout > RECONNECT_MAX)
@@ -417,6 +421,10 @@ static void handle_buffer(struct uplink *uplink) {
 						  break;
 					case 'F':
 						  ulog(LLOG_ERROR, "Server rejected our authentication\n");
+						  // Schedule another attempt in 10 minutes
+						  uplink_disconnect(uplink, true);
+						  uplink->auth_status = FAILED;
+						  connect_fail(uplink);
 						  break;
 					default:
 						  ulog(LLOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
