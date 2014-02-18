@@ -11,4 +11,5 @@ src/core/libucollect_core.*
 *.pyc
 src/plugins/buckets/hash_test
 src/master/collectmaster
+src/master/authenticator/authenticator
 tags
