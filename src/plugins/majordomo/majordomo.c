@@ -302,7 +302,7 @@ static void dump(struct context *context) {
 	for (struct src_item *it = d->sources->head; it; it = it->next) {
 		char src_str[INET6_ADDRSTRLEN];
 		get_string_from_raw_bytes(it->from.addr, it->from.addr_len, src_str);
-		fprintf(dump_file, "%s,%s,%s,%s,%llu,%llu,%llu\n", "both", src_str, "other", "all", it->other.packets_count, it->other.packets_size, it->other.data_size);
+		fprintf(dump_file, "%s,%s,%s,%s,%llu,%llu,%llu\n", "both", src_str, "all", "all", it->other.packets_count, it->other.packets_size, it->other.data_size);
 	}
 
 	//Cleanup
