@@ -175,7 +175,7 @@ static struct comm_item *find_item(struct comm_items *comm, unsigned char *from,
 
 static struct src_item *find_src(struct src_items *sources, unsigned char *from, unsigned char addr_len) {
 	for (struct src_item *it = sources->head; it; it = it->next) {
-		if (it->from.addr_len == addr_len && memcmp(it->from.addr, from, addr_len)) {
+		if (it->from.addr_len == addr_len && memcmp(it->from.addr, from, addr_len) == 0) {
 			return it;
 		}
 	}
@@ -259,6 +259,8 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 			//Source has some records; check its limit
 			if (src->items_in_comm_list < SOURCE_SIZE_LIMIT) {
 				item = create_comm_item(d->communication, d->list_pool, info);
+				//Link item with its parent
+				item->src_parent = src;
 				item->src_parent->items_in_comm_list++;
 			} else {
 				//Source exceeded the limit - update its 'other' value
