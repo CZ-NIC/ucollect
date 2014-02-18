@@ -550,8 +550,11 @@ CLOSED:
 			uplink->seen_data = true;
 			uplink->buffer_pos += amount;
 			uplink->size_rest -= amount;
-			if (uplink->size_rest == 0)
+			if (uplink->size_rest == 0) {
 				handle_buffer(uplink);
+				if (uplink->fd == -1)
+					break; // The connection got closed in handle_buffer
+			}
 		}
 	}
 }
