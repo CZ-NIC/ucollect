@@ -125,7 +125,7 @@ class CountPlugin(plugin.Plugin):
 			# TODO: Remove this hack. It is temporary for the time when we have both clients
 			# sending 32bit sizes and 64bit sizes. If it's too long, it is 64bit - reencode
 			# the data and decode as 64bit ints.
-			packed = struct.pack("!" + str(len(d)) + 'L', d)
+			packed = struct.pack("!" + str(len(d)) + 'L', *d)
 			d = struct.unpack('!' + str(len(d) / 2) + 'Q', packed)
 		self.__data[client] = d
 		logger.debug("Data: %s", data)
