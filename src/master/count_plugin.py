@@ -49,9 +49,9 @@ def store_counts(data, stats):
 		snapshots = dict(t.fetchall())
 		# Push all the data in
 		def truncate(data):
-			if data > 2**31-1:
+			if data > 2**63-1:
 				logger.warn("Number %s overflow, truncating to 2147483647", data)
-				return 2^31-1
+				return 2^63-1
 			else:
 				return data
 		def clientdata(client):
@@ -113,6 +113,12 @@ class CountPlugin(plugin.Plugin):
 
 	def message_from_client(self, message, client):
 		count = len(message) / 4 - 2 # 2 for the timestamp
+		dtype = 'L'
+		if count > 32:
+			# This is a newer version of the protocol, working with 64bit integers.
+			# TODO: Remove this hack once we migrate all the clients.
+			count /= 2
+			dtype = 'Q'
 		data = struct.unpack('!Q' + str(count) + 'L', message)
 		if data[0] < self.__last:
 			logger.info("Data snapshot on %s too old, ignoring (%s vs. %s)", client, data[0], self.__last)
