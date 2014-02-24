@@ -96,8 +96,8 @@ ALTER TABLE count_snapshots ALTER COLUMN id SET DEFAULT NEXTVAL('count_snapshots
 CREATE TABLE counts (
 	snapshot BIGINT NOT NULL,
 	type SMALLINT NOT NULL,
-	count INT NOT NULL,
-	size INT NOT NULL,
+	count BIGINT NOT NULL,
+	size BIGINT NOT NULL,
 	FOREIGN KEY (snapshot) REFERENCES count_snapshots(id) ON DELETE CASCADE,
 	FOREIGN KEY (type) REFERENCES count_types(id),
 	CHECK(count >= 0),
