@@ -123,7 +123,7 @@ class CountPlugin(plugin.Plugin):
 		d = data[2 + 3 * if_count:]
 		if len(d) > 32:
 			# TODO: Remove this hack. It is temporary for the time when we have both clients
-			# sending 32bit sizes and 64bit sizes. If it's too long, it is 64bit ‒ reencode
+			# sending 32bit sizes and 64bit sizes. If it's too long, it is 64bit - reencode
 			# the data and decode as 64bit ints.
 			packed = struct.pack("!" + str(len(d)) + 'L', d)
 			d = struct.unpack('!' + str(len(d) / 2) + 'Q', packed)
