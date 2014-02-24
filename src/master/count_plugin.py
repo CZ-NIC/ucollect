@@ -114,18 +114,20 @@ class CountPlugin(plugin.Plugin):
 	def message_from_client(self, message, client):
 		count = len(message) / 4 - 2 # 2 for the timestamp
 		dtype = 'L'
-		if count > 32:
-			# This is a newer version of the protocol, working with 64bit integers.
-			# TODO: Remove this hack once we migrate all the clients.
-			count /= 2
-			dtype = 'Q'
 		data = struct.unpack('!Q' + str(count) + 'L', message)
 		if data[0] < self.__last:
 			logger.info("Data snapshot on %s too old, ignoring (%s vs. %s)", client, data[0], self.__last)
 			return
 		if_count = data[1]
 		self.__stats[client] = data[2:2 + 3 * if_count]
-		self.__data[client] = data[2 + 3 * if_count:]
+		d = data[2 + 3 * if_count:]
+		if len(d) > 32:
+			# TODO: Remove this hack. It is temporary for the time when we have both clients
+			# sending 32bit sizes and 64bit sizes. If it's too long, it is 64bit ‒ reencode
+			# the data and decode as 64bit ints.
+			packed = struct.pack("!" + str(len(d)) + 'L', d)
+			d = struct.unpack('!' + str(len(d) / 2) + 'Q', packed)
+		self.__data[client] = d
 		logger.debug("Data: %s", data)
 		if len(self.__data[client]) % 2:
 			logger.error("Odd count of data elements (%s) from %s", len(self.__data[client]), client)
