@@ -48,8 +48,8 @@ enum selector {
 struct user_data {
 	uint64_t timestamp;
 	struct {
-		uint32_t count;
-		uint32_t size;
+		uint64_t count;
+		uint64_t size;
 	} data[MAX];
 };
 
@@ -163,8 +163,8 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	timestamp = be64toh(timestamp);
 	// Generate capture statistics
 	size_t *stats = loop_pcap_stats(context);
-	// Get enough space to encode the result
-	size_t enc_len = 3 * *stats + 2 * MAX;
+	// Get enough space to encode the result first part of result
+	size_t enc_len = 3 * *stats;
 	struct encoded *encoded;
 	size_t enc_size = sizeof encoded->timestamp + sizeof encoded->if_count + enc_len * sizeof *encoded->data;
 	encoded = mem_pool_alloc(context->temp_pool, enc_size);
@@ -174,14 +174,19 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	for (size_t i = 0; i < 3 * *stats; i ++)
 		encoded->data[i] = htonl(stats[i + 1]);
 	// Encode the counts & sizes
-	size_t offset = 3 * *stats;
+	uint64_t *sizes;
+	size_t sizes_size = 2 * MAX * sizeof *sizes;
+	sizes = mem_pool_alloc(context->temp_pool, sizes_size);
 	for (size_t i = 0; i < MAX; i ++) {
-		encoded->data[2 * i + offset] = htonl(u->data[i].count);
-		encoded->data[2 * i + offset + 1] = htonl(u->data[i].size);
-		ulog(LLOG_DEBUG_VERBOSE, "Sending count value for %zu: %zu/%zu at offset %zu\n", i, (size_t) u->data[i].count, (size_t) u->data[i].size, offset + 2*i);
+		sizes[2 * i] = htobe64(u->data[i].count);
+		sizes[2 * i + 1] = htobe64(u->data[i].size);
+		ulog(LLOG_DEBUG_VERBOSE, "Sending count value for %zu: %zu/%zu at offset %zu\n", i, (size_t) u->data[i].count, (size_t) u->data[i].size, 2*i);
 	}
+	uint8_t *message = mem_pool_alloc(context->temp_pool, enc_size + sizes_size);
+	memcpy(message, encoded, enc_size);
+	memcpy(message + enc_size, sizes, sizes_size);
 	// Send the message
-	uplink_plugin_send_message(context, encoded, enc_size);
+	uplink_plugin_send_message(context, message, enc_size + sizes_size);
 	// Reset the statistics
 	*u = (struct user_data) {
 		.timestamp = timestamp
