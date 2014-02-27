@@ -126,6 +126,7 @@ print "Getting new firewall packets\n";
 $get_packets->execute;
 my $store_packet = $destination->prepare('INSERT INTO firewall_packets (rule_id, time, direction, port_rem, addr_rem, port_loc, protocol, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
 my $packet_group = $destination->prepare('INSERT INTO firewall_groups (packet, for_group) VALUES (?, ?)');
+my $update_archived = $source->prepare('UPDATE router_loggedpacket SET archived = TRUE WHERE id = ?');
 my ($last_id, $id_dest);
 $count = 0;
 while (my ($id, $group, @data) = $get_packets->fetchrow_array) {
@@ -134,11 +135,10 @@ while (my ($id, $group, @data) = $get_packets->fetchrow_array) {
 		$last_id = $id;
 		$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
 		$count ++;
+		$update_archived->execute($id);
 	}
 	$packet_group->execute($id_dest, $group);
 }
-my $archived_count = $source->do('UPDATE router_loggedpacket SET archived = TRUE WHERE NOT archived');
-die "Archived $count packets, but marked $archived_count" if $archived_count != $count;
 print "Stored $count packets\n";
 
 $destination->commit;
