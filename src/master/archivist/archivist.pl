@@ -23,6 +23,7 @@ my %config_tables = (
 	count_types => [qw(ord name description)],
 );
 
+
 while (my($table, $columns) = each %config_tables) {
 	print "Syncing config table $table\n";
 	# Dump the whole table from both databases
@@ -52,115 +53,93 @@ while (my($table, $columns) = each %config_tables) {
 	}
 }
 
+# Migrate anomalies.
+# First, look for the newest one stored. They are stored in batches in transaction some time from each other, so we wont lose anything.
+my ($max_anom) = $destination->selectrow_array('SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM anomalies');
+print "Getting anomalies newer than $max_anom\n";
+# Keep reading and putting it to the other DB
+my $store_anomaly = $destination->prepare('INSERT INTO anomalies (from_group, type, timestamp, value, relevance_count, relevance_of, strength) VALUES (?, ?, ?, ?, ?, ?, ?)');
+my $get_anomalies = $source->prepare('SELECT from_group, type, timestamp, value, relevance_count, relevance_of, strength FROM anomalies WHERE timestamp > ?');
+$get_anomalies->execute($max_anom);
+my $count = 0;
+$store_anomaly->execute_for_fetch(sub {
+        my $data = $get_anomalies->fetchrow_arrayref;
+        $count ++ if $data;
+        return $data;
+});
+print "Stored $count anomalies\n";
+
+# Migrate the counts. We let the source database do the aggregation.
+my ($max_count) = $destination->selectrow_array('SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM count_snapshots');
+print "Getting counts newer than $max_count\n";
+# Select all the counts for snapshots and expand the snapshots.
+# Then join with the groups and generate all pairs count-group for the client it is in the group.
+# Then aggregate over the (type, time, group) and produce that.
+my $get_counts = $source->prepare('
+SELECT
+        timestamp, in_group, type, COUNT(*),
+        SUM(count), AVG(count), STDDEV(count), MIN(count), MAX(count),
+        SUM(size), AVG(size), STDDEV(size), MIN(size), MAX(size)
+FROM
+        counts
+JOIN count_snapshots ON counts.snapshot = count_snapshots.id
+JOIN group_members ON count_snapshots.client = group_members.client
+WHERE timestamp > ?
+GROUP BY timestamp, in_group, type
+ORDER BY timestamp, in_group
+');
+$get_counts->execute($max_count);
+my $store_snapshot = $destination->prepare('INSERT INTO count_snapshots (timestamp, from_group) VALUES(?, ?)');
+my $store_count = $destination->prepare('
+INSERT INTO counts (
+        snapshot, type, client_count,
+        count_sum, count_avg, count_dev, count_min, count_max,
+        size_sum, size_avg, size_dev, size_min, size_max
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+');
+my ($last_group, $last_timestamp);
+my $snapshot;
+my ($snap_count, $stat_count) = (0, 0);
+while (my ($timestamp, $in_group, $type, @stats) = $get_counts->fetchrow_array) {
+        my $snap_id = "$timestamp/$in_group";
+        if ($timestamp ne $last_timestamp or $last_group ne $in_group) {
+                $store_snapshot->execute($timestamp, $in_group);
+                $snapshot = $destination->last_insert_id(undef, undef, 'count_snapshots', undef);
+                $snap_count ++;
+                $last_timestamp = $timestamp;
+                $last_group = $in_group;
+        }
+        $store_count->execute($snapshot, $type, @stats);
+        $stat_count ++;
+}
+
+print "Stored $stat_count count statistics in $snap_count snapshots\n";
+
+my $get_packets = $source->prepare('
+SELECT router_loggedpacket.id, group_members.in_group, router_loggedpacket.rule_id, router_loggedpacket.time, router_loggedpacket.direction, router_loggedpacket.remote_port, router_loggedpacket.remote_address, router_loggedpacket.local_port, router_loggedpacket.protocol, router_loggedpacket.count FROM router_loggedpacket
+JOIN router_router ON router_loggedpacket.router_id = router_router.id
+JOIN group_members ON router_router.client_id = group_members.client
+WHERE NOT archived
+ORDER BY id
+');
+print "Getting new firewall packets\n";
+$get_packets->execute;
+my $store_packet = $destination->prepare('INSERT INTO firewall_packets (rule_id, time, direction, port_rem, addr_rem, port_loc, protocol, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+my $packet_group = $destination->prepare('INSERT INTO firewall_groups (packet, for_group) VALUES (?, ?)');
+my $update_archived = $source->prepare('UPDATE router_loggedpacket SET archived = TRUE WHERE id = ?');
+my ($last_id, $id_dest);
+$count = 0;
+while (my ($id, $group, @data) = $get_packets->fetchrow_array) {
+	if ($last_id != $id) {
+		$store_packet->execute(@data);
+		$last_id = $id;
+		$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
+		$count ++;
+		$update_archived->execute($id);
+	}
+	$packet_group->execute($id_dest, $group);
+}
+print "Stored $count packets\n";
+
 $destination->commit;
 $source->commit;
-undef $destination;
-undef $source;
-
-if (fork == 0) {
-	my $source = connect_db 'source';
-	my $destination = connect_db 'destination';
-
-	# Migrate anomalies.
-	# First, look for the newest one stored. They are stored in batches in transaction some time from each other, so we wont lose anything.
-	my ($max_anom) = $destination->selectrow_array('SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM anomalies');
-	print "Getting anomalies newer than $max_anom\n";
-	# Keep reading and putting it to the other DB
-	my $store_anomaly = $destination->prepare('INSERT INTO anomalies (from_group, type, timestamp, value, relevance_count, relevance_of, strength) VALUES (?, ?, ?, ?, ?, ?, ?)');
-	my $get_anomalies = $source->prepare('SELECT from_group, type, timestamp, value, relevance_count, relevance_of, strength FROM anomalies WHERE timestamp > ?');
-	$get_anomalies->execute($max_anom);
-	my $count = 0;
-	$store_anomaly->execute_for_fetch(sub {
-			my $data = $get_anomalies->fetchrow_arrayref;
-			$count ++ if $data;
-			return $data;
-			});
-	print "Stored $count anomalies\n";
-	$destination->commit;
-	$source->commit;
-}
-
-if (fork == 0) {
-	my $source = connect_db 'source';
-	my $destination = connect_db 'destination';
-	# Migrate the counts. We let the source database do the aggregation.
-	my ($max_count) = $destination->selectrow_array('SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM count_snapshots');
-	print "Getting counts newer than $max_count\n";
-	# Select all the counts for snapshots and expand the snapshots.
-	# Then join with the groups and generate all pairs count-group for the client it is in the group.
-	# Then aggregate over the (type, time, group) and produce that.
-	my $get_counts = $source->prepare('
-			SELECT
-			timestamp, in_group, type, COUNT(*),
-			SUM(count), AVG(count), STDDEV(count), MIN(count), MAX(count),
-			SUM(size), AVG(size), STDDEV(size), MIN(size), MAX(size)
-			FROM
-			counts
-			JOIN count_snapshots ON counts.snapshot = count_snapshots.id
-			JOIN group_members ON count_snapshots.client = group_members.client
-			WHERE timestamp > ?
-			GROUP BY timestamp, in_group, type
-			ORDER BY timestamp, in_group
-			');
-	$get_counts->execute($max_count);
-	my $store_snapshot = $destination->prepare('INSERT INTO count_snapshots (timestamp, from_group) VALUES(?, ?)');
-	my $store_count = $destination->prepare('
-			INSERT INTO counts (
-				snapshot, type, client_count,
-				count_sum, count_avg, count_dev, count_min, count_max,
-				size_sum, size_avg, size_dev, size_min, size_max
-				) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			');
-	my ($last_group, $last_timestamp);
-	my $snapshot;
-	my ($snap_count, $stat_count) = (0, 0);
-	while (my ($timestamp, $in_group, $type, @stats) = $get_counts->fetchrow_array) {
-		my $snap_id = "$timestamp/$in_group";
-		if ($timestamp ne $last_timestamp or $last_group ne $in_group) {
-			$store_snapshot->execute($timestamp, $in_group);
-			$snapshot = $destination->last_insert_id(undef, undef, 'count_snapshots', undef);
-			$snap_count ++;
-			$last_timestamp = $timestamp;
-			$last_group = $in_group;
-		}
-		$store_count->execute($snapshot, $type, @stats);
-		$stat_count ++;
-	}
-
-	print "Stored $stat_count count statistics in $snap_count snapshots\n";
-	$destination->commit;
-	$source->commit;
-}
-
-if (fork == 0) {
-	my $source = connect_db 'source';
-	my $destination = connect_db 'destination';
-	my $get_packets = $source->prepare('
-			SELECT router_loggedpacket.id, group_members.in_group, router_loggedpacket.rule_id, router_loggedpacket.time, router_loggedpacket.direction, router_loggedpacket.remote_port, router_loggedpacket.remote_address, router_loggedpacket.local_port, router_loggedpacket.protocol, router_loggedpacket.count FROM router_loggedpacket
-			JOIN router_router ON router_loggedpacket.router_id = router_router.id
-			JOIN group_members ON router_router.client_id = group_members.client
-			WHERE NOT archived
-			ORDER BY id
-			');
-	print "Getting new firewall packets\n";
-	$get_packets->execute;
-	my $store_packet = $destination->prepare('INSERT INTO firewall_packets (rule_id, time, direction, port_rem, addr_rem, port_loc, protocol, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-	my $packet_group = $destination->prepare('INSERT INTO firewall_groups (packet, for_group) VALUES (?, ?)');
-	my $update_archived = $source->prepare('UPDATE router_loggedpacket SET archived = TRUE WHERE id = ?');
-	my ($last_id, $id_dest);
-	my $count = 0;
-	while (my ($id, $group, @data) = $get_packets->fetchrow_array) {
-		if ($last_id != $id) {
-			$store_packet->execute(@data);
-			$last_id = $id;
-			$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
-			$count ++;
-			$update_archived->execute($id);
-		}
-		$packet_group->execute($id_dest, $group);
-	}
-	print "Stored $count packets\n";
-	$destination->commit;
-	$source->commit;
-}
-wait; wait; wait;
