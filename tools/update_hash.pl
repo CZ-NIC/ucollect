@@ -65,6 +65,8 @@ sub get_hash($) {
 
 	my @passwd = parse $passwd;
 
+	my $had_plugin;
+
 	for my $plugin (@plugins) {
 		system 'wget', ($packages{$plugin} // next), '-O', 'package.ipk' and die "Couldn't download package $packages{$plugin}\n";
 		system 'tar', 'xf', 'package.ipk' and die "Can't unpack package for $plugin\n";
@@ -79,8 +81,10 @@ sub get_hash($) {
 			$passwd[$i] ^= $digest[$i];
 		}
 		rmtree 'usr';
+		$had_plugin = 1;
 	}
 
+	die "No plugin seen\n" unless $had_plugin;
 	return join '', map sprintf("%02X", $_), @passwd;
 }
 my $hash = get_hash $default;
