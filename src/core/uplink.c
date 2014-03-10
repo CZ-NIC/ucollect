@@ -72,6 +72,7 @@ struct uplink {
 	size_t buffer_size, size_rest;
 	uint32_t reconnect_timeout;
 	bool has_size;
+	bool last_ipv6; // Was the last attempt over IPv6?
 	// Timeouts for pings, etc.
 	size_t ping_timeout; // The ID of the timeout.
 	size_t pings_unanswered; // Number of pings sent without answer (in a row)
@@ -226,7 +227,17 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 		}
 		close(sockets[1]);
 		close(errs[1]);
-		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=%s,cipher=HIGH:!LOW:!MEDIUM:!SSLv2:!aNULL:!eNULL:!DES:!3DES:!AES128:!CAMELLIA128,compress=auto,method=TLS", uplink->remote_name, uplink->service, uplink->cert);
+		/*
+		 * Explanation of the last_ipv6:
+		 * Socat won't, unfortunately, try both IPv4 and IPv6 if both are
+		 * available. So it goes for IPv4 or IPv6 ‒ but whatever we chose
+		 * might be the wrong choice. So we keep switching from one to
+		 * another on each connection attempt. If only one is available,
+		 * every other connection attempt will fail, but that's acceptable.
+		 * We could do something more clever, but this is simple and works.
+		 * See ticket #3106.
+		 */
+		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=%s,cipher=HIGH:!LOW:!MEDIUM:!SSLv2:!aNULL:!eNULL:!DES:!3DES:!AES128:!CAMELLIA128,compress=auto,method=TLS,pf=ip%d", uplink->remote_name, uplink->service, uplink->cert, (uplink->last_ipv6 = !uplink->last_ipv6) ? 6 : 4);
 		execlp("socat", "socat", "STDIO", remote, (char *) NULL);
 		die("Exec should never exit but it did: %s\n", strerror(errno));
 	}
