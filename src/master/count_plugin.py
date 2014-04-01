@@ -48,19 +48,19 @@ def store_counts(data, stats):
 		t.execute('SELECT client, id FROM count_snapshots WHERE timestamp = %s', (now,))
 		snapshots = dict(t.fetchall())
 		# Push all the data in
-		def truncate(data):
-			if data > 2**63-1:
-				logger.warn("Number %s overflow, truncating to 2147483647", data)
-				return 2^63-1
+		def truncate(data, limit):
+			if data > 2**limit-1:
+				logger.warn("Number %s overflow, truncating to %s", data, 2**limit-1)
+				return 2**limit-1
 			else:
 				return data
 		def clientdata(client):
 			snapshot = snapshots[clients[client]]
 			l = min(len(data[client]) / 2, len(name_order))
-			return map(lambda name, index: (snapshot, names[name], truncate(data[client][index * 2]), truncate(data[client][index * 2 + 1])), name_order[:l], range(0, l))
+			return map(lambda name, index: (snapshot, names[name], truncate(data[client][index * 2], 63), truncate(data[client][index * 2 + 1], 63)), name_order[:l], range(0, l))
 		def clientcaptures(client):
 			snapshot = snapshots[clients[client]]
-			return map(lambda i: (snapshot, i, truncate(stats[client][3 * i]), truncate(stats[client][3 * i + 1]), truncate(stats[client][3 * i + 2])), range(0, len(stats[client]) / 3))
+			return map(lambda i: (snapshot, i, truncate(stats[client][3 * i], 31), truncate(stats[client][3 * i + 1], 31), truncate(stats[client][3 * i + 2], 31)), range(0, len(stats[client]) / 3))
 		def join_clients(c1, c2):
 			c1.extend(c2)
 			return c1
