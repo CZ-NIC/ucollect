@@ -36,6 +36,7 @@ CREATE TABLE activity_types (
 CREATE SEQUENCE activity_types_ids OWNED BY activity_types.id;
 ALTER TABLE activity_types ALTER COLUMN id SET DEFAULT NEXTVAL('activity_types_ids');
 CREATE TABLE activities (
+	id BIGINT NOT NULL PRIMARY KEY,
 	client INT NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
 	activity SMALLINT NOT NULL,
@@ -43,6 +44,8 @@ CREATE TABLE activities (
 	FOREIGN KEY (activity) REFERENCES activity_types(id)
 );
 CREATE INDEX ON activities (client, activity);
+CREATE SEQUENCE activities_id OWNED BY activities.id;
+ALTER TABLE activities ALTER COLUMN id SET DEFAULT NEXTVAL('activities_id');
 
 CREATE TABLE groups (
 	id INT PRIMARY KEY NOT NULL,
