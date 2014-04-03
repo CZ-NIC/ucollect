@@ -55,6 +55,7 @@ struct tcp_ports {
 };
 
 static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
+	ulog(LLOG_DEBUG_VERBOSE, "Parse IP packet\n");
 	packet->app_protocol_raw = 0xff;
 	/*
 	 * Try to put the packet into the form for an IP packet. We're lucky, the version field
@@ -123,6 +124,7 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 		case 4:  // Encapsulation of IPv4
 		case 41: // And v6
 			packet->app_protocol = packet->app_protocol_raw == 4 ? '4' : 6;
+			ulog(LLOG_DEBUG_VERBOSE, "There's a IPv%c packet inside\n", packet->app_protocol);
 			// Create a new structure for the packet and parse recursively
 			struct packet_info *next = mem_pool_alloc(pool, sizeof *packet->next);
 			packet->next = next;
@@ -168,6 +170,7 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 
 // Zero or reset the some fields according to other fields, if they don't make sense in that context.
 static void postprocess(struct packet_info *packet) {
+	ulog(LLOG_DEBUG_VERBOSE, "Postprocessing packet\n");
 	bool ip_known = (packet->ip_protocol == 4 || packet->ip_protocol == 6);
 	if (!ip_known) {
 		memset(&packet->addresses, 0, sizeof packet->addresses);
@@ -181,6 +184,8 @@ static void postprocess(struct packet_info *packet) {
 	}
 	bool is_encapsulation = (packet->app_protocol == '4' || packet->app_protocol == '6');
 	if (!is_encapsulation) {
+		if (packet->next)
+			ulog(LLOG_DEBUG_VERBOSE, "Reseting next pointer, because the protocol is %c\n", packet->app_protocol);
 		packet->next = NULL;
 	}
 	if (packet->app_protocol != 'T')
@@ -248,6 +253,7 @@ static void parse_type(struct packet_info *packet, struct mem_pool *pool, const 
 }
 
 static void parse_ethernet(struct packet_info *packet, struct mem_pool *pool) {
+	ulog(LLOG_DEBUG_VERBOSE, "Parse ethernet\n");
 	const unsigned char *data = packet->data;
 	if (packet->length < 14)
 		return;
@@ -286,6 +292,7 @@ static void parse_cooked(struct packet_info *packet, struct mem_pool *pool) {
 }
 
 void uc_parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalink) {
+	ulog(LLOG_DEBUG_VERBOSE, "Uc parse packet at %i\n", datalink);
 	packet->layer_raw = datalink;
 	switch (datalink) {
 		case DLT_EN10MB: // Ethernet II
