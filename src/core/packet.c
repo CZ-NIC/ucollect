@@ -123,7 +123,7 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 			return; // Not parsing further.
 		case 4:  // Encapsulation of IPv4
 		case 41: // And v6
-			packet->app_protocol = packet->app_protocol_raw == 4 ? '4' : 6;
+			packet->app_protocol = packet->app_protocol_raw == 4 ? '4' : '6';
 			ulog(LLOG_DEBUG_VERBOSE, "There's a IPv%c packet inside\n", packet->app_protocol);
 			// Create a new structure for the packet and parse recursively
 			struct packet_info *next = mem_pool_alloc(pool, sizeof *packet->next);
