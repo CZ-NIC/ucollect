@@ -787,8 +787,7 @@ size_t *loop_pcap_stats(struct context *context) {
 			} else {
 				result[pos ++] += ps.ps_recv;
 				result[pos ++] += ps.ps_drop;
-				result[pos ++] += ps.ps_ifdrop - interface->if_dropped;
-				interface->if_dropped = ps.ps_ifdrop;
+				result[pos ++] += ps.ps_ifdrop;
 			}
 			pos -= 3;
 		}
