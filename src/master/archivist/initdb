@@ -107,6 +107,11 @@ CREATE TABLE firewall_groups (
 	UNIQUE (packet, for_group)
 );
 
+CREATE TABLE activity_types (
+	id SMALLINT PRIMARY KEY,
+	name TEXT NOT NULL
+);
+
 GRANT INSERT ON anomalies TO archivist;
 GRANT SELECT (timestamp) ON anomalies TO archivist;
 GRANT INSERT ON anomaly_types TO archivist;
@@ -122,5 +127,7 @@ GRANT ALL ON count_snapshots_id TO archivist;
 GRANT INSERT ON firewall_packets TO archivist;
 GRANT ALL ON firewall_packets_id TO archivist;
 GRANT INSERT ON firewall_groups TO archivist;
+GRANT INSERT ON activity_types TO archivist;
+GRANT SELECT ON activity_types TO archivist;
 COMMIT;
 END_SQL
