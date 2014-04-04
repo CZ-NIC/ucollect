@@ -116,9 +116,13 @@ CREATE TABLE clients (
 	name TEXT NOT NULL
 );
 CREATE TABLE activities (
-	activity_date DATE NOT NULL,
+	date DATE NOT NULL,
 	activity SMALLINT NOT NULL,
-	FOREIGN KEY (activity) REFERENCES activity_types(id) ON DELETE CASCADE
+	client INTEGER NOT NULL,
+	count SMALLINT NOT NULL,
+	FOREIGN KEY (activity) REFERENCES activity_types(id) ON DELETE CASCADE,
+	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
+	CHECK(count >= 0)
 );
 
 GRANT INSERT ON anomalies TO archivist;
@@ -140,5 +144,8 @@ GRANT INSERT ON activity_types TO archivist;
 GRANT SELECT ON activity_types TO archivist;
 GRANT INSERT ON clients TO archivist;
 GRANT SELECT ON clients TO archivist;
+GRANT SELECT (date) ON activities TO archivist;
+GRANT INSERT ON activities TO archivist;
+GRANT DELETE ON activities TO archivist;
 COMMIT;
 END_SQL

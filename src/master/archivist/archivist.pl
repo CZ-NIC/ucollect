@@ -73,10 +73,10 @@ if (fork == 0) {
 	$get_anomalies->execute($max_anom);
 	my $count = 0;
 	$store_anomaly->execute_for_fetch(sub {
-			my $data = $get_anomalies->fetchrow_arrayref;
-			$count ++ if $data;
-			return $data;
-			});
+		my $data = $get_anomalies->fetchrow_arrayref;
+		$count ++ if $data;
+		return $data;
+	});
 	print "Stored $count anomalies\n";
 	$destination->commit;
 	$source->commit;
@@ -168,4 +168,30 @@ if (fork == 0) {
 	$source->commit;
 	exit;
 }
-wait; wait; wait;
+
+if (fork == 0) {
+	my $source = connect_db 'source';
+	my $destination = connect_db 'destination';
+
+	# Get the newest day stored. We'll overwrite this day (we assume there's overlap from the last time we archived).
+	my ($max_act) = $destination->selectrow_array('SELECT COALESCE(MAX(activities.date), DATE(TO_TIMESTAMP(0))) FROM activities');
+	print "Dropping archived anomalies at $max_act\n";
+	$destination->do('DELETE FROM activities WHERE activities.date = ?', undef, $max_act);
+	print "Getting activities newer than $max_act\n";
+	# Keep reading and putting it to the other DB
+	my $store_activity = $destination->prepare('INSERT INTO activities (date, activity, client, count) VALUES (?, ?, ?, ?)');
+	my $get_activities = $source->prepare('SELECT DATE(timestamp), activity, client, COUNT(id) FROM activities WHERE DATE(timestamp) >= ? GROUP BY activity, client, DATE(timestamp)');
+	$get_activities->execute($max_act);
+	my $count = 0;
+	$store_activity->execute_for_fetch(sub {
+		my $data = $get_activities->fetchrow_arrayref;
+		$count ++ if $data;
+		return $data;
+	});
+	print "Stored $count activity summaries\n";
+	#$destination->commit;
+	#$source->commit;
+	exit;
+}
+
+wait; wait; wait; wait;

@@ -175,6 +175,7 @@ GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
 GRANT SELECT ON anomaly_types TO $DBARCHIVIST;
 GRANT SELECT ON activity_types TO $DBARCHIVIST;
+GRANT SELECT ON activities TO $DBARCHIVIST;
 GRANT SELECT (id, name) ON clients TO $DBARCHIVIST;
 GRANT SELECT (from_group, type, timestamp, value, value, relevance_count, relevance_of, strength) ON anomalies TO $DBARCHIVIST;
 GRANT SELECT ON counts TO $DBARCHIVIST;
