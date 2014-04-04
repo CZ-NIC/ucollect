@@ -122,7 +122,7 @@ CREATE TABLE capture_stats (
 );
 
 INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts');
-INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port');
+INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port'), ('L', 'Remote IP address and local port');
 INSERT INTO count_types (name, description, ord) VALUES
 	('All', 'Any packet is included in this category', 1),
 	('IPv4', 'Packets sent over the IPv4 protocol.', 2),
