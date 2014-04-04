@@ -189,8 +189,8 @@ if (fork == 0) {
 		return $data;
 	});
 	print "Stored $count activity summaries\n";
-	#$destination->commit;
-	#$source->commit;
+	$destination->commit;
+	$source->commit;
 	exit;
 }
 
