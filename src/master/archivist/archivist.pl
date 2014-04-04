@@ -22,6 +22,7 @@ my %config_tables = (
 	anomaly_types => [qw(code description)],
 	count_types => [qw(ord name description)],
 	activity_types => [qw(id name)],
+	clients => [qw(id name)],
 );
 
 while (my($table, $columns) = each %config_tables) {

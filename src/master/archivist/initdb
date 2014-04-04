@@ -111,6 +111,15 @@ CREATE TABLE activity_types (
 	id SMALLINT PRIMARY KEY,
 	name TEXT NOT NULL
 );
+CREATE TABLE clients (
+	id INTEGER PRIMARY KEY,
+	name TEXT NOT NULL
+);
+CREATE TABLE activities (
+	activity_date DATE NOT NULL,
+	activity SMALLINT NOT NULL,
+	FOREIGN KEY (activity) REFERENCES activity_types(id) ON DELETE CASCADE
+);
 
 GRANT INSERT ON anomalies TO archivist;
 GRANT SELECT (timestamp) ON anomalies TO archivist;
@@ -129,5 +138,7 @@ GRANT ALL ON firewall_packets_id TO archivist;
 GRANT INSERT ON firewall_groups TO archivist;
 GRANT INSERT ON activity_types TO archivist;
 GRANT SELECT ON activity_types TO archivist;
+GRANT INSERT ON clients TO archivist;
+GRANT SELECT ON clients TO archivist;
 COMMIT;
 END_SQL
