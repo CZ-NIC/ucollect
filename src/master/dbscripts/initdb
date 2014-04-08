@@ -72,7 +72,7 @@ CREATE TABLE anomalies (
 	relevance_count SMALLINT NOT NULL,
 	relevance_of SMALLINT NOT NULL,
 	strength REAL DEFAULT 0,
-	FOREIGN KEY (from_group) REFERENCES groups(id),
+	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE,
 	FOREIGN KEY (type) REFERENCES anomaly_types(code),
 	CHECK(relevance_count <= relevance_of)
 );
