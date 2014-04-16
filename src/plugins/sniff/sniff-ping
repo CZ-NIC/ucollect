@@ -16,7 +16,7 @@ while [ "$1" ] ; do
 		6)
 			PARAMS="$PARAMS -6"
 			;;
-		?)
+		X)
 			;;
 		*)
 			echo 'BAD INPUT'
