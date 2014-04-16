@@ -36,7 +36,7 @@ def store_counts(data, stats):
 		name_order = map(lambda x: x[0], name_data)
 		names = dict(name_data)
 		# Store the timestamp here, so all the clients have the same value.
-		t.execute('SELECT NOW()')
+		t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
 		(now,) = t.fetchone()
 		# It seems MySQL complains with insert ... select in some cases.
 		# So we do some insert-select-insert magic here. That is probably
