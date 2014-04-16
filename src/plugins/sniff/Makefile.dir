@@ -1,0 +1,2 @@
+LIBRARIES += src/plugins/sniff/libplugin_sniff
+libplugin_sniff_MODULES := sniff
