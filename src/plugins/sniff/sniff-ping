@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -x
+
+while [ "$1" ] ; do
+	PROTO="$1"
+	COUNT="$2"
+	SIZE="$3"
+	HOST="$4"
+	shift 4
+	PARAMS=''
+	case "$PROTO" in
+		4)
+			PARAMS="$PARAMS -4"
+			;;
+		6)
+			PARAMS="$PARAMS -6"
+			;;
+		?)
+			;;
+		*)
+			echo 'BAD INPUT'
+			continue
+			;;
+	esac
+	PARAMS="$PARAMS -c $COUNT -s $SIZE $HOST"
+	ping $PARAMS
+done
