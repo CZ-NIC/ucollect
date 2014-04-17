@@ -5,6 +5,8 @@ use Date::Parse;
 use Getopt::Long;
 use DBI;
 
+$ENV{TZ} = 'UTC';
+
 my $dbh = DBI->connect("dbi:Pg:dbname=routers", "ucollect", "", { RaiseError => 1, AutoCommit => 0 });
 
 my $green = color 'bold green';
