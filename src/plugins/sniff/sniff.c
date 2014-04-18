@@ -32,6 +32,7 @@
 // Single running task.
 struct task {
 	struct task *next, *prev; // Link list.
+	struct task_desc *desc; // Description of the task
 	struct task_data *data; // Data of the task
 	uint32_t id; // ID, just bytes copied from the request
 	pid_t pid; // PID of the child performing the request
@@ -42,8 +43,17 @@ struct task {
 
 struct user_data {
 	struct mem_pool *pool; // Pool for temporary data for tasks. Will be flushed whenever there's no task running.
-	struct task *first, *last; // Currently running tasks.
+	struct task *head, *tail; // Currently running tasks.
 };
+
+#define LIST_NODE struct task
+#define LIST_BASE struct user_data
+#define LIST_PREV prev
+#define LIST_NAME(X) tasks_##X
+#define LIST_WANT_APPEND_POOL
+//#define LIST_WANT_REMOVE
+//#define LIST_WANT_LFOR
+#include "../../core/link_list.h"
 
 static void initialize(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
@@ -54,7 +64,7 @@ static void initialize(struct context *context) {
 
 static void cleanup(struct context *context) {
 	// If no tasks are running, we can clean up the memory pool
-	if (!context->user_data->first)
+	if (!context->user_data->head)
 		mem_pool_reset(context->user_data->pool);
 }
 
@@ -96,13 +106,21 @@ static void in_request(struct context *context, const uint8_t *data, size_t leng
 		memcpy(error + sizeof id, "U", 1);
 		uplink_plugin_send_message(context, error, sizeof error);
 	}
+	// TODO: Abort any existing task
 	assert(found->start);
 	pid_t pid;
 	int out;
 	struct task_data *task_data = found->start(context, context->user_data->pool, data, length, &out, &pid);
 	if (out) {
 		// There'll be some output in future. Put the structure in there.
-		// TODO: Put the task into the structures
+		struct task *t = tasks_append_pool(context->user_data, context->user_data->pool); // Don't do the c99 initialization, it would overwrite next and prev pointers.
+		t->desc = found;
+		t->data = task_data;
+		t->id = id;
+		t->pid = pid;
+		t->out = out;
+		t->buffer_used = t->buffer_allocated = 0;
+		t->buffer = NULL;
 	} else {
 		// No output expected. Finish up now.
 		reply_send(context, id, found, task_data, NULL, 0);
