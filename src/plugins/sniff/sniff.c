@@ -24,10 +24,15 @@
 #include "../../core/mem_pool.h"
 #include "../../core/loop.h"
 #include "../../core/uplink.h"
+#include "../../core/util.h"
 
 #include <unistd.h>
 #include <string.h>
 #include <assert.h>
+#include <errno.h>
+
+#define GROW_RATIO 3
+#define GROW_ADDITION 1024
 
 // Single running task.
 struct task {
@@ -37,7 +42,7 @@ struct task {
 	uint32_t id; // ID, just bytes copied from the request
 	pid_t pid; // PID of the child performing the request
 	int out; // FD of its stdout
-	char *buffer; // Buffer where we put the output to be parsed
+	uint8_t *buffer; // Buffer where we put the output to be parsed
 	size_t buffer_used, buffer_allocated;
 };
 
@@ -51,7 +56,7 @@ struct user_data {
 #define LIST_PREV prev
 #define LIST_NAME(X) tasks_##X
 #define LIST_WANT_APPEND_POOL
-//#define LIST_WANT_REMOVE
+#define LIST_WANT_REMOVE
 //#define LIST_WANT_LFOR
 #include "../../core/link_list.h"
 
@@ -70,6 +75,7 @@ static void cleanup(struct context *context) {
 
 // Run the ->finish and send the answer to the server.
 static void reply_send(struct context *context, uint32_t id, struct task_desc *desc, struct task_data *data, const uint8_t *output, size_t output_size) {
+	// TODO: Log
 	bool ok;
 	size_t result_size;
 	const uint8_t *result = desc->finish(context, data, output, output_size, &result_size, &ok);
@@ -82,7 +88,37 @@ static void reply_send(struct context *context, uint32_t id, struct task_desc *d
 	cleanup(context);
 }
 
+static void data_received(struct context *context, int fd, struct task *task) {
+	assert(task->out == fd);
+	if (task->buffer_used == task->buffer_allocated) {
+		// Not enough space to read to. Get some more (copy the existing, memory pools don't know realloc)
+		task->buffer_allocated = task->buffer_allocated * GROW_RATIO + GROW_ADDITION;
+		uint8_t *new = mem_pool_alloc(context->user_data->pool, task->buffer_allocated);
+		memcpy(new, task->buffer, task->buffer_used);
+		task->buffer = new;
+	}
+	// Read a bit of data
+	ssize_t amount = read(fd, task->buffer + task->buffer_used, task->buffer_allocated - task->buffer_used);
+	if (amount <= 0) { // There'll be no more data.
+		if (amount < 0) {
+			ulog(LLOG_ERROR, "Error reading from task pipe %d: %s", fd, strerror(errno));
+			// Reset the output to signal error
+			task->buffer_used = 0;
+			task->buffer = NULL;
+		}
+		tasks_remove(context->user_data, task); // Remove the task and its FD
+		loop_plugin_unregister_fd(context, fd);
+		if (close(fd) == -1)
+			ulog(LLOG_ERROR, "Couldn't close task pipe %d: %s", fd, strerror(errno));
+		reply_send(context, task->id, task->desc, task->data, task->buffer, task->buffer_used);
+		// Due to the unregister, we won't be called again for this FD
+	} else
+		// We have not read everything yet. Wait for more.
+		task->buffer_used += amount;
+}
+
 static void in_request(struct context *context, const uint8_t *data, size_t length) {
+	// TODO: Log
 	// Extract header
 	assert(length >= 1 + sizeof(uint32_t));
 	uint32_t id;
@@ -121,6 +157,7 @@ static void in_request(struct context *context, const uint8_t *data, size_t leng
 		t->out = out;
 		t->buffer_used = t->buffer_allocated = 0;
 		t->buffer = NULL;
+		loop_plugin_register_fd(context, out, t);
 	} else {
 		// No output expected. Finish up now.
 		reply_send(context, id, found, task_data, NULL, 0);
@@ -135,7 +172,8 @@ struct plugin *plugin_info(void) {
 	static struct plugin plugin = {
 		.name = "Sniff",
 		.init_callback = initialize,
-		.uplink_data_callback = in_request
+		.uplink_data_callback = in_request,
+		.fd_callback = (fd_callback_t) data_received
 	};
 	return &plugin;
 }

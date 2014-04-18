@@ -27,6 +27,7 @@ struct context;
 struct packet_info;
 
 typedef void (*packet_callback_t)(struct context *context, const struct packet_info *info);
+typedef void (*fd_callback_t)(struct context *context, int fd, void *tag);
 
 struct plugin {
 	const char *name;
@@ -36,7 +37,7 @@ struct plugin {
 	void (*uplink_connected_callback)(struct context *context);
 	void (*uplink_disconnected_callback)(struct context *context);
 	void (*uplink_data_callback)(struct context *context, const uint8_t *data, size_t length);
-	void (*fd_callback)(struct context *context, int fd, void *tag); // Called whenever a fd registered with loop_plugin_register_fd is ready to be read
+	fd_callback_t fd_callback;
 };
 
 #endif
