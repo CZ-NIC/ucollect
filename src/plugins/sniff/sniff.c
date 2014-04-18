@@ -53,7 +53,9 @@ static void initialize(struct context *context) {
 }
 
 static void cleanup(struct context *context) {
-	// TODO
+	// If no tasks are running, we can clean up the memory pool
+	if (!context->user_data->first)
+		mem_pool_reset(context->user_data->pool);
 }
 
 // Run the ->finish and send the answer to the server.
