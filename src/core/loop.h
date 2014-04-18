@@ -135,7 +135,7 @@ bool loop_plugin_send_data(struct loop *loop, const char *plugin, const uint8_t 
  */
 void loop_plugin_register_fd(struct context *context, int fd, void *tag) __attribute__((nonnull (1)));
 /*
- * No longer watch the given fd for events. Call this before closing it.
+ * No longer watch the given fd for events. Call this before closing the FD.
  */
 void loop_plugin_unregister_fd(struct context *context, int fd) __attribute__((nonnull));
 

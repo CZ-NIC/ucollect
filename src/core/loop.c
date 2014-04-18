@@ -462,6 +462,7 @@ void loop_break(struct loop *loop) {
 }
 
 static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
+	// Deinit the plugin, if it didn't crash.
 	ulog(LLOG_INFO, "Removing plugin %s\n", plugin->plugin.name);
 	if (setjmp(jump_env)) {
 		ulog(LLOG_ERROR, "Signal %d during plugin finish, doing emergency shutdown instead\n", jump_signum);
@@ -470,8 +471,10 @@ static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
 	jump_ready = true;
 	if (!emergency)
 		plugin_finish(plugin);
+	jump_ready = false;
 	size_t pos = 0;
 	struct loop *loop = plugin->context.loop;
+	// Kill timeouts belonging to the plugin
 	while (pos < loop->timeout_count) {
 		if (loop->timeouts[pos].context == &plugin->context) {
 			// Drop this timeout, as we kill the corresponding plugin
@@ -480,9 +483,18 @@ static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
 		} else
 			pos ++;
 	}
-	jump_ready = false;
+	// Kill FDs belonging to the plugin
+	LFOR(plugin_fds, fd, plugin) {
+		loop->fd_invalidated = true;
+		if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_DEL, fd->fd, NULL) == -1)
+			ulog(LLOG_ERROR, "Couldn't stop epolling FD %d belonging to removed plugin %s\n", fd->fd, fd->plugin->plugin.name);
+		if (close(fd->fd) == -1)
+			ulog(LLOG_ERROR, "Couldn't close FD %d belonging to removed plugin %s\n", fd->fd, fd->plugin->plugin.name);
+	};
+	// Release the memory of the plugin
 	pool_list_destroy(&plugin->pool_list);
 	mem_pool_destroy(plugin->context.permanent_pool);
+	// Unload the library
 	plugin_unload(plugin->plugin_handle);
 }
 
