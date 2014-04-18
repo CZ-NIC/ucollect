@@ -36,6 +36,7 @@ struct plugin {
 	void (*uplink_connected_callback)(struct context *context);
 	void (*uplink_disconnected_callback)(struct context *context);
 	void (*uplink_data_callback)(struct context *context, const uint8_t *data, size_t length);
+	void (*fd_callback)(struct context *context, int fd, void *tag); // Called whenever a fd registered with loop_plugin_register_fd is ready to be read
 };
 
 #endif

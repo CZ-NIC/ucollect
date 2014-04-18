@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013,2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -204,6 +204,16 @@ struct pcap_list {
 #define LIST_WANT_LFOR
 #include "link_list.h"
 
+struct plugin_holder;
+
+struct plugin_fd {
+	void (*handler)(struct plugin_fd *fd, uint32_t events);
+	int fd;
+	void *tag;
+	struct plugin_holder *plugin;
+	struct plugin_fd *next, *prev;
+};
+
 struct plugin_holder {
 	/*
 	 * This one is first, so we can cast the current_context back in case
@@ -219,6 +229,7 @@ struct plugin_holder {
 	struct pool_list pool_list;
 	struct plugin_holder *next;
 	struct plugin_holder *original; // When copying, in the configurator
+	struct plugin_fd *fd_head, *fd_tail, *fd_unused;
 	bool mark; // Mark for configurator.
 	size_t failed;
 	uint8_t hash[CHALLENGE_LEN / 2];
@@ -235,6 +246,23 @@ struct plugin_list {
 #define LIST_WANT_APPEND_POOL
 #define LIST_WANT_LFOR
 #include "link_list.h"
+
+#define LIST_NODE struct plugin_fd
+#define LIST_BASE struct plugin_holder
+#define LIST_NAME(X) plugin_fds_##X
+#define LIST_HEAD fd_head
+#define LIST_TAIL fd_tail
+#define LIST_PREV prev
+#define LIST_WANT_INSERT_AFTER
+#define LIST_WANT_LFOR
+#define LIST_WANT_REMOVE
+#include "link_list.h"
+
+#define RECYCLER_NODE struct plugin_fd
+#define RECYCLER_BASE struct plugin_holder
+#define RECYCLER_HEAD fd_head
+#define RECYCLER_NAME(X) plugin_fd_recycler_##X
+#include "recycler.h"
 
 /*
  * Generate a wrapper around a plugin callback that:
@@ -281,6 +309,7 @@ GEN_CALL_WRAPPER(uplink_connected)
 GEN_CALL_WRAPPER(uplink_disconnected)
 GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
 GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
+GEN_CALL_WRAPPER_PARAM_2(fd, int, void *)
 
 struct timeout {
 	uint64_t when;
@@ -1130,4 +1159,44 @@ void loop_xor_plugins(struct loop *loop, uint8_t *hash) {
 		for (size_t i = 0; i < CHALLENGE_LEN / 2; i ++)
 			hash[i] ^= plugin->hash[i];
 	}
+}
+
+static void plugin_fd_event(struct plugin_fd *fd, uint32_t events) {
+	(void) events;
+	ulog(LLOG_DEBUG, "Event on fd %d of plugin %s\n", fd->fd, fd->plugin->plugin.name);
+	plugin_fd(fd->plugin, fd->fd, fd->tag);
+}
+
+void loop_plugin_register_fd(struct context *context, int fd, void *tag) {
+	struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+	assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+	struct plugin_fd *handler = plugin_fd_recycler_get(holder, context->permanent_pool);
+	*handler = (struct plugin_fd) {
+		.handler = plugin_fd_event,
+		.fd = fd,
+		.tag = tag,
+		.plugin = holder
+	};
+	plugin_fds_insert_after(holder, handler, holder->fd_tail);
+	loop_register_fd(context->loop, fd, (struct epoll_handler*)handler);
+	ulog(LLOG_DEBUG, "Watching fd %d of plugin %s\n", fd, holder->plugin.name);
+}
+
+void loop_plugin_unregister_fd(struct context *context, int fd) {
+	struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+	assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+	LFOR(plugin_fds, handler, holder)
+		if (handler->fd == fd) {
+			// Found the one, remove it (and let caller close it)
+			loop_unregister_fd(context->loop, fd);
+			plugin_fds_remove(holder, handler);
+			plugin_fd_recycler_release(holder, handler);
+			ulog(LLOG_DEBUG, "Unregistered fd %d of plugin %s\n", fd, holder->plugin.name);
+			return;
+		}
+	ulog(LLOG_WARN, "Asked to unregister plugin's %s fd %d, but it is not present; ignoring request\n", holder->plugin.name, fd);
 }
