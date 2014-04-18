@@ -487,9 +487,9 @@ static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
 	LFOR(plugin_fds, fd, plugin) {
 		loop->fd_invalidated = true;
 		if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_DEL, fd->fd, NULL) == -1)
-			ulog(LLOG_ERROR, "Couldn't stop epolling FD %d belonging to removed plugin %s\n", fd->fd, fd->plugin->plugin.name);
+			ulog(LLOG_ERROR, "Couldn't stop epolling FD %d belonging to removed plugin %s: %s\n", fd->fd, fd->plugin->plugin.name, strerror(errno));
 		if (close(fd->fd) == -1)
-			ulog(LLOG_ERROR, "Couldn't close FD %d belonging to removed plugin %s\n", fd->fd, fd->plugin->plugin.name);
+			ulog(LLOG_ERROR, "Couldn't close FD %d belonging to removed plugin %s: %s\n", fd->fd, fd->plugin->plugin.name, strerror(errno));
 	};
 	// Release the memory of the plugin
 	pool_list_destroy(&plugin->pool_list);
