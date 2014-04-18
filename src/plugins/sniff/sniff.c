@@ -56,6 +56,20 @@ static void cleanup(struct context *context) {
 	// TODO
 }
 
+// Run the ->finish and send the answer to the server.
+static void reply_send(struct context *context, uint32_t id, struct task_desc *desc, struct task_data *data, const uint8_t *output, size_t output_size) {
+	bool ok;
+	size_t result_size;
+	const uint8_t *result = desc->finish(context, data, output, output_size, &result_size, &ok);
+	size_t message_size = sizeof id + 1 + result_size;
+	uint8_t *message = mem_pool_alloc(context->temp_pool, message_size);
+	memcpy(message, &id, sizeof id);
+	message[sizeof id] = ok ? 'F': 'O';
+	memcpy(message + 1 + sizeof id, result, result_size);
+	uplink_plugin_send_message(context, message, message_size);
+	cleanup(context);
+}
+
 static void in_request(struct context *context, const uint8_t *data, size_t length) {
 	// Extract header
 	assert(length >= 1 + sizeof(uint32_t));
@@ -89,16 +103,7 @@ static void in_request(struct context *context, const uint8_t *data, size_t leng
 		// TODO: Put the task into the structures
 	} else {
 		// No output expected. Finish up now.
-		bool ok;
-		size_t result_size;
-		uint8_t *result = found->finish(context, task_data, NULL, 0, &result_size, &ok);
-		size_t message_size = sizeof id + 1 + result_size;
-		uint8_t *message = mem_pool_alloc(context->temp_pool, message_size);
-		memcpy(message, &id, sizeof id);
-		message[sizeof id] = ok ? 'F' : 'O';
-		memcpy(message + 1 + sizeof id, result, result_size);
-		uplink_plugin_send_message(context, message, message_size);
-		cleanup(context);
+		reply_send(context, id, found, task_data, NULL, 0);
 	}
 }
 

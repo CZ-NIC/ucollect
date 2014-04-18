@@ -31,7 +31,7 @@ struct mem_pool;
 struct task_desc {
 	char name;
 	struct task_data *(*start)(struct context *context, struct mem_pool *pool, const uint8_t *message, size_t message_size, int *output, pid_t *pid);
-	uint8_t *(*finish)(struct context *context, struct task_data *data, const uint8_t *output, size_t output_size, size_t *result_size, bool *ok);
+	const uint8_t *(*finish)(struct context *context, struct task_data *data, const uint8_t *output, size_t output_size, size_t *result_size, bool *ok);
 };
 
 extern struct task_desc task_descs[];
