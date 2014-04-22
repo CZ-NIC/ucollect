@@ -17,8 +17,6 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-// TODO: Check what happens when we want to send something and we are not connected.
-
 #include "task.h"
 
 #include "../../core/plugin.h"
