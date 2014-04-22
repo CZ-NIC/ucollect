@@ -17,17 +17,24 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include "task.h"
 #include "nop.h"
 
-struct task_desc task_descs[] = {
-	{
-		.name = 'N',
-		.label = "NOP",
-		.start = start_nop,
-		.finish = finish_nop
-	},
-	{
-		.name = '\0'
-	}
-};
+struct task_data *start_nop(struct context *context, struct mem_pool *pool, const uint8_t *message, size_t message_size, int *output, pid_t *pid) {
+	(void) context;
+	(void) pool;
+	(void) message;
+	(void) message_size;
+	*output = 0;
+	*pid = 0;
+	return NULL;
+}
+
+const uint8_t *finish_nop(struct context *context, struct task_data *data, const uint8_t *output, size_t output_size, size_t *result_size, bool *ok) {
+	(void) context;
+	(void) data;
+	(void) output;
+	(void) output_size;
+	*result_size = 0;
+	*ok = true;
+	return NULL;
+}

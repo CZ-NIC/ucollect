@@ -17,17 +17,27 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include "task.h"
-#include "nop.h"
+#ifndef UCOLLECT_SNIFF_NOP_H
+#define UCOLLECT_SNIFF_NOP_H
 
-struct task_desc task_descs[] = {
-	{
-		.name = 'N',
-		.label = "NOP",
-		.start = start_nop,
-		.finish = finish_nop
-	},
-	{
-		.name = '\0'
-	}
-};
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
+
+struct task_data;
+struct context;
+struct mem_pool;
+
+/*
+ * Implementation of task that does nothing at all, just finishes successfully.
+ *
+ * The start_nop signals nothing was started and that the finish should be called right away.
+ * The finish successfully produces empty output.
+ *
+ * No parameters are checked for sanity, only the output parameters and results are set.
+ */
+
+struct task_data *start_nop(struct context *context, struct mem_pool *pool, const uint8_t *message, size_t message_size, int *output, pid_t *pid);
+const uint8_t *finish_nop(struct context *context, struct task_data *data, const uint8_t *output, size_t output_size, size_t *result_size, bool *ok);
+
+#endif

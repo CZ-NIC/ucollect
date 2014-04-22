@@ -43,7 +43,7 @@ struct task_desc {
 	 *
 	 * Context is the plugin's context.
 	 * The pool is for data that can be needed during the time of the task, it is guaranteed to be valid until finish is called.
-	 * Message is what arrived from the server, parameters of the task. Interpretation is up to the task type.
+	 * Message is what arrived from the server, parameters of the task. Interpretation is up to the task type. If you need to preserve it for future, make a copy, it will be invalidated soon.
 	 * The output is FD where the output will appear and pid is PID of the process.
 	 *
 	 * The return value is then passed to finish unmodified, it is meant as private task data.
