@@ -75,10 +75,10 @@ static void cleanup(struct context *context) {
 
 // Run the ->finish and send the answer to the server.
 static void reply_send(struct context *context, uint32_t id, struct task_desc *desc, struct task_data *data, const uint8_t *output, size_t output_size) {
-	// TODO: Log
 	bool ok;
 	size_t result_size;
 	const uint8_t *result = desc->finish(context, data, output, output_size, &result_size, &ok);
+	ulog(LLOG_INFO, "Finished task %s, status %d\n", desc->label, (int)ok);
 	size_t message_size = sizeof id + 1 + result_size;
 	uint8_t *message = mem_pool_alloc(context->temp_pool, message_size);
 	memcpy(message, &id, sizeof id);
@@ -118,7 +118,6 @@ static void data_received(struct context *context, int fd, struct task *task) {
 }
 
 static void in_request(struct context *context, const uint8_t *data, size_t length) {
-	// TODO: Log
 	// Extract header
 	assert(length >= 1 + sizeof(uint32_t));
 	uint32_t id;
@@ -147,6 +146,7 @@ static void in_request(struct context *context, const uint8_t *data, size_t leng
 	pid_t pid;
 	int out;
 	struct task_data *task_data = found->start(context, context->user_data->pool, data, length, &out, &pid);
+	ulog(LLOG_INFO, "Started task %s as PID %d and fd %d\n", found->label, (int)pid, out);
 	if (out) {
 		// There'll be some output in future. Put the structure in there.
 		struct task *t = tasks_append_pool(context->user_data, context->user_data->pool); // Don't do the c99 initialization, it would overwrite next and prev pointers.
