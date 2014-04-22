@@ -61,6 +61,8 @@ struct task_desc {
 	 * OK is output parameter signalling if all went well.
 	 *
 	 * Return pointer to data to be sent to server (it may be allocated either from the memory pool passed to start or temporary pool in the context, either is fine).
+	 *
+	 * Note, however, that finish might be ommited by the plugin (for example, when the task gets aborted).
 	 */
 	const uint8_t *(*finish)(struct context *context, struct task_data *data, const uint8_t *output, size_t output_size, size_t *result_size, bool *ok);
 };

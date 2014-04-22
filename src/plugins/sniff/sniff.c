@@ -17,6 +17,8 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+// TODO: Check what happens when we want to send something and we are not connected.
+
 #include "task.h"
 
 #include "../../core/plugin.h"
@@ -30,6 +32,8 @@
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <signal.h>
 
 #define GROW_RATIO 3
 #define GROW_ADDITION 1024
@@ -57,7 +61,7 @@ struct user_data {
 #define LIST_NAME(X) tasks_##X
 #define LIST_WANT_APPEND_POOL
 #define LIST_WANT_REMOVE
-//#define LIST_WANT_LFOR
+#define LIST_WANT_LFOR
 #include "../../core/link_list.h"
 
 static void initialize(struct context *context) {
@@ -141,7 +145,32 @@ static void in_request(struct context *context, const uint8_t *data, size_t leng
 		memcpy(error + sizeof id, "U", 1);
 		uplink_plugin_send_message(context, error, sizeof error);
 	}
-	// TODO: Abort any existing task
+	// Abort any existing task with the same ID (the server might not know about it → it is of no use, or ask to terminate it with a NOP task)
+	LFOR(tasks, old, context->user_data)
+		if (old->id == id) {
+			// Abort it. Kill the proces, close the output and remove it from the loop.
+			if (kill(old->pid, SIGTERM) == -1) {
+				if (errno == ESRCH) {
+					ulog(LLOG_WARN, "Tried to terminate process %d of task %s, but it no longer existed\n", old->pid, old->desc->label);
+				} else {
+					ulog(LLOG_ERROR, "Couldn't kill process %d of task %s: %s\n", old->pid, old->desc->label, strerror(errno));
+				}
+			}
+			loop_plugin_unregister_fd(context, old->out);
+			if (close(old->out) == -1)
+				ulog(LLOG_ERROR, "Couldn't close task's %s output FD %d: %s\n", old->desc->label, old->out, strerror(errno));
+			// Remove the info about the task, it is no longer running.
+			tasks_remove(context->user_data, old);
+			// Release the memory if it was the last task there.
+			cleanup(context);
+			ulog(LLOG_INFO, "Task %s aborted, new task with the same ID arrived\n", old->desc->label);
+			// Send info about the lost task to the server.
+			uint8_t *message = mem_pool_alloc(context->temp_pool, sizeof id + 1);
+			memcpy(message, &id, sizeof id);
+			message[sizeof id] = 'A';
+			uplink_plugin_send_message(context, message, sizeof id + 1);
+			break;
+		}
 	assert(found->start);
 	pid_t pid;
 	int out;
