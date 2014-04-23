@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <fcntl.h>
 
 #define GROW_RATIO 3
 #define GROW_ADDITION 1024
@@ -103,7 +104,11 @@ static void data_received(struct context *context, int fd, struct task *task) {
 	ssize_t amount = read(fd, task->buffer + task->buffer_used, task->buffer_allocated - task->buffer_used);
 	if (amount <= 0) { // There'll be no more data.
 		if (amount < 0) {
-			ulog(LLOG_ERROR, "Error reading from task pipe %d: %s", fd, strerror(errno));
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				ulog(LLOG_WARN, "Woken up to read from pipe %d, but nothing in there\n", fd);
+				return;
+			}
+			ulog(LLOG_ERROR, "Error reading from task pipe %d: %s\n", fd, strerror(errno));
 			// Reset the output to signal error
 			task->buffer_used = 0;
 			task->buffer = NULL;
@@ -111,7 +116,7 @@ static void data_received(struct context *context, int fd, struct task *task) {
 		tasks_remove(context->user_data, task); // Remove the task and its FD
 		loop_plugin_unregister_fd(context, fd);
 		if (close(fd) == -1)
-			ulog(LLOG_ERROR, "Couldn't close task pipe %d: %s", fd, strerror(errno));
+			ulog(LLOG_ERROR, "Couldn't close task pipe %d: %s\n", fd, strerror(errno));
 		reply_send(context, task->id, task->desc, task->data, task->buffer, task->buffer_used);
 		// Due to the unregister, we won't be called again for this FD
 	} else
@@ -175,7 +180,13 @@ static void in_request(struct context *context, const uint8_t *data, size_t leng
 	struct task_data *task_data = found->start(context, context->user_data->pool, data, length, &out, &pid);
 	ulog(LLOG_INFO, "Started task %s as PID %d and fd %d\n", found->label, (int)pid, out);
 	if (out) {
-		// TODO: Set out non-blocking, handle non-blocking while reading
+		if (fcntl(out, F_SETFL, O_NONBLOCK) == -1) {
+			ulog(LLOG_ERROR, "Couldn't set output FD %d as non-blocking: %s\n", out, strerror(errno));
+			if (close(out) == -1)
+				ulog(LLOG_ERROR, "Error closing task output: %s\n", strerror(errno));
+			reply_send(context, id, found, task_data, NULL, 0);
+			return;
+		}
 		// There'll be some output in future. Put the structure in there.
 		struct task *t = tasks_append_pool(context->user_data, context->user_data->pool); // Don't do the c99 initialization, it would overwrite next and prev pointers.
 		t->desc = found;
