@@ -18,6 +18,7 @@
 */
 
 #include "ping.h"
+#include "fork.h"
 
 #include "../../core/mem_pool.h"
 #include "../../core/util.h"
@@ -25,8 +26,6 @@
 
 #include <arpa/inet.h>
 #include <string.h>
-#include <unistd.h>
-#include <errno.h>
 
 #define PINGER_PROGRAM "ucollect-sniff-ping"
 
@@ -69,37 +68,6 @@ struct task_data *start_ping(struct context *context, struct mem_pool *pool, con
 			data->input_ok = false;
 			return data;
 		}
-	int pipes[2];
-	if (pipe(pipes) == -1) {
-		ulog(LLOG_ERROR, "Couldn't create pinger pipes: %s\n", strerror(errno));
-		data->system_ok = false;
-		return data;
-	}
-	pid_t new_pid = fork();
-	if (new_pid == -1) {
-		ulog(LLOG_ERROR, "Couldn't create pinger process: %s\n", strerror(errno));
-		data->system_ok = false;
-		if (close(pipes[0]) == -1)
-			ulog(LLOG_ERROR, "Failed to close pinger read pipe: %s\n", strerror(errno));
-		if (close(pipes[1]) == -1)
-			ulog(LLOG_ERROR, "Failed to close pinger write pipe: %s\n", strerror(errno));
-		return data;
-	}
-	if (new_pid == 0) { // We are the child now.
-		if (close(pipes[0]) == -1)
-			die("Failed to close pinger read pipe in child: %s\n", strerror(errno));
-		if (dup2(pipes[1], 1) == -1)
-			die("Failed to assign stdout of pinger: %s\n", strerror(errno));
-		if (close(pipes[1]) == -1)
-			die("Failed to close copy of pinger write pipe: %s\n", strerror(errno));
-		execvp(PINGER_PROGRAM, argv);
-		die("Failed to execute pinger: %s\n", strerror(errno));
-	} else {
-		if (close(pipes[1]) == -1)
-			ulog(LLOG_ERROR, "Couldn't close pinger write pipe: %s\n", strerror(errno));
-		ulog(LLOG_DEBUG, "Pinger started with FD %d and PID %d\n", pipes[0], (int) new_pid);
-		*output = pipes[0];
-		*pid = new_pid;
-	}
+	data->system_ok = fork_task(PINGER_PROGRAM, argv, "pinger", output, pid);
 	return data;
 }
