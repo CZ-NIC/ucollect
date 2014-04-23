@@ -1,2 +1,2 @@
 LIBRARIES += src/plugins/sniff/libplugin_sniff
-libplugin_sniff_MODULES := sniff task nop
+libplugin_sniff_MODULES := sniff task nop ping

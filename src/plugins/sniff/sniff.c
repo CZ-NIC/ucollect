@@ -175,6 +175,7 @@ static void in_request(struct context *context, const uint8_t *data, size_t leng
 	struct task_data *task_data = found->start(context, context->user_data->pool, data, length, &out, &pid);
 	ulog(LLOG_INFO, "Started task %s as PID %d and fd %d\n", found->label, (int)pid, out);
 	if (out) {
+		// TODO: Set out non-blocking, handle non-blocking while reading
 		// There'll be some output in future. Put the structure in there.
 		struct task *t = tasks_append_pool(context->user_data, context->user_data->pool); // Don't do the c99 initialization, it would overwrite next and prev pointers.
 		t->desc = found;
