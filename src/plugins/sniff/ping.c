@@ -23,6 +23,7 @@
 #include "../../core/mem_pool.h"
 #include "../../core/util.h"
 #include "../../core/context.h"
+#include "../../core/uplink.h"
 
 #include <arpa/inet.h>
 #include <string.h>
@@ -36,7 +37,33 @@ struct task_data {
 	size_t *ping_counts;
 };
 
-static bool host_parse(char **dest, struct task_data *data, const uint8_t **message, size_t *message_size) {
+static bool host_parse(struct mem_pool *tmp_pool, char **dest, struct task_data *data, size_t host_num, const uint8_t **message, size_t *message_size) {
+	size_t header = sizeof(char) + sizeof(uint8_t) + sizeof(uint16_t);
+	if (*message_size < header) {
+		ulog(LLOG_ERROR, "Message too short, host %zu incomplete\n", host_num);
+		return false;
+	}
+	char proto = **message;
+	uint8_t count = (*message)[sizeof proto];
+	uint16_t size;
+	memcpy(&size, *message + sizeof proto + sizeof count, sizeof size);
+	size = ntohs(size);
+	*message += header;
+	*message_size -= header;
+	char *host = uplink_parse_string(tmp_pool, message, message_size);
+	if (!host) {
+		ulog(LLOG_ERROR, "Hostname of host %zu is broken\n", host_num);
+		return false;
+	}
+	if (proto != '4' && proto != '6' && proto != 'X') {
+		ulog(LLOG_ERROR, "Unknown ping protocol %c on host %zu\n", proto, host_num);
+		return false;
+	}
+	dest[0] = mem_pool_printf(tmp_pool, "%c", proto);
+	dest[1] = mem_pool_printf(tmp_pool, "%d", count);
+	dest[2] = mem_pool_printf(tmp_pool, "%d", size);
+	dest[3] = host;
+	data->ping_counts[host_num] = count;
 	return false;
 }
 
@@ -64,7 +91,7 @@ struct task_data *start_ping(struct context *context, struct mem_pool *pool, con
 	data->host_count = host_count;
 	data->ping_counts = mem_pool_alloc(pool, host_count * sizeof *data->ping_counts);
 	for (size_t i = 0; i < host_count; ++ i)
-		if (!host_parse(argv + 1 + 4 * i, data, &message, &message_size)) {
+		if (!host_parse(context->temp_pool, argv + 1 + 4 * i, data, i, &message, &message_size)) {
 			data->input_ok = false;
 			return data;
 		}
