@@ -64,7 +64,7 @@ struct task_desc {
 	 *
 	 * Note, however, that finish might be ommited by the plugin (for example, when the task gets aborted).
 	 */
-	const uint8_t *(*finish)(struct context *context, struct task_data *data, const uint8_t *output, size_t output_size, size_t *result_size, bool *ok);
+	const uint8_t *(*finish)(struct context *context, struct task_data *data, uint8_t *output, size_t output_size, size_t *result_size, bool *ok);
 };
 
 extern struct task_desc task_descs[];

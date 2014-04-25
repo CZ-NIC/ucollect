@@ -77,7 +77,7 @@ static void cleanup(struct context *context) {
 }
 
 // Run the ->finish and send the answer to the server.
-static void reply_send(struct context *context, uint32_t id, struct task_desc *desc, struct task_data *data, const uint8_t *output, size_t output_size) {
+static void reply_send(struct context *context, uint32_t id, struct task_desc *desc, struct task_data *data, uint8_t *output, size_t output_size) {
 	bool ok;
 	size_t result_size;
 	const uint8_t *result = desc->finish(context, data, output, output_size, &result_size, &ok);

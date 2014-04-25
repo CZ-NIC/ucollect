@@ -27,6 +27,7 @@
 
 #include <arpa/inet.h>
 #include <string.h>
+#include <stdio.h>
 
 #define PINGER_PROGRAM "ucollect-sniff-ping"
 
@@ -74,13 +75,12 @@ struct task_data *start_ping(struct context *context, struct mem_pool *pool, con
 		.input_ok = true,
 		.system_ok = true
 	};
-#define CHECK(cond, message, ...) if (!(cond)) {\
-		ulog(LLOG_ERROR, message, __VA_ARGS__); \
-		data->input_ok = false; \
-		return data; \
-	}
 	uint16_t host_count;
-	CHECK(message_size >= sizeof host_count, "Ping input broken: Message too short to contain even the number of hosts to ping (%zu bytes)\n", message_size);
+	if (message_size >= sizeof host_count) {
+		ulog(LLOG_ERROR, "Ping input broken: Message too short to contain even the number of hosts to ping (%zu bytes)\n", message_size);
+		data->input_ok = false;
+		return data;
+	}
 	memcpy(&host_count, message, sizeof host_count);
 	message += sizeof host_count;
 	message_size -= sizeof host_count;
@@ -97,4 +97,78 @@ struct task_data *start_ping(struct context *context, struct mem_pool *pool, con
 		}
 	data->system_ok = fork_task(PINGER_PROGRAM, argv, "pinger", output, pid);
 	return data;
+}
+
+static uint8_t **split(struct mem_pool *pool, uint8_t *start, uint8_t *end, uint8_t separator, size_t limit) {
+	uint8_t **result = mem_pool_alloc(pool, limit + 2), **assigned = result;
+	*assigned ++ = start;
+	*assigned = end;
+	for (size_t i = 2; i < limit + 2; i ++)
+		result[i] = NULL;
+	for (uint8_t *pos = start; limit && pos < end; pos ++)
+		if (*pos == separator) {
+			*pos = '\0';
+			*assigned ++ = pos + 1;
+			*assigned = end;
+			limit --;
+		}
+	return result;
+}
+
+const uint8_t *finish_ping(struct context *context, struct task_data *data, uint8_t *output, size_t output_size, size_t *result_size, bool *ok) {
+	// TODO: Log error
+#define FAIL(CODE) do { *result_size = 1; *ok = false; return (const uint8_t *)(CODE); } while (0)
+	// Basic sanity check
+	if (!data->input_ok)
+		FAIL("I");
+	if (!data->system_ok)
+		FAIL("F");
+	if (!output)
+		FAIL("P");
+	if (data->host_count && !output_size)
+		FAIL("R");
+	// Split to lines
+	uint8_t **lines = split(context->temp_pool, output, output + output_size, '\n', data->host_count);
+	if (lines[data->host_count + 1] != output + output_size || lines[data->host_count] != output + output_size)
+		// Wrong number of lines
+		FAIL("O");
+	// Split each line to words
+	uint8_t ***words = mem_pool_alloc(context->temp_pool, data->host_count * sizeof *words);
+	size_t address_size = 0, pings_total = 0;
+	for (size_t i = 0; i < data->host_count; i ++) {
+		size_t pc = data->ping_counts[i];
+		pings_total += pc;
+		words[i] = split(context->temp_pool, lines[i], lines[i + 1], ' ', pc + 1);
+		if (words[i][pc + 2] && strcmp("END", (char *)words[i][pc - 1]) != 0)
+			// Too many words (fewer is allowed)
+			FAIL("O");
+		if (strcmp("END", (char *)words[i][0]) != 0) // There's an IP address. Count its size.
+			address_size += strlen((char *)words[i][0]);
+	}
+	// Allocate the result and encode it.
+	size_t total_size = pings_total * sizeof(uint32_t) + data->host_count * sizeof(uint32_t) + address_size, rest = total_size;
+	uint8_t *result = mem_pool_alloc(context->temp_pool, total_size);
+	uint8_t *pos = result;
+	for (size_t i = 0; i < data->host_count; i ++) {
+		// First the resolved IP address, if any.
+		if (strcmp("END", (char *)words[i][0]) == 0) {
+			uplink_render_string("", 0, &pos, &rest);
+		} else
+			uplink_render_string(words[i][0], words[i][1] - words[i][0], &pos, &rest);
+		// Then the ping times. Put infinites there as not answered, then overwrite with those that were answered.
+		memset(pos, 0xFF, data->ping_counts[i] * sizeof(uint32_t));
+		size_t j = 1;
+		while (words[i][j] && strcmp("END", (char *)words[i][j]) != 0) {
+			unsigned index;
+			double time;
+			if (sscanf((char *)words[i][j], "%u:%lf", &index, &time) != 2)
+				FAIL("O");
+			if (index >= data->ping_counts[i])
+				FAIL("O");
+			uint32_t encoded = htonl(time * 1000);
+			memcpy(pos + index * sizeof encoded, &encoded, sizeof encoded);
+			j ++;
+		}
+	}
+	return result;
 }

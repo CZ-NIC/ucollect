@@ -29,7 +29,7 @@ struct task_data *start_nop(struct context *context, struct mem_pool *pool, cons
 	return NULL;
 }
 
-const uint8_t *finish_nop(struct context *context, struct task_data *data, const uint8_t *output, size_t output_size, size_t *result_size, bool *ok) {
+const uint8_t *finish_nop(struct context *context, struct task_data *data, uint8_t *output, size_t output_size, size_t *result_size, bool *ok) {
 	(void) context;
 	(void) data;
 	(void) output;
