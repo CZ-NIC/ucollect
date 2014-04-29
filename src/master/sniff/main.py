@@ -36,7 +36,7 @@ class SniffPlugin(plugin.Plugin):
 		return "Sniff"
 
 	def __init_pings(self):
-		self.broadcast(struct.pack('!L', 42) + 'N')
+		self.broadcast(struct.pack('!LcH', 42, 'P', 0))
 
 	def client_connected(self, client):
 		"""
