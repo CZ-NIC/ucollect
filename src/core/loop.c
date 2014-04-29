@@ -260,7 +260,7 @@ struct plugin_list {
 
 #define RECYCLER_NODE struct plugin_fd
 #define RECYCLER_BASE struct plugin_holder
-#define RECYCLER_HEAD fd_head
+#define RECYCLER_HEAD fd_unused
 #define RECYCLER_NAME(X) plugin_fd_recycler_##X
 #include "recycler.h"
 
