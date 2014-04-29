@@ -143,6 +143,8 @@ INSERT INTO count_types (name, description, ord) VALUES
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
 GRANT INSERT ON activities TO $DBUPDATER;
+GRANT UPDATE ON SEQUENCE activities_id TO $DBUPDATER;
+GRANT SELECT ON SEQUENCE activities_id TO $DBUPDATER;
 GRANT SELECT ON groups TO $DBUPDATER;
 GRANT SELECT ON group_members TO $DBUPDATER;
 GRANT SELECT ON anomaly_types TO $DBUPDATER;
@@ -163,13 +165,9 @@ GRANT UPDATE (builtin_passwd) ON clients TO $DBJENKINS;
 GRANT SELECT (timestamp) ON activities TO $DBCLEANER;
 GRANT SELECT (timestamp) ON anomalies TO $DBCLEANER;
 GRANT SELECT (timestamp) ON count_snapshots TO $DBCLEANER;
-GRANT SELECT (created_at) ON router_loggedpacket TO $DBCLEANER;
-GRANT SELECT (date) ON router_registrationcode TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
 GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
-GRANT DELETE ON router_loggedpacket TO $DBCLEANER;
-GRANT DELETE ON router_registrationcode TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
@@ -181,9 +179,6 @@ GRANT SELECT (from_group, type, timestamp, value, value, relevance_count, releva
 GRANT SELECT ON counts TO $DBARCHIVIST;
 GRANT SELECT ON count_snapshots TO $DBARCHIVIST;
 GRANT SELECT ON group_members TO $DBARCHIVIST;
-GRANT SELECT (id, router_id, time, remote_port, remote_address, local_port, direction, rule_id, protocol, count, archived) ON router_loggedpacket TO $DBARCHIVIST;
-GRANT UPDATE (archived) ON router_loggedpacket TO $DBARCHIVIST;
-GRANT SELECT (id, client_id) ON router_router TO $DBARCHIVIST;
 
 COMMIT;
 ENDSQL
@@ -192,11 +187,24 @@ if [ "$1" = "debug" ] ; then
 	# Provide some debug data (clients for now)
 	psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<'ENDSQL'
 BEGIN;
-INSERT INTO clients (name, passwd, mechanism) VALUES ('ruth', '123456', 'S'), ('dragonfly', '78910', 'S'), ('spider', 'web', 'S');
+INSERT INTO clients (name, mechanism, passwd) VALUES ('ruth', 'Y', 'None'), ('0000000100000001', 'Y', 'None');
 
-INSERT INTO groups (name) VALUES ('all'), ('ruth'), ('dragonfly'), ('spider');
+INSERT INTO groups (name) VALUES ('all'), ('ruth');
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups ON groups.name = clients.name;
+COMMIT;
+ENDSQL
+else
+
+	psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
+BEGIN;
+GRANT SELECT (created_at) ON router_loggedpacket TO $DBCLEANER;
+GRANT SELECT (date) ON router_registrationcode TO $DBCLEANER;
+GRANT SELECT (id, router_id, time, remote_port, remote_address, local_port, direction, rule_id, protocol, count, archived) ON router_loggedpacket TO $DBARCHIVIST;
+GRANT DELETE ON router_loggedpacket TO $DBCLEANER;
+GRANT DELETE ON router_registrationcode TO $DBCLEANER;
+GRANT UPDATE (archived) ON router_loggedpacket TO $DBARCHIVIST;
+GRANT SELECT (id, client_id) ON router_router TO $DBARCHIVIST;
 COMMIT;
 ENDSQL
 fi
