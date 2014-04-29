@@ -81,7 +81,7 @@ static void reply_send(struct context *context, uint32_t id, struct task_desc *d
 	bool ok;
 	size_t result_size;
 	const uint8_t *result = desc->finish(context, data, output, output_size, &result_size, &ok);
-	ulog(LLOG_INFO, "Finished task %s, status %d\n", desc->label, (int)ok);
+	ulog(LLOG_INFO, "Finished task %s, success %d\n", desc->label, (int)ok);
 	size_t message_size = sizeof id + 1 + result_size;
 	uint8_t *message = mem_pool_alloc(context->temp_pool, message_size);
 	memcpy(message, &id, sizeof id);
