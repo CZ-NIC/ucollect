@@ -19,6 +19,7 @@
 
 #include "task.h"
 #include "nop.h"
+#include "ping.h"
 
 struct task_desc task_descs[] = {
 	{
@@ -26,6 +27,12 @@ struct task_desc task_descs[] = {
 		.label = "NOP",
 		.start = start_nop,
 		.finish = finish_nop
+	},
+	{
+		.name = 'P',
+		.label = "Ping",
+		.start = start_ping,
+		.finish = finish_ping
 	},
 	{
 		.name = '\0'
