@@ -76,7 +76,7 @@ struct task_data *start_ping(struct context *context, struct mem_pool *pool, con
 		.system_ok = true
 	};
 	uint16_t host_count;
-	if (message_size >= sizeof host_count) {
+	if (message_size < sizeof host_count) {
 		ulog(LLOG_ERROR, "Ping input broken: Message too short to contain even the number of hosts to ping (%zu bytes)\n", message_size);
 		data->input_ok = false;
 		return data;
@@ -169,6 +169,8 @@ const uint8_t *finish_ping(struct context *context, struct task_data *data, uint
 			j ++;
 		}
 	}
+	*ok = true;
+	*result_size = total_size;
 	ulog(LLOG_DEBUG, "Sending %zu bytes of ping output for %zu hosts\n", *result_size, data->host_count);
 	return result;
 }
