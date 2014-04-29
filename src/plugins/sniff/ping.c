@@ -116,22 +116,21 @@ static uint8_t **split(struct mem_pool *pool, uint8_t *start, uint8_t *end, uint
 }
 
 const uint8_t *finish_ping(struct context *context, struct task_data *data, uint8_t *output, size_t output_size, size_t *result_size, bool *ok) {
-	// TODO: Log error
-#define FAIL(CODE) do { *result_size = 1; *ok = false; return (const uint8_t *)(CODE); } while (0)
+#define FAIL(CODE, MESSAGE) do { *result_size = 1; *ok = false; ulog(LLOG_INFO, "Sending error ping response %s: %s\n", CODE, MESSAGE); return (const uint8_t *)(CODE); } while (0)
 	// Basic sanity check
 	if (!data->input_ok)
-		FAIL("I");
+		FAIL("I", "Invalid input");
 	if (!data->system_ok)
-		FAIL("F");
+		FAIL("F", "Failed to run command");
 	if (!output)
-		FAIL("P");
+		FAIL("P", "The pipe burst, call the plumber");
 	if (data->host_count && !output_size)
-		FAIL("R");
+		FAIL("R", "Read error, suggest getting glasses");
 	// Split to lines
 	uint8_t **lines = split(context->temp_pool, output, output + output_size, '\n', data->host_count);
 	if (lines[data->host_count + 1] != output + output_size || lines[data->host_count] != output + output_size)
 		// Wrong number of lines
-		FAIL("O");
+		FAIL("O", "Wrong number of lines in the output");
 	// Split each line to words
 	uint8_t ***words = mem_pool_alloc(context->temp_pool, data->host_count * sizeof *words);
 	size_t address_size = 0, pings_total = 0;
@@ -141,7 +140,7 @@ const uint8_t *finish_ping(struct context *context, struct task_data *data, uint
 		words[i] = split(context->temp_pool, lines[i], lines[i + 1], ' ', pc + 1);
 		if (words[i][pc + 2] && strcmp("END", (char *)words[i][pc - 1]) != 0)
 			// Too many words (fewer is allowed)
-			FAIL("O");
+			FAIL("O", "Too many words on a line, be brief");
 		if (strcmp("END", (char *)words[i][0]) != 0) // There's an IP address. Count its size.
 			address_size += strlen((char *)words[i][0]);
 	}
@@ -162,13 +161,14 @@ const uint8_t *finish_ping(struct context *context, struct task_data *data, uint
 			unsigned index;
 			double time;
 			if (sscanf((char *)words[i][j], "%u:%lf", &index, &time) != 2)
-				FAIL("O");
+				FAIL("O", "Time format error");
 			if (index >= data->ping_counts[i])
-				FAIL("O");
+				FAIL("O", "Ping index overflow");
 			uint32_t encoded = htonl(time * 1000);
 			memcpy(pos + index * sizeof encoded, &encoded, sizeof encoded);
 			j ++;
 		}
 	}
+	ulog(LLOG_DEBUG, "Sending %zu bytes of ping output for %zu hosts\n", *result_size, data->host_count);
 	return result;
 }
