@@ -24,6 +24,9 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <stdlib.h>
+
+#define D(MESSAGE, ...) do { ulog(LLOG_ERROR, MESSAGE, __VA_ARGS__); exit(1); } while (0)
 
 bool fork_task(const char *program, char **argv, const char *name, int *output, pid_t *pid) {
 	int pipes[2];
@@ -42,13 +45,13 @@ bool fork_task(const char *program, char **argv, const char *name, int *output, 
 	}
 	if (new_pid == 0) { // We are the child now.
 		if (close(pipes[0]) == -1)
-			die("Failed to close %s read pipe in child: %s\n", name, strerror(errno));
+			D("Failed to close %s read pipe in child: %s\n", name, strerror(errno));
 		if (dup2(pipes[1], 1) == -1)
-			die("Failed to assign stdout of %s: %s\n", name, strerror(errno));
+			D("Failed to assign stdout of %s: %s\n", name, strerror(errno));
 		if (close(pipes[1]) == -1)
-			die("Failed to close copy of %s write pipe: %s\n", name, strerror(errno));
+			D("Failed to close copy of %s write pipe: %s\n", name, strerror(errno));
 		execvp(program, argv);
-		die("Failed to execute %s (%s): %s\n", name, program, strerror(errno));
+		D("Failed to execute %s (%s): %s\n", name, program, strerror(errno));
 	} else {
 		if (close(pipes[1]) == -1)
 			ulog(LLOG_ERROR, "Couldn't close %s write pipe: %s\n", name, strerror(errno));
