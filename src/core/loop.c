@@ -78,6 +78,7 @@ static void abort_safe(void) {
 }
 
 static void sig_handler(int signal) {
+#ifdef SIGNAL_REINIT
 	if (jump_ready && current_context) {
 		jump_ready = 0; // Don't try to jump twice in a row if anything goes bad
 		// There's a handler
@@ -93,6 +94,10 @@ static void sig_handler(int signal) {
 #endif
 		longjmp(jump_env, 1);
 	} else {
+#else
+	{
+#endif
+		ulog(LLOG_DIE, "Got signal %d with context %p, aborting\n", signal, (void *)current_context);
 		// Not ready to jump. Abort.
 		abort_safe();
 	}

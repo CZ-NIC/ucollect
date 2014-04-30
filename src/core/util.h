@@ -29,6 +29,7 @@ void die(const char *format, ...) __attribute__((format(printf, 1, 2))) __attrib
 #endif
 
 enum log_level {
+	LLOG_DIE,
 	LLOG_ERROR,
 	LLOG_WARN,
 	LLOG_INFO,

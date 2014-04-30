@@ -6,6 +6,9 @@ endif
 ifdef SOFT_LOGIN
 	CFLAGS_ALL += -DSOFT_LOGIN=1
 endif
+ifndef NO_SIGNAL_REINIT
+	CFLAGS += -DSIGNAL_REINIT
+endif
 
 include $(S)/build/Makefile.top
 
