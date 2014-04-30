@@ -85,7 +85,7 @@ static void reply_send(struct context *context, uint32_t id, struct task_desc *d
 	size_t message_size = sizeof id + 1 + result_size;
 	uint8_t *message = mem_pool_alloc(context->temp_pool, message_size);
 	memcpy(message, &id, sizeof id);
-	message[sizeof id] = ok ? 'F': 'O';
+	message[sizeof id] = ok ? 'O': 'F';
 	memcpy(message + 1 + sizeof id, result, result_size);
 	uplink_plugin_send_message(context, message, message_size);
 	cleanup(context);
