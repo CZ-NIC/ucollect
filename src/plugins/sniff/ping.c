@@ -28,6 +28,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 
 #define PINGER_PROGRAM "ucollect-sniff-ping"
 
@@ -65,7 +66,7 @@ static bool host_parse(struct mem_pool *tmp_pool, char **dest, struct task_data 
 	dest[2] = mem_pool_printf(tmp_pool, "%d", size);
 	dest[3] = host;
 	data->ping_counts[host_num] = count;
-	return false;
+	return true;
 }
 
 struct task_data *start_ping(struct context *context, struct mem_pool *pool, const uint8_t *message, size_t message_size, int *output, pid_t *pid) {
@@ -100,7 +101,7 @@ struct task_data *start_ping(struct context *context, struct mem_pool *pool, con
 }
 
 static uint8_t **split(struct mem_pool *pool, uint8_t *start, uint8_t *end, uint8_t separator, size_t limit) {
-	uint8_t **result = mem_pool_alloc(pool, limit + 2), **assigned = result;
+	uint8_t **result = mem_pool_alloc(pool, (limit + 2) * sizeof *result), **assigned = result;
 	*assigned ++ = start;
 	*assigned = end;
 	for (size_t i = 2; i < limit + 2; i ++)
@@ -136,13 +137,15 @@ const uint8_t *finish_ping(struct context *context, struct task_data *data, uint
 	size_t address_size = 0, pings_total = 0;
 	for (size_t i = 0; i < data->host_count; i ++) {
 		size_t pc = data->ping_counts[i];
-		pings_total += pc;
 		words[i] = split(context->temp_pool, lines[i], lines[i + 1], ' ', pc + 1);
-		if (words[i][pc + 2] && strcmp("END", (char *)words[i][pc - 1]) != 0)
+		if (words[i][pc + 2] && strcmp("END", (char *)words[i][pc + 1]) != 0)
 			// Too many words (fewer is allowed)
 			FAIL("O", "Too many words on a line, be brief");
-		if (strcmp("END", (char *)words[i][0]) != 0) // There's an IP address. Count its size.
+		if (strcmp("END", (char *)words[i][0]) != 0) {
+			// There's an IP address. Count its size. And the pings too.
 			address_size += strlen((char *)words[i][0]);
+			pings_total += pc;
+		}
 	}
 	// Allocate the result and encode it.
 	size_t total_size = pings_total * sizeof(uint32_t) + data->host_count * sizeof(uint32_t) + address_size, rest = total_size;
@@ -152,10 +155,13 @@ const uint8_t *finish_ping(struct context *context, struct task_data *data, uint
 		// First the resolved IP address, if any.
 		if (strcmp("END", (char *)words[i][0]) == 0) {
 			uplink_render_string("", 0, &pos, &rest);
-		} else
-			uplink_render_string(words[i][0], words[i][1] - words[i][0], &pos, &rest);
+			continue;
+		}
+		uplink_render_string(words[i][0], words[i][1] - words[i][0] - 1, &pos, &rest);
 		// Then the ping times. Put infinites there as not answered, then overwrite with those that were answered.
-		memset(pos, 0xFF, data->ping_counts[i] * sizeof(uint32_t));
+		size_t time_len = data->ping_counts[i] * sizeof(uint32_t);
+		assert(time_len <= rest);
+		memset(pos, 0xFF, time_len);
 		size_t j = 1;
 		while (words[i][j] && strcmp("END", (char *)words[i][j]) != 0) {
 			unsigned index;
@@ -168,7 +174,10 @@ const uint8_t *finish_ping(struct context *context, struct task_data *data, uint
 			memcpy(pos + index * sizeof encoded, &encoded, sizeof encoded);
 			j ++;
 		}
+		pos += time_len;
+		rest -= time_len;
 	}
+	assert(rest == 0);
 	*ok = true;
 	*result_size = total_size;
 	ulog(LLOG_DEBUG, "Sending %zu bytes of ping output for %zu hosts\n", *result_size, data->host_count);
