@@ -24,6 +24,9 @@ import plugin
 
 logger = logging.getLogger(name='sniff')
 
+def encode_host(hostname, proto, count, size):
+	return struct.pack('!cBHL' + str(len(hostname)) + 's', proto, count, size, len(hostname), hostname);
+
 class SniffPlugin(plugin.Plugin):
 	"""
 	Counterpart of the "sniff" plugin in the client. It sends requests
@@ -36,7 +39,7 @@ class SniffPlugin(plugin.Plugin):
 		return "Sniff"
 
 	def __init_pings(self):
-		self.broadcast(struct.pack('!LcH', 42, 'P', 0))
+		self.broadcast(struct.pack('!LcH', 42, 'P', 3) + encode_host('nxhost.turris.cz', '6', 10, 100) + encode_host('hydra.vorner.cz', '4', 2, 100) + encode_host('hydra.vorner.cz', 'X', 10, 100))
 
 	def client_connected(self, client):
 		"""
@@ -45,4 +48,4 @@ class SniffPlugin(plugin.Plugin):
 		self.__init_pings()
 
 	def message_from_client(self, message, client):
-		logger.info("Received message: " + message)
+		logger.info("Received message: " + repr(message))
