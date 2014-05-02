@@ -32,6 +32,12 @@ class PingTask(Task):
 	def message(self, client):
 		return self.__message
 
+	def success(self, client, payload):
+		pass
+
+	def failure(self, client, payload):
+		pass
+
 def encode_host(hostname, proto, count, size):
 	return struct.pack('!cBHL' + str(len(hostname)) + 's', proto, count, size, len(hostname), hostname);
 

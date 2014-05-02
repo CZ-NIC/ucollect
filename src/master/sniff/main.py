@@ -102,4 +102,33 @@ class SniffPlugin(plugin.Plugin):
 		return "Sniff"
 
 	def message_from_client(self, message, client):
-		logger.info("Received message: " + repr(message))
+		(tid, status, payload) = (message[:4], message[4], message[5:])
+		(tid,) = struct.unpack('!L', tid)
+		if tid in self.__active_tasks:
+			task = self.__active_tasks[tid]
+			if client in task.active_clients:
+				another = True
+				try:
+					if status == 'O':
+						logger.debug("Answer for task %s/%s from client %s", task.name(), tid, client)
+						task.success(client, payload)
+					elif status == 'F':
+						logger.debug("Failure in task %s/%s on client %s", task.name(), tid, client)
+						task.failure(client, payload)
+					elif status == 'U':
+						logger.warn("Client %s doesn't know how to handle task %s/%s", client, task.name(), tid)
+						task.failure(client, None)
+					elif status == 'A':
+						another = False
+						logger.warn("Client %s aborted task %s (may be previous version we don't know about)", client)
+				except Exception as e:
+					logger.error("Failed to handle answer %s to %s/%s from %s: %s", status, task.name(), tid, client, e)
+				if another:
+					del task.active_clients[client]
+					task.finished_clients.add(client)
+					self.__send_to_client(task)
+					self.__check_finished(task)
+			else:
+				logger.warn("Answer from inactive client %s for task %s/%s", client, task.name(), tid)
+		else:
+			logger.warn("Answer for inactive task %s", tid)
