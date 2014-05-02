@@ -92,6 +92,12 @@ class Plugins:
 		self.__plugins = {}
 		self.__clients = {}
 
+	def get_clients(self):
+		"""
+		Get the currently connected client IDs.
+		"""
+		return self.__clients.keys()
+
 	def register_plugin(self, name, plugin):
 		"""
 		Add a plugin to be used.
