@@ -36,6 +36,7 @@
 #include <openssl/sha.h>
 #include <atsha204.h>
 #include <time.h>
+#include <stdio.h>
 
 static void atsha_log_callback(const char *msg) {
 	ulog(LLOG_ERROR, "ATSHA: %s\n", msg);
@@ -455,6 +456,14 @@ static void handle_buffer(struct uplink *uplink) {
 					server_challenge.bytes = HALF_SIZE + uplink->buffer_size;
 					memcpy(server_challenge.data, local_half, HALF_SIZE);
 					memcpy(server_challenge.data + HALF_SIZE, uplink->buffer, uplink->buffer_size);
+					// Log our xor
+					uint8_t pure_plugins[HALF_SIZE] = { 0 };
+					loop_xor_plugins(uplink->loop, pure_plugins);
+					char hash_str[2 * HALF_SIZE + 1];
+					hash_str[2 * HALF_SIZE] = '\0';
+					for (size_t i = 0; i < HALF_SIZE; i ++)
+						sprintf(hash_str + 2 * i, "%02hhX", pure_plugins[i]);
+					ulog(LLOG_INFO, "Trying to log in with plugin hash %s\n", hash_str);
 					// Get the chip handle
 					atsha_set_log_callback(atsha_log_callback);
 					struct atsha_handle *cryptochip = atsha_open();
