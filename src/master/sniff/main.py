@@ -21,13 +21,11 @@ from twisted.internet.task import LoopingCall
 import logging
 import struct
 import re
+import importlib
 
 import plugin
 
 logger = logging.getLogger(name='sniff')
-
-def encode_host(hostname, proto, count, size):
-	return struct.pack('!cBHL' + str(len(hostname)) + 's', proto, count, size, len(hostname), hostname);
 
 class SniffPlugin(plugin.Plugin):
 	"""
@@ -48,7 +46,7 @@ class SniffPlugin(plugin.Plugin):
 		interval = int(config['interval']) * 60
 		self.__checker = LoopingCall(self.__check_schedules)
 		self.__checker.start(interval, False)
-		self.__connected = plugins.get_clients() # Store function to get list of clients
+		self.__connected = plugins.get_clients # Store function to get list of clients
 		self.__active_tasks = {}
 		self.__last_id = 0
 
@@ -65,7 +63,7 @@ class SniffPlugin(plugin.Plugin):
 		Send the task to some client that didn't get it yet. If no such client is available, do nothing.
 		"""
 		used = set(task.active_clients.keys()) | task.finished_clients
-		available = self.__connected() - used
+		available = set(self.__connected()) - used
 		if available:
 			client = available.pop()
 			logger.debug("Sending task %s/%s to %s", task.name(), task.task_id, client)
@@ -78,7 +76,7 @@ class SniffPlugin(plugin.Plugin):
 
 	def __start_task(self, task):
 		"""
-		Start a task ‒ send it to some set of routers and queue the others.
+		Start a task - send it to some set of routers and queue the others.
 		"""
 		self.__last_id += 1
 		self.__last_id %= 2^32
@@ -97,20 +95,11 @@ class SniffPlugin(plugin.Plugin):
 		for tasker in self.__taskers:
 			tasks = tasker.check_schedule()
 			for task in tasks:
-				task.code = self.__tasker.code()
+				task.code = tasker.code()
 				self.__start_task(task)
 
 	def name(self):
 		return "Sniff"
-
-	def __init_pings(self):
-		self.broadcast(struct.pack('!LcH', 42, 'P', 3) + encode_host('nxhost.turris.cz', '6', 10, 100) + encode_host('hydra.vorner.cz', '4', 2, 100) + encode_host('hydra.vorner.cz', 'X', 10, 100))
-
-	def client_connected(self, client):
-		"""
-		This is here temporarily, for testing.
-		"""
-		self.__init_pings()
 
 	def message_from_client(self, message, client):
 		logger.info("Received message: " + repr(message))
