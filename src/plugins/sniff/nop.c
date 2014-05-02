@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,27 +17,24 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#ifndef UCOLLECT_PLUGIN_H
-#define UCOLLECT_PLUGIN_H
+#include "nop.h"
 
-#include <stddef.h>
-#include <stdint.h>
+struct task_data *start_nop(struct context *context, struct mem_pool *pool, const uint8_t *message, size_t message_size, int *output, pid_t *pid) {
+	(void) context;
+	(void) pool;
+	(void) message;
+	(void) message_size;
+	*output = 0;
+	*pid = 0;
+	return NULL;
+}
 
-struct context;
-struct packet_info;
-
-typedef void (*packet_callback_t)(struct context *context, const struct packet_info *info);
-typedef void (*fd_callback_t)(struct context *context, int fd, void *tag);
-
-struct plugin {
-	const char *name;
-	packet_callback_t packet_callback;
-	void (*init_callback)(struct context *context);
-	void (*finish_callback)(struct context *context);
-	void (*uplink_connected_callback)(struct context *context);
-	void (*uplink_disconnected_callback)(struct context *context);
-	void (*uplink_data_callback)(struct context *context, const uint8_t *data, size_t length);
-	fd_callback_t fd_callback;
-};
-
-#endif
+const uint8_t *finish_nop(struct context *context, struct task_data *data, uint8_t *output, size_t output_size, size_t *result_size, bool *ok) {
+	(void) context;
+	(void) data;
+	(void) output;
+	(void) output_size;
+	*result_size = 0;
+	*ok = true;
+	return NULL;
+}

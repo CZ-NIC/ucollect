@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013,2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -126,6 +126,18 @@ struct mem_pool *loop_temp_pool(struct loop *loop) __attribute__((nonnull)) __at
  * Returns true if the plugin exists, false if not.
  */
 bool loop_plugin_send_data(struct loop *loop, const char *plugin, const uint8_t *data, size_t length) __attribute__((nonnull));
+
+/*
+ * Have a file descriptor watched by the main loop. When it is ready to be read or
+ * has been closed, call the plugin's fd_callback with provided fd and a data tag (may be NULL).
+ *
+ * If the plugin is destroyed, the fds registered this way are closed automatically.
+ */
+void loop_plugin_register_fd(struct context *context, int fd, void *tag) __attribute__((nonnull (1)));
+/*
+ * No longer watch the given fd for events. Call this before closing the FD.
+ */
+void loop_plugin_unregister_fd(struct context *context, int fd) __attribute__((nonnull));
 
 /*
  * Have a function called after given number of milliseconds.

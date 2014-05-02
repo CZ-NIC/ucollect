@@ -27,7 +27,7 @@
  *
  * This is somewhat similar to C++ templates (but a way more powerful and
  * lightweight, and should produce more readable errors, though the code
- * is less convenient to read and it needs to be instantiated explicitly.
+ * is less convenient to read and it needs to be instantiated explicitly).
  *
  * This one contains the linked lists utilities.
  *

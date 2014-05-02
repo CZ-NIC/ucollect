@@ -92,6 +92,12 @@ class Plugins:
 		self.__plugins = {}
 		self.__clients = {}
 
+	def get_clients(self):
+		"""
+		Get the currently connected client IDs.
+		"""
+		return self.__clients.keys()
+
 	def register_plugin(self, name, plugin):
 		"""
 		Add a plugin to be used.
@@ -125,11 +131,14 @@ class Plugins:
 		"""
 		When a client disconnects.
 		"""
-		if not client.cid() in self.__clients and client == self.__clients[client.cid()]:
+		if client.cid() in self.__clients and client == self.__clients[client.cid()]:
 			# If the client is not there, or if the client is some newer version, don't remove it.
 			for p in self.__plugins.values():
 				p.client_disconnected(client)
 			del self.__clients[client.cid()]
+			logger.debug('Removed client ' + client.cid())
+		else:
+			logger.debug('Not removing client ' + client.cid())
 
 	def broadcast(self, message):
 		"""

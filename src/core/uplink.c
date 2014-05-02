@@ -354,7 +354,7 @@ static void send_ping(struct context *context_unused, void *data, size_t id_unus
 	uplink->ping_scheduled = true;
 }
 
-const char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) {
+char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) {
 	size_t len_size = sizeof(uint32_t);
 	if (*length < len_size) {
 		return NULL;
