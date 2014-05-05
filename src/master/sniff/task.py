@@ -29,3 +29,12 @@ class Task:
 
 	def message(self, client):
 		return ''
+
+	def finished(self):
+		pass
+
+	def failure(self, client, message):
+		pass
+
+	def success(self, client, message):
+		pass
