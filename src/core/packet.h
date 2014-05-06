@@ -66,6 +66,8 @@ struct packet_info {
 	 * This is 0 in case ip_protocol != 4 && 6 or app_protocol != 'T' && 'U'.
 	 */
 	size_t hdr_length;
+	// Packet timestamp in microseconds since epoch
+	unsigned long long int timestamp;
 	/*
 	 * Source and destination address. Raw data (addr_len bytes each).
 	 * Is set only with ip_protocol == 4 || 6, or with ethernet frames.
