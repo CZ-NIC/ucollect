@@ -42,12 +42,18 @@ def encode_host(hostname, proto, count, size):
 	return struct.pack('!cBHL' + str(len(hostname)) + 's', proto, count, size, len(hostname), hostname);
 
 class Pinger:
-	def __init__(self):
-		pass
+	def __init__(self, config):
+		self.__ping_file = config['ping_file']
 
 	def code(self):
 		return 'P'
 
 	def check_schedule(self):
-		return [PingTask(struct.pack('!H', 2) + encode_host('turris.cz', '6', 2, 100) + encode_host('www.nic.cz', '4', 3, 64))]
-
+		encoded = ''
+		host_count = 0
+		with open(self.__ping_file) as f:
+			for l in f:
+				[proto, count, size, host] = l.split()
+				host_count += 1
+				encoded += encode_host(host, proto, int(count), int(size))
+		return [PingTask(struct.pack('!H', host_count) + encoded)]

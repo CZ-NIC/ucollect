@@ -38,7 +38,7 @@ class SniffPlugin(plugin.Plugin):
 		def getTasker(name):
 			(modulename, classname) = name.rsplit('.', 1)
 			module = importlib.import_module(modulename)
-			result = getattr(module, classname)()
+			result = getattr(module, classname)(config)
 			logger.info('Loaded tasker %s from %s', result.code(), name)
 			return result
 		self.__taskers = map(getTasker, re.split('\s+', config['taskers']))
@@ -92,7 +92,7 @@ class SniffPlugin(plugin.Plugin):
 			logger.debug("Sending task %s/%s to %s", task.name(), task.task_id, client)
 			message = struct.pack('!Lc', task.task_id, task.code) + task.message(client)
 			try:
-				self.send(message, client) # TODO: Catch
+				self.send(message, client)
 			except Exception as e:
 				logger.error("Failed to send task %s/%s to client %s: %s", task.name(), task.task_id, client, e)
 			reactor.callLater(self.__task_timeout, lambda: self.__timeout_task(task, client))
