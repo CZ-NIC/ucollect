@@ -18,13 +18,16 @@
 #
 
 import struct
+import time
 
 from task import Task
 
 class PingTask(Task):
-	def __init__(self, message):
+	def __init__(self, message, hosts):
 		Task.__init__(self)
 		self.__message = message
+		self.__hosts = hosts
+		self.__batch_time = int(time.time())
 
 	def name(self):
 		return 'Ping'
@@ -33,10 +36,15 @@ class PingTask(Task):
 		return self.__message
 
 	def success(self, client, payload):
-		pass
-
-	def failure(self, client, payload):
-		pass
+		for (host, count) in self.__hosts:
+			(slen, payload) = (payload[:4], payload[4:])
+			(slen,) = struct.unpack('!L', slen)
+			if slen > 0:
+				(ip, times, payload) = (payload[:slen], payload[slen:slen + 4 * count], payload[slen + 4 * count:])
+				times = struct.unpack('!' + str(count) + 'L', times)
+				print(host + "/" + ip + ":" + str(times))
+			else:
+				print("Empty answer for " + host)
 
 def encode_host(hostname, proto, count, size):
 	return struct.pack('!cBHL' + str(len(hostname)) + 's', proto, count, size, len(hostname), hostname);
@@ -51,9 +59,11 @@ class Pinger:
 	def check_schedule(self):
 		encoded = ''
 		host_count = 0
+		hosts = []
 		with open(self.__ping_file) as f:
 			for l in f:
 				[proto, count, size, host] = l.split()
 				host_count += 1
 				encoded += encode_host(host, proto, int(count), int(size))
-		return [PingTask(struct.pack('!H', host_count) + encoded)]
+				hosts.append((host, int(count)))
+		return [PingTask(struct.pack('!H', host_count) + encoded, hosts)]
