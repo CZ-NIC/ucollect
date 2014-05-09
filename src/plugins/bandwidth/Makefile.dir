@@ -1,0 +1,4 @@
+LIBRARIES += src/plugins/bandwidth/libplugin_bandwidth
+libplugin_bandwidth_MODULES := bandwidth
+
+DOCS += src/plugins/bandwidth/bandwidth
