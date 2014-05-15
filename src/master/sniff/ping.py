@@ -77,21 +77,28 @@ def encode_host(hostname, proto, count, size):
 
 class Pinger:
 	def __init__(self, config):
-		pass
+		self.__last_ping = 0
+		self.__ping_interval = int(config['ping_interval'])
 
 	def code(self):
 		return 'P'
 
 	def check_schedule(self):
-		encoded = ''
-		host_count = 0
-		hosts = []
-		with database.transaction() as t:
-			t.execute('SELECT id, host, proto, amount, size FROM ping_requests WHERE active')
-			requests = t.fetchall()
-		for request in requests:
-			(rid, host, proto, count, size) = request
-			host_count += 1
-			encoded += encode_host(host, proto, count, size)
-			hosts.append((rid, count))
-		return [PingTask(struct.pack('!H', host_count) + encoded, hosts)]
+		now = int(time.time())
+		if self.__ping_interval + self.__last_ping <= now:
+			encoded = ''
+			host_count = 0
+			hosts = []
+			with database.transaction() as t:
+				t.execute('SELECT id, host, proto, amount, size FROM ping_requests WHERE active')
+				requests = t.fetchall()
+			for request in requests:
+				(rid, host, proto, count, size) = request
+				host_count += 1
+				encoded += encode_host(host, proto, count, size)
+				hosts.append((rid, count))
+			self.__last_ping = now
+			return [PingTask(struct.pack('!H', host_count) + encoded, hosts)]
+		else:
+			logger.debug('Not pinging yet')
+			return []
