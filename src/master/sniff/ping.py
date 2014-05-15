@@ -18,13 +18,29 @@
 #
 
 import struct
+import time
 
 from task import Task
+import database
+from activity import log_activity
+import logging
+from twisted.internet import reactor
+
+logger = logging.getLogger(name='sniff')
+
+def submit_data(data):
+	logger.trace('Submitting data: ' + repr(data))
+	with database.transaction() as t:
+		t.executemany("INSERT INTO pings (batch, client, timestamp, request, ip, received, min, max, avg) SELECT %s, clients.id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', %s, %s, %s, %s, %s, %s FROM clients WHERE name = %s", data);
 
 class PingTask(Task):
-	def __init__(self, message):
+	def __init__(self, message, hosts):
 		Task.__init__(self)
 		self.__message = message
+		self.__hosts = hosts
+		with database.transaction() as t:
+			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'")
+			(self.__batch_time,) = t.fetchone()
 
 	def name(self):
 		return 'Ping'
@@ -33,21 +49,58 @@ class PingTask(Task):
 		return self.__message
 
 	def success(self, client, payload):
-		pass
-
-	def failure(self, client, payload):
-		pass
+		data = []
+		for (rid, count) in self.__hosts:
+			(slen, payload) = (payload[:4], payload[4:])
+			(slen,) = struct.unpack('!L', slen)
+			if slen > 0:
+				(ip, times, payload) = (payload[:slen], payload[slen:slen + 4 * count], payload[slen + 4 * count:])
+				times = struct.unpack('!' + str(count) + 'L', times)
+				times = filter(lambda t: t < 2**32 - 1, times)
+			else:
+				times = []
+				ip = None
+			recv = len(times)
+			logger.trace('Ping data: ' + repr(times))
+			if times:
+				ma = max(times)
+				mi = min(times)
+				avg = sum(times) / recv
+			else:
+				ma = None
+				mi = None
+				avg = None
+			data.append((self.__batch_time, rid, ip, recv, mi, ma, avg, client))
+		reactor.callInThread(submit_data, data)
+		log_activity(client, 'pings')
 
 def encode_host(hostname, proto, count, size):
 	return struct.pack('!cBHL' + str(len(hostname)) + 's', proto, count, size, len(hostname), hostname);
 
 class Pinger:
-	def __init__(self):
-		pass
+	def __init__(self, config):
+		self.__last_ping = 0
+		self.__ping_interval = int(config['ping_interval'])
 
 	def code(self):
 		return 'P'
 
 	def check_schedule(self):
-		return [PingTask(struct.pack('!H', 2) + encode_host('turris.cz', '6', 2, 100) + encode_host('www.nic.cz', '4', 3, 64))]
-
+		now = int(time.time())
+		if self.__ping_interval + self.__last_ping <= now:
+			encoded = ''
+			host_count = 0
+			hosts = []
+			with database.transaction() as t:
+				t.execute('SELECT id, host, proto, amount, size FROM ping_requests WHERE active')
+				requests = t.fetchall()
+			for request in requests:
+				(rid, host, proto, count, size) = request
+				host_count += 1
+				encoded += encode_host(host, proto, count, size)
+				hosts.append((rid, count))
+			self.__last_ping = now
+			return [PingTask(struct.pack('!H', host_count) + encoded, hosts)]
+		else:
+			logger.debug('Not pinging yet')
+			return []

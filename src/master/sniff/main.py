@@ -18,6 +18,7 @@
 #
 
 from twisted.internet.task import LoopingCall
+from twisted.internet import reactor
 import logging
 import struct
 import re
@@ -37,7 +38,7 @@ class SniffPlugin(plugin.Plugin):
 		def getTasker(name):
 			(modulename, classname) = name.rsplit('.', 1)
 			module = importlib.import_module(modulename)
-			result = getattr(module, classname)()
+			result = getattr(module, classname)(config)
 			logger.info('Loaded tasker %s from %s', result.code(), name)
 			return result
 		self.__taskers = map(getTasker, re.split('\s+', config['taskers']))
@@ -57,6 +58,28 @@ class SniffPlugin(plugin.Plugin):
 		if not task.active_clients:
 			logger.info("Task %s/%s finished", task.name(), task.task_id)
 			del self.__active_tasks[task.task_id]
+			try:
+				task.finished()
+			except Exception as e:
+				logger.error("Failed to wrap up task %s/%s: %s", task.name(), task.task_id, e)
+
+	def __timeout_task(self, task, client):
+		"""
+		Check if task is still running on the client. If so, cancel it and start
+		a new one.
+		"""
+		if client in task.active_clients:
+			logger.warning("Timed out task %s/%s on client %s", task.name(), task.task_id, client)
+			abort = struct.pack('!Lc', task.task_id, 'N') # Sending 'NOP' with the same ID cancels the current task
+			try:
+				self.send(abort, client)
+			except Exception as e:
+				logger.error("Failed to send abort to client %s: %s", client, e)
+			del task.active_clients[client]
+			task.finished_clients.add(client)
+			task.failure(client, None)
+			self.__send_to_client(task)
+			self.__check_finished(task)
 
 	def __send_to_client(self, task):
 		"""
@@ -68,8 +91,11 @@ class SniffPlugin(plugin.Plugin):
 			client = available.pop()
 			logger.debug("Sending task %s/%s to %s", task.name(), task.task_id, client)
 			message = struct.pack('!Lc', task.task_id, task.code) + task.message(client)
-			self.send(message, client)
-			# TODO: Schedule timeout
+			try:
+				self.send(message, client)
+			except Exception as e:
+				logger.error("Failed to send task %s/%s to client %s: %s", task.name(), task.task_id, client, e)
+			reactor.callLater(self.__task_timeout, lambda: self.__timeout_task(task, client))
 			task.active_clients[client] = 1
 		else:
 			logger.debug("No clients to send the task to now")
