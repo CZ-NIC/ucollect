@@ -120,8 +120,20 @@ CREATE TABLE capture_stats (
 	CHECK(dropped_driver >= 0),
 	UNIQUE(snapshot, interface)
 );
+CREATE TABLE pings (
+	batch INT NOT NULL,
+	client INT NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	host TEXT NOT NULL,
+	ip TEXT,
+	sent SMALLINT NOT NULL,
+	received SMALLINT NOT NULL,
+	min INT,
+	max INT,
+	avg INT
+);
 
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts');
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings');
 INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port'), ('L', 'Remote IP address and local port');
 INSERT INTO count_types (name, description, ord) VALUES
 	('All', 'Any packet is included in this category', 1),
@@ -156,6 +168,7 @@ GRANT SELECT ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT UPDATE ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT INSERT ON counts TO $DBUPDATER;
 GRANT INSERT ON capture_stats TO $DBUPDATER;
+GRANT INSERT ON pings TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
@@ -165,9 +178,11 @@ GRANT UPDATE (builtin_passwd) ON clients TO $DBJENKINS;
 GRANT SELECT (timestamp) ON activities TO $DBCLEANER;
 GRANT SELECT (timestamp) ON anomalies TO $DBCLEANER;
 GRANT SELECT (timestamp) ON count_snapshots TO $DBCLEANER;
+GRANT SELECT (batch) ON pings TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
 GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
+GRANT DELETE ON pings TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
@@ -179,6 +194,7 @@ GRANT SELECT (from_group, type, timestamp, value, value, relevance_count, releva
 GRANT SELECT ON counts TO $DBARCHIVIST;
 GRANT SELECT ON count_snapshots TO $DBARCHIVIST;
 GRANT SELECT ON group_members TO $DBARCHIVIST;
+GRANT SELECT ON pings TO $DBARCHIVIST;
 
 COMMIT;
 ENDSQL
