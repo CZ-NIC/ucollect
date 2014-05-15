@@ -31,7 +31,7 @@ logger = logging.getLogger(name='sniff')
 def submit_data(data):
 	logger.trace('Submitting data: ' + repr(data))
 	with database.transaction() as t:
-		t.executemany("INSERT INTO pings (batch, client, timestamp, host, ip, sent, received, min, max, avg) SELECT %s, id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', %s, %s, %s, %s, %s, %s, %s FROM clients WHERE name = %s", data);
+		t.executemany("INSERT INTO pings (batch, client, timestamp, request, ip, received, min, max, avg) SELECT %s, clients.id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', %s, %s, %s, %s, %s, %s FROM clients WHERE name = %s", data);
 
 class PingTask(Task):
 	def __init__(self, message, hosts):
@@ -48,7 +48,7 @@ class PingTask(Task):
 
 	def success(self, client, payload):
 		data = []
-		for (host, count) in self.__hosts:
+		for (rid, count) in self.__hosts:
 			(slen, payload) = (payload[:4], payload[4:])
 			(slen,) = struct.unpack('!L', slen)
 			if slen > 0:
@@ -68,7 +68,7 @@ class PingTask(Task):
 				ma = None
 				mi = None
 				avg = None
-			data.append((self.__batch_time, host, ip, count, recv, mi, ma, avg, client))
+			data.append((self.__batch_time, rid, ip, recv, mi, ma, avg, client))
 		reactor.callInThread(submit_data, data)
 		log_activity(client, 'pings')
 
@@ -77,7 +77,7 @@ def encode_host(hostname, proto, count, size):
 
 class Pinger:
 	def __init__(self, config):
-		self.__ping_file = config['ping_file']
+		pass
 
 	def code(self):
 		return 'P'
@@ -86,10 +86,12 @@ class Pinger:
 		encoded = ''
 		host_count = 0
 		hosts = []
-		with open(self.__ping_file) as f:
-			for l in f:
-				[proto, count, size, host] = l.split()
-				host_count += 1
-				encoded += encode_host(host, proto, int(count), int(size))
-				hosts.append((host, int(count)))
+		with database.transaction() as t:
+			t.execute('SELECT id, host, proto, amount, size FROM ping_requests WHERE active')
+			requests = t.fetchall()
+		for request in requests:
+			(rid, host, proto, count, size) = request
+			host_count += 1
+			encoded += encode_host(host, proto, count, size)
+			hosts.append((rid, count))
 		return [PingTask(struct.pack('!H', host_count) + encoded, hosts)]

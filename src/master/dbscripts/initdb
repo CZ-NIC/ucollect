@@ -16,6 +16,8 @@ DROP TABLE IF EXISTS anomaly_types;
 DROP TABLE IF EXISTS group_members;
 DROP TABLE IF EXISTS groups;
 DROP TABLE IF EXISTS clients;
+DROP TABLE IF EXISTS pings;
+DROP TABLE IF EXISTS ping_requests;
 
 CREATE TABLE clients (
 	id INT PRIMARY KEY NOT NULL,
@@ -120,17 +122,33 @@ CREATE TABLE capture_stats (
 	CHECK(dropped_driver >= 0),
 	UNIQUE(snapshot, interface)
 );
+CREATE TABLE ping_requests (
+	id INT PRIMARY KEY NOT NULL,
+	host TEXT NOT NULL,
+	proto CHAR(1) NOT NULL,
+	amount SMALLINT NOT NULL,
+	size SMALLINT NOT NULL,
+	active BOOLEAN NOT NULL,
+	UNIQUE(host, proto, amount, size)
+);
+CREATE SEQUENCE ping_requests_id OWNED BY ping_requests.id;
+ALTER TABLE ping_requests ALTER COLUMN id SET DEFAULT NEXTVAL('ping_requests_id');
+
 CREATE TABLE pings (
+	request INT NOT NULL,
 	batch INT NOT NULL,
 	client INT NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
-	host TEXT NOT NULL,
 	ip TEXT,
-	sent SMALLINT NOT NULL,
 	received SMALLINT NOT NULL,
 	min INT,
 	max INT,
-	avg INT
+	avg INT,
+	UNIQUE (request, batch, client),
+	FOREIGN KEY (request) REFERENCES ping_requests(id),
+	CHECK(min <= max),
+	CHECK(min <= avg),
+	CHECK(avg <= max)
 );
 
 INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings');
@@ -169,6 +187,7 @@ GRANT UPDATE ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT INSERT ON counts TO $DBUPDATER;
 GRANT INSERT ON capture_stats TO $DBUPDATER;
 GRANT INSERT ON pings TO $DBUPDATER;
+GRANT SELECT ON ping_requests TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
@@ -195,6 +214,7 @@ GRANT SELECT ON counts TO $DBARCHIVIST;
 GRANT SELECT ON count_snapshots TO $DBARCHIVIST;
 GRANT SELECT ON group_members TO $DBARCHIVIST;
 GRANT SELECT ON pings TO $DBARCHIVIST;
+GRANT SELECT ON ping_requests TO $DBARCHIVIST;
 
 COMMIT;
 ENDSQL
@@ -208,6 +228,7 @@ INSERT INTO clients (name, mechanism, passwd) VALUES ('ruth', 'Y', 'None'), ('00
 INSERT INTO groups (name) VALUES ('all'), ('ruth');
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups ON groups.name = clients.name;
+INSERT INTO ping_requests (host, proto, amount, size, active) VALUES ('turris.cz', '6', 5, 100, TRUE), ('turris.cz', '4', 5, 100, TRUE), ('8.8.8.8', 'X', 3, 64, TRUE);
 COMMIT;
 ENDSQL
 else
