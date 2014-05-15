@@ -38,7 +38,9 @@ class PingTask(Task):
 		Task.__init__(self)
 		self.__message = message
 		self.__hosts = hosts
-		self.__batch_time = int(time.time())
+		with database.transaction() as t:
+			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'")
+			(self.__batch_time,) = t.fetchone()
 
 	def name(self):
 		return 'Ping'

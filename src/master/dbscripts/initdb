@@ -136,7 +136,7 @@ ALTER TABLE ping_requests ALTER COLUMN id SET DEFAULT NEXTVAL('ping_requests_id'
 
 CREATE TABLE pings (
 	request INT NOT NULL,
-	batch INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
 	client INT NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
 	ip TEXT,
