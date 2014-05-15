@@ -21,6 +21,17 @@ import struct
 import time
 
 from task import Task
+import database
+from activity import log_activity
+import logging
+from twisted.internet import reactor
+
+logger = logging.getLogger(name='sniff')
+
+def submit_data(data):
+	logger.trace('Submitting data: ' + repr(data))
+	with database.transaction() as t:
+		t.executemany("INSERT INTO pings (batch, client, timestamp, host, ip, sent, received, min, max, avg) SELECT %s, id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', %s, %s, %s, %s, %s, %s, %s FROM clients WHERE name = %s", data);
 
 class PingTask(Task):
 	def __init__(self, message, hosts):
@@ -36,15 +47,30 @@ class PingTask(Task):
 		return self.__message
 
 	def success(self, client, payload):
+		data = []
 		for (host, count) in self.__hosts:
 			(slen, payload) = (payload[:4], payload[4:])
 			(slen,) = struct.unpack('!L', slen)
 			if slen > 0:
 				(ip, times, payload) = (payload[:slen], payload[slen:slen + 4 * count], payload[slen + 4 * count:])
 				times = struct.unpack('!' + str(count) + 'L', times)
-				print(host + "/" + ip + ":" + str(times))
+				times = filter(lambda t: t < 2**32 - 1, times)
 			else:
-				print("Empty answer for " + host)
+				times = []
+				ip = None
+			recv = len(times)
+			logger.trace('Ping data: ' + repr(times))
+			if times:
+				ma = max(times)
+				mi = min(times)
+				avg = sum(times) / recv
+			else:
+				ma = None
+				mi = None
+				avg = None
+			data.append((self.__batch_time, host, ip, count, recv, mi, ma, avg, client))
+		reactor.callInThread(submit_data, data)
+		log_activity(client, 'pings')
 
 def encode_host(hostname, proto, count, size):
 	return struct.pack('!cBHL' + str(len(hostname)) + 's', proto, count, size, len(hostname), hostname);
