@@ -77,7 +77,7 @@ class Socat(protocol.ProcessProtocol):
 	def errReceived(self, data):
 		logging.warn('Socat complained: %s', data)
 
-args = ['socat', 'OPENSSL-LISTEN:' + str(master_config.getint('port')) + ',fork,backlog=50,key=' + master_config.get('key') + ',cert=' + master_config.get('cert') + ',verify=0,cipher=HIGH:!LOW:!MEDIUM:!SSLv2:!aNULL:!eNULL:!DES:!3DES:!AES128:!CAMELLIA128,reuseaddr,pf=ip6,compress=auto,method=TLS', 'UNIX-CONNECT:./collect-master.sock']
+args = ['socat', '-T900', 'OPENSSL-LISTEN:' + str(master_config.getint('port')) + ',fork,backlog=50,key=' + master_config.get('key') + ',cert=' + master_config.get('cert') + ',verify=0,cipher=HIGH:!LOW:!MEDIUM:!SSLv2:!aNULL:!eNULL:!DES:!3DES:!AES128:!CAMELLIA128,reuseaddr,pf=ip6,compress=auto,method=TLS', 'UNIX-CONNECT:./collect-master.sock']
 logging.debug('Starting socat with: %s', args)
 reactor.spawnProcess(Socat(), 'socat', args=args, env=os.environ)
 endpoint.listen(ClientFactory(plugins))
