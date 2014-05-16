@@ -77,6 +77,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__pinger.stop()
 			self.__plugins.unregister_client(self)
 			activity.log_activity(self.cid(), "logout")
+			self.transport.abortConnection()
 
 	def __check_logged(self):
 		if self.__connected and not self.__logged_in:
