@@ -88,6 +88,9 @@ static const uint8_t *extract_lport_addr(const struct packet_info *packet, struc
 
 #define OUT(NAME) \
 static const uint8_t *NAME##_out(const struct packet_info *packet, struct mem_pool *tmp_pool) { \
+	for (const struct packet_info *p = packet; p; p = p->next) \
+		if (p->layer == 'I' && (p->app_protocol == 'i' || p->app_protocol == 'I')) \
+			return NULL; \
 	if (packet->direction == DIR_OUT) \
 		return NAME(packet, tmp_pool); \
 	else \
