@@ -40,7 +40,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 
 	It also routes messages to other parts of system.
 	"""
-	def __init__(self, plugins, addr):
+	def __init__(self, plugins, addr, fastpings):
 		self.__plugins = plugins
 		self.__addr = addr
 		self.__pings_outstanding = 0
@@ -49,6 +49,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__cid = None
 		self.__auth_buffer = []
 		self.__wait_auth = False
+		self.__fastpings = fastpings
 
 	def __ping(self):
 		"""
@@ -133,7 +134,8 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				if self.__authenticated:
 					self.__logged_in = True
 					self.__pinger = LoopingCall(self.__ping)
-					if self.cid() == '0000000500000842':
+					if self.cid() in self.__fastpings:
+						logger.info('Doing fast pings for %s', self.cid())
 						self.__pinger.start(45, False)
 					else:
 						self.__pinger.start(120, False)
@@ -170,8 +172,9 @@ class ClientFactory(twisted.internet.protocol.Factory):
 	Just a factory to create the clients. Stores a reference to the
 	plugins and passes them to the client.
 	"""
-	def __init__(self, plugins):
+	def __init__(self, plugins, fastpings):
 		self.__plugins = plugins
+		self.__fastpings = fastpings
 
 	def buildProtocol(self, addr):
-		return ClientConn(self.__plugins, addr)
+		return ClientConn(self.__plugins, addr, self.__fastpings)
