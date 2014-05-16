@@ -86,6 +86,18 @@ static const uint8_t *extract_lport_addr(const struct packet_info *packet, struc
 		return NULL;
 }
 
+#define OUT(NAME) \
+static const uint8_t *NAME##_out(const struct packet_info *packet, struct mem_pool *tmp_pool) { \
+	if (packet->direction == DIR_OUT) \
+		return NAME(packet, tmp_pool); \
+	else \
+		return NULL; \
+}
+OUT(extract_ip_address)
+OUT(extract_port)
+OUT(extract_both)
+OUT(extract_lport_addr)
+
 struct criterion_def criteria[] = {
 	{ // Remote address
 		.key_size = ADDR_SIZE,
@@ -106,6 +118,27 @@ struct criterion_def criteria[] = {
 		.key_size = PORT_SIZE + ADDR_SIZE,
 		.name = 'L',
 		.extract_key = extract_lport_addr
+	},
+	// The same ones, but only outgoing packets
+	{ // Remote address
+		.key_size = ADDR_SIZE,
+		.name = 'i',
+		.extract_key = extract_ip_address_out
+	},
+	{ // Remote port
+		.key_size = PORT_SIZE,
+		.name = 'p',
+		.extract_key = extract_port_out
+	},
+	{ // Both port and address
+		.key_size = PORT_SIZE + ADDR_SIZE,
+		.name = 'b',
+		.extract_key = extract_both_out
+	},
+	{ // Local port and remote address
+		.key_size = PORT_SIZE + ADDR_SIZE,
+		.name = 'l',
+		.extract_key = extract_lport_addr_out
 	},
 	{ // Sentinel
 		.name = '\0'
