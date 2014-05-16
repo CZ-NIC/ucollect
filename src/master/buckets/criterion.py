@@ -179,3 +179,31 @@ class AddressAndLocalPort(CompoundCriterion):
 		if ':' in ip:
 			ip = '[' + ip + ']'
 		return '->'.join([ip, port])
+
+class PortOut(Port):
+	"""
+	Port of outbound packets.
+	"""
+	def code(self):
+		return 'p'
+
+class AddressOut(Address):
+	"""
+	Adress of outbound packets.
+	"""
+	def code(self):
+		return 'i'
+
+class AddressAndPortOut(AddressAndPort):
+	"""
+	Address and port of outbound packets.
+	"""
+	def code(self):
+		return 'b'
+
+class AddressAndLocalPortOut(AddressAndLocalPort):
+	"""
+	Remote address and local port of outbound packets. It is probably useless and is supported just for completeness.
+	"""
+	def code(self):
+		return 'l'
