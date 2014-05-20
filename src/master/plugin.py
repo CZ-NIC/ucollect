@@ -117,15 +117,13 @@ class Plugins:
 		When a client connects.
 		"""
 		if client.cid() in self.__clients:
-			logger.warn("Connecting second copy of %s, dropping the first", client.cid())
-			# Currently connected. Close the connection and unregister.
-			# Pass the client in the dict, not the new one.
-			old = self.__clients[client.cid()]
-			self.unregister_client(old)
-			old.transport.abortConnection()
+			logger.warn("%s already connected, dropping connection", client.cid())
+			client.transport.abortConnection()
+			return False
 		self.__clients[client.cid()] = client
 		for p in self.__plugins.values():
 			p.client_connected(client)
+		return True
 
 	def unregister_client(self, client):
 		"""

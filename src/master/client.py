@@ -132,16 +132,18 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				self.__wait_auth = True
 			elif msg == 'H':
 				if self.__authenticated:
-					self.__logged_in = True
-					self.__pinger = LoopingCall(self.__ping)
-					if self.cid() in self.__fastpings:
-						logger.info('Doing fast pings for %s', self.cid())
-						self.__pinger.start(45, False)
+					if self.__plugins.register_client(self):
+						self.__logged_in = True
+						self.__pinger = LoopingCall(self.__ping)
+						if self.cid() in self.__fastpings:
+							logger.info('Doing fast pings for %s', self.cid())
+							self.__pinger.start(45, False)
+						else:
+							self.__pinger.start(120, False)
+						activity.log_activity(self.cid(), "login")
+						logger.info('Client %s logged in', self.cid())
 					else:
-						self.__pinger.start(120, False)
-					self.__plugins.register_client(self)
-					activity.log_activity(self.cid(), "login")
-					logger.info('Client %s logged in', self.cid())
+						return
 				else:
 					login_failure('Asked for session before loging in')
 					return
