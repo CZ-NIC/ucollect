@@ -168,7 +168,8 @@ INSERT INTO count_types (name, description, ord) VALUES
 	('SYN+ACK', 'TCP packets with both SYN and ACK flags set. This may be a good heuristics for number of created TCP connections.', 12),
 	('ACK', 'TCP packets with ACK flag set.', 13),
 	('PUSH', 'TCP packets with the PUSH flag set.', 14),
-	('SERVER', 'Communication with the server', 15);
+	('SERVER', 'Communication with the server', 15),
+	('V6TUNNEL', 'Packets sent over IPv6-tunelled connectivity', 16);
 
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
