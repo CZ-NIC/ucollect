@@ -118,7 +118,6 @@ class Plugins:
 		"""
 		if client.cid() in self.__clients:
 			logger.warn("%s already connected, dropping connection", client.cid())
-			client.transport.abortConnection()
 			return False
 		self.__clients[client.cid()] = client
 		for p in self.__plugins.values():
