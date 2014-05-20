@@ -40,7 +40,7 @@ enum selector {
 	TCP, UDP, ICMP,
 	LOW_PORT,
 	SYN_FLAG, FIN_FLAG, SYN_ACK_FLAG, ACK_FLAG, PUSH_FLAG,
-	SERVER,
+	SERVER, V6TUNNEL,
 	MAX
 };
 
@@ -59,11 +59,11 @@ static void update(struct user_data *d, enum selector selector, size_t size) {
 	d->data[selector].size += size;
 }
 
-static void packet_handle_internal(struct context *context, const struct packet_info *info, size_t size) {
+static void packet_handle_internal(struct context *context, const struct packet_info *info, size_t size, bool tunnel) {
 	struct user_data *d = context->user_data;
 	if (info->next) {
 		// It's wrapper around some other real packet. We're not interested in the envelope.
-		packet_handle_internal(context, info->next, size);
+		packet_handle_internal(context, info->next, size, tunnel || (info->layer == 'I' && (info->ip_protocol == 4 || info->ip_protocol == 6)));
 		return;
 	}
 	update(d, ANY, size);
@@ -85,7 +85,7 @@ static void packet_handle_internal(struct context *context, const struct packet_
 			update(d, V4, size);
 			break;
 		case 6:
-			update(d, V6, size);
+			update(d, tunnel ? V6TUNNEL : V6, size);
 			break;
 	}
 	switch (info->app_protocol) {
@@ -136,7 +136,7 @@ static void packet_handle_internal(struct context *context, const struct packet_
 }
 
 static void packet_handle(struct context *context, const struct packet_info *info) {
-	packet_handle_internal(context, info, info->length);
+	packet_handle_internal(context, info, info->length, false);
 }
 
 static void initialize(struct context *context) {
