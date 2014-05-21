@@ -7,9 +7,11 @@
 #include <cstdio>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <cerrno>
 #include <cassert>
+#include <unistd.h>
 
 #include "handler.h"
 #include "conn.h"
@@ -151,31 +153,52 @@ void Connection::touch() {
 void c(int err, const char *desc) {
 	if (err < 0) {
 		fprintf(stderr, "%s failed: %m\n", desc);
-		exit(1);
+		abort();
 	}
 }
 
-int main(int argc, char *argv[]) {
-	QCoreApplication app(argc, argv);
-	int tcount = QThread::idealThreadCount();
-	if (tcount < 1)
-		tcount = 1;
+QSet<pid_t> children;
+
+int sock, tcount;
+
+int sigs[] = {
+	SIGHUP,
+	SIGINT,
+	SIGQUIT,
+	SIGILL,
+	SIGTRAP,
+	SIGBUS,
+	SIGFPE,
+	SIGSEGV,
+	SIGPIPE,
+	SIGALRM,
+	SIGTERM,
+	SIGABRT, // Last, since we use abort for the sigaction too
+	0
+};
+
+void doFork(QCoreApplication &app) {
+	pid_t pid = fork();
+	c(pid, "fork");
+	if (pid) {
+		children << pid;
+		return;
+	}
+	// The child
+
+	for (int *sig = sigs; *sig; sig ++) {
+		struct sigaction action;
+		memset(&action, 0, sizeof action);
+		action.sa_handler = SIG_DFL;
+		c(sigaction(*sig, &action, NULL), "action reset");
+	}
+	// TODO: Do we need the threads too, if we have prefork? Threads only didn't seem to work :-(.
 	for (int i = 0; i < tcount; i ++) {
 		Handler *h = new Handler;
 		h->start();
 		handlers << h;
 	}
 
-	int sock = socket(AF_INET6, SOCK_STREAM, 0);
-	c(sock, "socket");
-	int on = 1;
-	c(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)), "reuseaddress");
-	struct sockaddr_in6 addr;
-	memset(&addr, 0, sizeof addr);
-	addr.sin6_family = AF_INET6;
-	addr.sin6_port = htons(QCoreApplication::arguments()[3].toInt());
-	c(bind(sock, static_cast<sockaddr *>(static_cast<void *>(&addr)), sizeof addr), "bind");
-	c(listen(sock, 50), "listen");
 	for (;;) {
 		int accepted = accept(sock, NULL, NULL);
 		if (accepted == -1) {
@@ -189,6 +212,49 @@ int main(int argc, char *argv[]) {
 		}
 		int rand = random() % handlers.size();
 		handlers[rand]->putFd(accepted);
+	}
+	exit(app.exec());
+}
+
+void finish(int) {
+	foreach(pid_t pid, children)
+		kill(pid, SIGTERM);
+	exit(1);
+}
+
+int main(int argc, char *argv[]) {
+	QCoreApplication app(argc, argv);
+	tcount = QThread::idealThreadCount();
+	if (tcount < 1)
+		tcount = 1;
+
+	sock = socket(AF_INET6, SOCK_STREAM, 0);
+	c(sock, "socket");
+	int on = 1;
+	c(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)), "reuseaddress");
+	struct sockaddr_in6 addr;
+	memset(&addr, 0, sizeof addr);
+	addr.sin6_family = AF_INET6;
+	addr.sin6_port = htons(QCoreApplication::arguments()[3].toInt());
+	c(bind(sock, static_cast<sockaddr *>(static_cast<void *>(&addr)), sizeof addr), "bind");
+	c(listen(sock, 50), "listen");
+	for (int *sig = sigs; *sig; sig ++) {
+		struct sigaction action;
+		memset(&action, 0, sizeof action);
+		action.sa_handler = finish;
+		action.sa_flags = SA_RESETHAND;
+		c(sigaction(*sig, &action, NULL), "sigaction");
+	}
+	for (int i = 0; i < tcount; i ++)
+		doFork(app);
+	for (;;) {
+		int status;
+		pid_t pid = wait(&status);
+		if (pid == -1 && errno == EINTR)
+			continue;
+		c(pid, "wait");
+		children.remove(pid);
+		doFork(app);
 	}
 	return app.exec();
 }
