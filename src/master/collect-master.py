@@ -18,7 +18,7 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet import reactor, ssl, protocol
+from twisted.internet import reactor, protocol
 from twisted.internet.endpoints import UNIXServerEndpoint
 from twisted.internet.error import ReactorNotRunning
 from subprocess import Popen
@@ -61,7 +61,7 @@ class Socat(protocol.ProcessProtocol):
 	def connectionMade(self):
 		global socat
 		socat = self.transport
-		logging.info('Started socat proxy')
+		logging.info('Started proxy')
 
 	def processEnded(self, status):
 		global socat
@@ -69,17 +69,17 @@ class Socat(protocol.ProcessProtocol):
 			socat = None
 			try:
 				reactor.stop()
-				# Don't report lost socat if we're already terminating
-				logging.fatal('Lost socat, terminating')
+				# Don't report lost proxy if we're already terminating
+				logging.fatal('Lost proxy, terminating')
 			except ReactorNotRunning:
 				pass
 
 	def errReceived(self, data):
-		logging.warn('Socat complained: %s', data)
+		logging.warn('Proxy complained: %s', data)
 
-args = ['socat', '-T900', 'OPENSSL-LISTEN:' + str(master_config.getint('port')) + ',fork,backlog=50,key=' + master_config.get('key') + ',cert=' + master_config.get('cert') + ',verify=0,cipher=HIGH:!LOW:!MEDIUM:!SSLv2:!aNULL:!eNULL:!DES:!3DES:!AES128:!CAMELLIA128,reuseaddr,pf=ip6,compress=auto,method=TLS', 'UNIX-CONNECT:./collect-master.sock']
-logging.debug('Starting socat with: %s', args)
-reactor.spawnProcess(Socat(), 'socat', args=args, env=os.environ)
+args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), str(master_config.getint('port')), os.getcwd() + '/collect-master.sock']
+logging.debug('Starting proxy with: %s', args)
+reactor.spawnProcess(Socat(), './soxy/soxy', args=args, env=os.environ)
 endpoint.listen(ClientFactory(plugins, frozenset(master_config.get('fastpings').split())))
 logging.info('Init done')
 
