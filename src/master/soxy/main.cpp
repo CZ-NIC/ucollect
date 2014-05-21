@@ -168,6 +168,8 @@ int main(int argc, char *argv[]) {
 
 	int sock = socket(AF_INET6, SOCK_STREAM, 0);
 	c(sock, "socket");
+	int on = 1;
+	c(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)), "reuseaddress");
 	struct sockaddr_in6 addr;
 	memset(&addr, 0, sizeof addr);
 	addr.sin6_family = AF_INET6;
