@@ -16,10 +16,12 @@ my $reset = color 'reset';
 
 my $forever;
 my $all;
+my $ocount;
 
 GetOptions
 	forever => \$forever,
-	all => \$all
+	all => \$all,
+	ocount => \$ocount
 	or die "Bad parameters\n";
 
 # TODO: This query is probably slower than we would like (especially the second nested
@@ -53,12 +55,13 @@ LEFT OUTER JOIN activity_types ON
 	activities.activity = activity_types.id
 ORDER BY
 	aggregate.tag ASC,
-	aggregate.devel_note ASC;
+	aggregate.devel_note ASC,
+	aggregate.name ASC;
 ENDSQL
 while (1) {
 	my ($online, $offline) = (0, 0);
 	$stmt->execute;
-	print "${blue}ID\t\t\tStatus\tAct.\tTime\t\t\t\tNote$reset\n";
+	print "${blue}ID\t\t\tStatus\tAct.\tTime\t\t\t\tNote$reset\n" unless $ocount;
 	my $now = time;
 	my $stuck = $now - 3600;
 	while (my ($name, $note, $tag, $last, $activity) = $stmt->fetchrow_array) {
@@ -76,12 +79,13 @@ while (1) {
 		}
 		next unless $all or defined $last;
 		$last //= '----';
-		printf "%-16s\t%s$reset\t%s\t%-30s\t%10s$reset\t%10s\t%s\n", $name, $status, $activity, $last, $note;
+		printf "%-16s\t%s$reset\t%s\t%-30s\t%10s$reset\t%10s\t%s\n", $name, $status, $activity, $last, $note unless $ocount;
 	}
-	print "${green}Online:\t\t\t$online\n${red}Offline:\t\t$offline$reset\n";
+	print "${green}Online:\t\t\t$online\n${red}Offline:\t\t$offline$reset\n" unless $ocount;
 
+	print "$online\n" if $ocount;
 	$dbh->rollback;
 	last if not $forever;
 	sleep 15;
-	print "\033[2J";
+	print "\033[2J" unless $ocount;
 }
