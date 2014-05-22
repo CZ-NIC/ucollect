@@ -696,6 +696,8 @@ void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) {
 		uplink->login = mem_pool_strdup(pool, uplink->login);
 	if (uplink->password)
 		uplink->password = mem_pool_strdup(pool, uplink->password);
+	if (uplink->cert)
+		uplink->cert = mem_pool_strdup(pool, uplink->cert);
 }
 
 struct addrinfo *uplink_addrinfo(struct uplink *uplink) {
