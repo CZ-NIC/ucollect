@@ -5,15 +5,26 @@ DOCS += src/master/collectmaster
 collectmaster_SOURCE = collect-master.py
 
 ifneq (,$(findstring ^$(RESTRICT),^src/master))
-clean: clean-master
+clean: clean-master clean-soxy
+all: all-soxy
 endif
 
-.PHONY: clean-master
+.PHONY: clean-master all-soxy
 
 clean-master:
 	rm -f $(wildcard $(S)/src/master/*.pyc $(S)/src/master/*/*.pyc)
 
 include $(S)/src/master/authenticator/Makefile.dir
+
+all-soxy:
+	mkdir -p $(O)/src/master/soxy
+	+cd $(O)/src/master/soxy && qmake $(abspath $(S)/src/master/soxy/soxy.pro) && make -j$(J)
+	mkdir -p $(O)/bin
+	ln -fs $(O)/src/master/soxy/soxy $(O)/bin/soxy
+
+clean-soxy:
+	mkdir -p $(O)/src/master/soxy
+	+cd $(O)/src/master/soxy && qmake $(abspath $(S)/src/master/soxy/soxy.pro) && make distclean
 
 endif
 
