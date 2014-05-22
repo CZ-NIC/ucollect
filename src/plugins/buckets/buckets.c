@@ -166,14 +166,8 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 	// Extract the elements of the header
 	struct user_data *u = context->user_data;
 	if (u->initialized && u->config_version != ntohl(header->config_version)) {
-		// We can't switch the configuration at runtime, so restart. But only
-		// if the configuration is different.
-		//loop_plugin_reinit(context);
-		// FIXME (#2887): The loop_lugin_reinit doesn't work for some very mysterious reason.
-		// Terminate ucollect and let it be started by the watchdog later.
-		ulog(LLOG_WARN, "Buckets config changed. Not able to update at runtime, goint to exit instead");
-		exit(0);
-		return;
+		// We can't reload configuration, so we reinitialize the whole plugin.
+		loop_plugin_reinit(context);
 	}
 	u->bucket_count = ntohl(header->bucket_count);
 	u->hash_count = ntohl(header->hash_count);
