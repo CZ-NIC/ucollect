@@ -53,6 +53,7 @@ struct window {
 
 struct user_data {
 	struct window windows[WINDOWS_CNT];
+	uint64_t timestamp;
 };
 
 static float get_speed(uint64_t bytes_in_window, uint64_t window_size) {
@@ -121,21 +122,40 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
 	struct user_data *d = context->user_data;
 
-	//Keep this  check for now
+	// Check validity of request
 	if (length != sizeof(uint64_t))
 		die("Invalid request from upstream to plugin bandwidth, size %zu\n", length);
 
-	uint64_t stats[PROTO_ITEMS_PER_WINDOW * WINDOWS_CNT]; //For every windows I want: window's size, in_max, out_max
-	size_t msg_size = PROTO_ITEMS_PER_WINDOW * WINDOWS_CNT * sizeof *stats;
+	/*
+		Prepare message.
+		Message format is:
+		 - timestamp
+		 - for every window:
+			- window length
+			- in_max
+			- out_max
+	*/
+	uint64_t msg[PROTO_ITEMS_PER_WINDOW * WINDOWS_CNT + 1]; // For each window I want PROTO_ITEMS_PER_WINDOW; + 1 for timestamp
+	size_t msg_size = (PROTO_ITEMS_PER_WINDOW * WINDOWS_CNT + 1) * sizeof *msg;
 	size_t fill = 0;
+	msg[fill++] = htobe64(d->timestamp);
+	ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: Sending timestamp %" PRIu64 "\n", d->timestamp);
 	for (size_t window = 0; window < WINDOWS_CNT; window++) {
-		stats[fill++] = htobe64(d->windows[window].len);
-		stats[fill++] = htobe64(d->windows[window].in_max);
-		stats[fill++] = htobe64(d->windows[window].out_max);
+		msg[fill++] = htobe64(d->windows[window].len);
+		msg[fill++] = htobe64(d->windows[window].in_max);
+		msg[fill++] = htobe64(d->windows[window].out_max);
 	}
 
-	uplink_plugin_send_message(context, stats, msg_size);
+	// Send message. Don't check return code. Server ignores old data anyway.
+	uplink_plugin_send_message(context, msg, msg_size);
 
+	// Extract timestamp for the next interval
+	uint64_t timestamp;
+	memcpy(&timestamp, data, length);
+	d->timestamp = be64toh(timestamp);
+	ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: Recieving timestamp %" PRIu64 "\n", d->timestamp);
+
+	// Reset counters and store timestamp for new interval
 	for (size_t window = 0; window < WINDOWS_CNT; window++) {
 		d->windows[window].in_max = 0;
 		d->windows[window].out_max = 0;
@@ -148,6 +168,7 @@ void init(struct context *context) {
 
 	size_t i = 0;
 	uint64_t common_start_timestamp = reset_window_timestamp();
+	context->user_data->timestamp = 0;
 	context->user_data->windows[i++] = (struct window) {
 		.len = 5000,
 		.in_max = 0,

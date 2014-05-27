@@ -116,17 +116,20 @@ class BandwidthPlugin(plugin.Plugin):
 		if not client in self.__data:
 			self.__data[client] = ClientData();
 
+		# Extract timestamp from message and skip it
+		timestamp = data[0]
+		int_count -= 1
+		data = data[1:]
+
+		if timestamp < self.__last:
+			logger.info("Data snapshot on %s too old, ignoring (%s vs. %s)", client, timestamp, self.__last)
+			return
+
 		# Get data from message
 		windows = int_count / PROTO_ITEMS_PER_WINDOW
 		for i in range(0, windows):
 			self.__data[client].add_window(data[i*PROTO_ITEMS_PER_WINDOW], data[i*PROTO_ITEMS_PER_WINDOW+1], data[i*PROTO_ITEMS_PER_WINDOW+2])
 
-		return
-		# TODO: handle with connection interrupts
-		# Example from CountPlugin
-		#if data[0] < self.__last:
-		#	logger.info("Data snapshot on %s too old, ignoring (%s vs. %s)", client, data[0], self.__last)
-		#	return
 
 	def client_connected(self, client):
 		"""
