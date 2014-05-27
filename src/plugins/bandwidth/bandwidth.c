@@ -53,11 +53,8 @@ struct user_data {
 };
 
 static float get_speed(unsigned long long int bytes_in_window, unsigned long long int window_size) {
-	//OK, try to get MB/s
 	unsigned long long int windows_in_second = 1000000/window_size;
-	//return (unsigned int)(bytes_in_window*windows_in_second);
 	return (bytes_in_window*windows_in_second/(float)(1024*1024));
-	//return (unsigned int)(bytes_in_window*8*windows_in_second/1000000);
 }
 
 static unsigned long long int reset_window_timestamp(void) {
@@ -81,8 +78,6 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		//Interested only in UDP and TCP packets
 		return;
 	}
-	//DEBUG
-	//ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WS = %llu; WE = %llu; TS = %llu\n", d->last_window_start, d->last_window_start+WINDOW_US_LEN, info->timestamp);
 
 	for (size_t window = 0; window < WINDOWS_CNT; window++) {
 		//Check that the clock did not change
