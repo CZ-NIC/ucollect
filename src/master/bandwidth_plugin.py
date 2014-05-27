@@ -74,8 +74,7 @@ class BandwidthPlugin(plugin.Plugin):
 		self.__downloader = LoopingCall(self.__init_download)
 		self.__downloader.start(self.__interval, False)
 		self.__data = {}
-		self.__last = int(time.time())
-		self.__current = int(time.time())
+		self.__last = self.__current = int(time.time())
 
 	def __init_download(self):
 		"""
