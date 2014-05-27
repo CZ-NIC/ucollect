@@ -37,15 +37,19 @@
 #include "../../core/uplink.h"
 #include "../../core/loop.h"
 
-#define WINDOW_US_LEN 5000
-//#define WINDOW_US_LEN 1000000
+#define WINDOWS_CNT 3
 
-struct user_data {
+struct window {
+	unsigned long long int len; //length of window in us
 	unsigned long long int in_max;
 	unsigned long long int in_sum;
 	unsigned long long int out_max;
 	unsigned long long int out_sum;
 	unsigned long long int last_window_start;
+};
+
+struct user_data {
+	struct window windows[WINDOWS_CNT];
 };
 
 static float get_speed(unsigned long long int bytes_in_window, unsigned long long int window_size) {
@@ -80,47 +84,72 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	//DEBUG
 	//ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WS = %llu; WE = %llu; TS = %llu\n", d->last_window_start, d->last_window_start+WINDOW_US_LEN, info->timestamp);
 
-	//Check that the clock did not change
-	if (info->timestamp < d->last_window_start) {
-		//The only reasonable reaction os replace position of window and drop numbers of "broken window"
-		d->last_window_start = reset_window_timestamp();
-		d->in_sum = 0;
-		d->out_sum = 0;
-		ulog(LLOG_DEBUG_VERBOSE, "Dropping window - time changed?");
-	}
-
-	while (info->timestamp > d->last_window_start + WINDOW_US_LEN) {
-		d->last_window_start += WINDOW_US_LEN;
-		if (d->in_sum > d->in_max) {
-			d->in_max = d->in_sum;
-			ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: New download maximum achieved: %llu (%f MB/s)\n", d->in_max, get_speed(d->in_max, WINDOW_US_LEN));
+	for (size_t window = 0; window < WINDOWS_CNT; window++) {
+		//Check that the clock did not change
+		if (info->timestamp < d->windows[window].last_window_start) {
+			//The only reasonable reaction is replace position of window and drop numbers of "broken window"
+			d->windows[window].last_window_start = reset_window_timestamp();
+			d->windows[window].in_sum = 0;
+			d->windows[window].out_sum = 0;
+			ulog(LLOG_DEBUG_VERBOSE, "Dropping window - time changed?\n");
 		}
-		if (d->out_sum > d->out_max) {
-			d->out_max = d->out_sum;
-			ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: New upload maximum achieved: %llu (%f MB/s)\n", d->out_max, get_speed(d->out_max, WINDOW_US_LEN));
-		}
-		ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW: DOWNLOAD: %llu (%.1f MB/s)\n", d->in_sum, get_speed(d->in_sum, WINDOW_US_LEN));
-		ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW: UPLOAD: %llu (%.1f MB/s)\n", d->out_sum, get_speed(d->out_sum, WINDOW_US_LEN));
-		d->in_sum = 0;
-		d->out_sum = 0;
-	}
 
-	if (info->direction == DIR_IN) {
-		d->in_sum += info->length;
-	} else {
-		d->out_sum += info->length;
+		while (info->timestamp > d->windows[window].last_window_start + d->windows[window].len) {
+			d->windows[window].last_window_start += d->windows[window].len;
+			if (d->windows[window].in_sum > d->windows[window].in_max) {
+				d->windows[window].in_max = d->windows[window].in_sum;
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %llu us: New download maximum achieved: %llu (%f MB/s)\n", d->windows[window].len, d->windows[window].in_max, get_speed(d->windows[window].in_max, d->windows[window].len));
+			}
+			if (d->windows[window].out_sum > d->windows[window].out_max) {
+				d->windows[window].out_max = d->windows[window].out_sum;
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %llu us: New upload maximum achieved: %llu (%f MB/s)\n", d->windows[window].len, d->windows[window].out_max, get_speed(d->windows[window].out_max, d->windows[window].len));
+			}
+			if (d->windows[window].in_sum != 0 || d->windows[window].out_sum != 0) {
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %llu us: DOWNLOAD: %llu (%.1f MB/s)\tUPLOAD: %llu (%.1f MB/s)\n", d->windows[window].len, d->windows[window].in_sum, get_speed(d->windows[window].in_sum, d->windows[window].len), d->windows[window].out_sum, get_speed(d->windows[window].out_sum, d->windows[window].len));
+			}
+			d->windows[window].in_sum = 0;
+			d->windows[window].out_sum = 0;
+		}
+
+		if (info->direction == DIR_IN) {
+			d->windows[window].in_sum += info->length;
+		} else {
+			d->windows[window].out_sum += info->length;
+		}
 	}
 }
 
-
 void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
-	*context->user_data = (struct user_data) {
+	//struct user_data *d = context->user_data;
+
+	size_t i = 0;
+	unsigned long long int common_start_timestamp = reset_window_timestamp();
+	context->user_data->windows[i++] = (struct window) {
+		.len = 5000,
 		.in_max = 0,
 		.in_sum = 0,
 		.out_max = 0,
 		.out_sum = 0,
-		.last_window_start = reset_window_timestamp()
+		.last_window_start = common_start_timestamp
+	};
+
+	context->user_data->windows[i++] = (struct window) {
+		.len = 100000,
+		.in_max = 0,
+		.in_sum = 0,
+		.out_max = 0,
+		.out_sum = 0,
+		.last_window_start = common_start_timestamp
+	};
+
+	context->user_data->windows[i++] = (struct window) {
+		.len = 1000000,
+		.in_max = 0,
+		.in_sum = 0,
+		.out_max = 0,
+		.out_sum = 0,
+		.last_window_start = common_start_timestamp
 	};
 }
 
