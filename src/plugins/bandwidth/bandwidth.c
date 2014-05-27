@@ -40,24 +40,25 @@
 #define WINDOWS_CNT 3
 
 struct window {
-	unsigned long long int len; //length of window in us
-	unsigned long long int in_max;
-	unsigned long long int in_sum;
-	unsigned long long int out_max;
-	unsigned long long int out_sum;
-	unsigned long long int last_window_start;
+	uint64_t len; //length of window in us
+	uint64_t in_max;
+	uint64_t in_sum;
+	uint64_t out_max;
+	uint64_t out_sum;
+	uint64_t last_window_start;
 };
 
 struct user_data {
 	struct window windows[WINDOWS_CNT];
 };
 
-static float get_speed(unsigned long long int bytes_in_window, unsigned long long int window_size) {
-	unsigned long long int windows_in_second = 1000000/window_size;
+static float get_speed(uint64_t bytes_in_window, uint64_t window_size) {
+	uint64_t windows_in_second = 1000000/window_size;
+
 	return (bytes_in_window*windows_in_second/(float)(1024*1024));
 }
 
-static unsigned long long int reset_window_timestamp(void) {
+static uint64_t reset_window_timestamp(void) {
 	//struct timespec ts;
 	//clock_gettime(CLOCK_MONOTONIC, &ts);
 	struct timeval tv;
@@ -93,14 +94,14 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 			d->windows[window].last_window_start += d->windows[window].len;
 			if (d->windows[window].in_sum > d->windows[window].in_max) {
 				d->windows[window].in_max = d->windows[window].in_sum;
-				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %llu us: New download maximum achieved: %llu (%f MB/s)\n", d->windows[window].len, d->windows[window].in_max, get_speed(d->windows[window].in_max, d->windows[window].len));
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: New download maximum achieved: %" PRIu64 " (%f MB/s)\n", d->windows[window].len, d->windows[window].in_max, get_speed(d->windows[window].in_max, d->windows[window].len));
 			}
 			if (d->windows[window].out_sum > d->windows[window].out_max) {
 				d->windows[window].out_max = d->windows[window].out_sum;
-				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %llu us: New upload maximum achieved: %llu (%f MB/s)\n", d->windows[window].len, d->windows[window].out_max, get_speed(d->windows[window].out_max, d->windows[window].len));
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: New upload maximum achieved: %" PRIu64 " (%f MB/s)\n", d->windows[window].len, d->windows[window].out_max, get_speed(d->windows[window].out_max, d->windows[window].len));
 			}
 			if (d->windows[window].in_sum != 0 || d->windows[window].out_sum != 0) {
-				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %llu us: DOWNLOAD: %llu (%.1f MB/s)\tUPLOAD: %llu (%.1f MB/s)\n", d->windows[window].len, d->windows[window].in_sum, get_speed(d->windows[window].in_sum, d->windows[window].len), d->windows[window].out_sum, get_speed(d->windows[window].out_sum, d->windows[window].len));
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: DOWNLOAD: %" PRIu64 " (%.1f MB/s)\tUPLOAD: %" PRIu64 " (%.1f MB/s)\n", d->windows[window].len, d->windows[window].in_sum, get_speed(d->windows[window].in_sum, d->windows[window].len), d->windows[window].out_sum, get_speed(d->windows[window].out_sum, d->windows[window].len));
 			}
 			d->windows[window].in_sum = 0;
 			d->windows[window].out_sum = 0;
@@ -119,7 +120,7 @@ void init(struct context *context) {
 	//struct user_data *d = context->user_data;
 
 	size_t i = 0;
-	unsigned long long int common_start_timestamp = reset_window_timestamp();
+	uint64_t common_start_timestamp = reset_window_timestamp();
 	context->user_data->windows[i++] = (struct window) {
 		.len = 5000,
 		.in_max = 0,
