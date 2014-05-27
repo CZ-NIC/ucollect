@@ -39,6 +39,9 @@
 
 #define WINDOWS_CNT 3
 
+//Settings for communication protocol
+#define PROTO_ITEMS_PER_WINDOW 3
+
 struct window {
 	uint64_t len; //length of window in us
 	uint64_t in_max;
@@ -115,6 +118,30 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	}
 }
 
+static void communicate(struct context *context, const uint8_t *data, size_t length) {
+	struct user_data *d = context->user_data;
+
+	//Keep this  check for now
+	if (length != sizeof(uint64_t))
+		die("Invalid request from upstream to plugin bandwidth, size %zu\n", length);
+
+	uint64_t stats[PROTO_ITEMS_PER_WINDOW * WINDOWS_CNT]; //For every windows I want: window's size, in_max, out_max
+	size_t msg_size = PROTO_ITEMS_PER_WINDOW * WINDOWS_CNT * sizeof *stats;
+	size_t fill = 0;
+	for (size_t window = 0; window < WINDOWS_CNT; window++) {
+		stats[fill++] = htobe64(d->windows[window].len);
+		stats[fill++] = htobe64(d->windows[window].in_max);
+		stats[fill++] = htobe64(d->windows[window].out_max);
+	}
+
+	uplink_plugin_send_message(context, stats, msg_size);
+
+	for (size_t window = 0; window < WINDOWS_CNT; window++) {
+		d->windows[window].in_max = 0;
+		d->windows[window].out_max = 0;
+	}
+}
+
 void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 	//struct user_data *d = context->user_data;
@@ -158,6 +185,7 @@ struct plugin *plugin_info(void) {
 		.name = "Bandwidth",
 		.packet_callback = packet_handle,
 		.init_callback = init,
+		.uplink_data_callback = communicate
 	};
 	return &plugin;
 }
