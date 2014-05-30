@@ -44,6 +44,7 @@ class SniffPlugin(plugin.Plugin):
 		self.__taskers = map(getTasker, re.split('\s+', config['taskers']))
 		self.__parallel_limit = int(config['parallel_limit'])
 		self.__task_timeout = int(config['task_timeout']) * 60
+		self.__start_interval = int(config['start_interval'])
 		interval = int(config['interval']) * 60
 		self.__checker = LoopingCall(self.__check_schedules)
 		self.__checker.start(interval, False)
@@ -55,8 +56,9 @@ class SniffPlugin(plugin.Plugin):
 		"""
 		Check if the task is complete, eg. there are no clients active now.
 		"""
-		if not task.active_clients:
+		if not task.active_clients: # Everything terminated and we didn't just start a new one
 			logger.info("Task %s/%s finished", task.name(), task.task_id)
+			task.starter.stop()
 			del self.__active_tasks[task.task_id]
 			try:
 				task.finished()
@@ -85,6 +87,8 @@ class SniffPlugin(plugin.Plugin):
 		"""
 		Send the task to some client that didn't get it yet. If no such client is available, do nothing.
 		"""
+		if len(task.active_clients) >= self.__parallel_limit:
+			return # Currently the limit is full, start stuff later
 		used = set(task.active_clients.keys()) | task.finished_clients
 		available = set(self.__connected()) - used
 		if available:
@@ -110,8 +114,8 @@ class SniffPlugin(plugin.Plugin):
 		task.task_id = task_id
 		self.__active_tasks[task_id] = task
 		logger.info("Starting task %s as id %s", task.name(), task_id)
-		for i in range(0, self.__parallel_limit):
-			self.__send_to_client(task)
+		task.starter = LoopingCall(lambda: self.__send_to_client(task))
+		task.starter.start(self.__start_interval, True)
 		self.__check_finished(task) # In case we have no clients connected now, we just finished it.
 
 	def __check_schedules(self):
