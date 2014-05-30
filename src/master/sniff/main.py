@@ -109,7 +109,7 @@ class SniffPlugin(plugin.Plugin):
 		Start a task - send it to some set of routers and queue the others.
 		"""
 		self.__last_id += 1
-		self.__last_id %= 2^32
+		self.__last_id %= 2**32
 		task_id = self.__last_id
 		task.task_id = task_id
 		self.__active_tasks[task_id] = task
