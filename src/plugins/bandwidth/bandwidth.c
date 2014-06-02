@@ -63,17 +63,6 @@ static uint64_t reset_window_timestamp(void) {
 
 void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
-	//Filter some useless packets
-	if (info->next) {
-		// It's wrapper around some other real packet. We're not interested in the envelope.
-		packet_handle(context, info->next);
-		return;
-	}
-
-	if (info->app_protocol != 'T' && info->app_protocol != 'U') {
-		//Interested only in UDP and TCP packets
-		return;
-	}
 
 	for (size_t window = 0; window < WINDOWS_CNT; window++) {
 		//Check that the clock did not change
