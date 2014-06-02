@@ -171,28 +171,16 @@ void init(struct context *context) {
 	context->user_data->timestamp = 0;
 	context->user_data->windows[i++] = (struct window) {
 		.len = 5000,
-		.in_max = 0,
-		.in_sum = 0,
-		.out_max = 0,
-		.out_sum = 0,
 		.last_window_start = common_start_timestamp
 	};
 
 	context->user_data->windows[i++] = (struct window) {
 		.len = 100000,
-		.in_max = 0,
-		.in_sum = 0,
-		.out_max = 0,
-		.out_sum = 0,
 		.last_window_start = common_start_timestamp
 	};
 
 	context->user_data->windows[i++] = (struct window) {
 		.len = 1000000,
-		.in_max = 0,
-		.in_sum = 0,
-		.out_max = 0,
-		.out_sum = 0,
 		.last_window_start = common_start_timestamp
 	};
 }
