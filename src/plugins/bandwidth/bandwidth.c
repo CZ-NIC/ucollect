@@ -63,8 +63,6 @@ static float get_speed(uint64_t bytes_in_window, uint64_t window_size) {
 }
 
 static uint64_t reset_window_timestamp(void) {
-	//struct timespec ts;
-	//clock_gettime(CLOCK_MONOTONIC, &ts);
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	return (1000000*tv.tv_sec) + (tv.tv_usec);
@@ -164,7 +162,6 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 
 void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
-	//struct user_data *d = context->user_data;
 
 	size_t i = 0;
 	uint64_t common_start_timestamp = reset_window_timestamp();
