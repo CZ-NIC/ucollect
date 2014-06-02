@@ -33,6 +33,7 @@
 #include <string.h> // Why is memcpy in string?
 #include <errno.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include <pcap/pcap.h>
 #include <sys/epoll.h>
@@ -378,7 +379,7 @@ static void packet_handler(struct pcap_interface *interface, const struct pcap_p
 		.interface = interface->name,
 		.direction = interface->in ? DIR_IN : DIR_OUT
 	};
-	ulog(LLOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s (starting %016llX%016llX, on layer %d) at %llu\n", info.length, interface->name, *(long long unsigned *) info.data, *(1 + (long long unsigned *) info.data), interface->datalink, info.timestamp);
+	ulog(LLOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s (starting %016llX%016llX, on layer %d) at %" PRIu64 "\n", info.length, interface->name, *(long long unsigned *) info.data, *(1 + (long long unsigned *) info.data), interface->datalink, info.timestamp);
 	uc_parse_packet(&info, interface->loop->batch_pool, interface->datalink);
 	LFOR(plugin, plugin, &interface->loop->plugins)
 		plugin_packet(plugin, &info);
