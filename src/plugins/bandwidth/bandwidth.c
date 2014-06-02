@@ -126,8 +126,10 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			- in_max
 			- out_max
 	*/
-	uint64_t msg[PROTO_ITEMS_PER_WINDOW * WINDOWS_CNT + 1]; // For each window I want PROTO_ITEMS_PER_WINDOW; + 1 for timestamp
+	uint64_t *msg;
 	size_t msg_size = (PROTO_ITEMS_PER_WINDOW * WINDOWS_CNT + 1) * sizeof *msg;
+	msg = mem_pool_alloc(context->temp_pool, msg_size);
+
 	size_t fill = 0;
 	msg[fill++] = htobe64(d->timestamp);
 	ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: Sending timestamp %" PRIu64 "\n", d->timestamp);
