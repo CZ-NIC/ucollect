@@ -17,16 +17,10 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include <arpa/inet.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <sys/time.h>
 #include <time.h>
-#include <netdb.h>
-#include <assert.h>
 #include <string.h>
 #include <endian.h>
-#include <stdio.h>
 #include <inttypes.h>
 
 #include "../../core/plugin.h"
@@ -35,7 +29,6 @@
 #include "../../core/mem_pool.h"
 #include "../../core/packet.h"
 #include "../../core/uplink.h"
-#include "../../core/loop.h"
 
 #define WINDOWS_CNT 3
 
