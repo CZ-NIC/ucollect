@@ -23,6 +23,7 @@ my %config_tables = (
 	count_types => [qw(ord name description)],
 	activity_types => [qw(id name)],
 	clients => [qw(id name)],
+	ping_requests => [qw(id host proto amount size)],
 );
 
 while (my($table, $columns) = each %config_tables) {
@@ -177,7 +178,7 @@ if (fork == 0) {
 	my ($max_act) = $destination->selectrow_array('SELECT COALESCE(MAX(activities.date), DATE(TO_TIMESTAMP(0))) FROM activities');
 	print "Dropping archived anomalies at $max_act\n";
 	$destination->do('DELETE FROM activities WHERE activities.date = ?', undef, $max_act);
-	print "Getting activities newer than $max_act\n";
+	print "Getting activities not older than $max_act\n";
 	# Keep reading and putting it to the other DB
 	my $store_activity = $destination->prepare('INSERT INTO activities (date, activity, client, count) VALUES (?, ?, ?, ?)');
 	my $get_activities = $source->prepare('SELECT DATE(timestamp), activity, client, COUNT(id) FROM activities WHERE DATE(timestamp) >= ? GROUP BY activity, client, DATE(timestamp)');
@@ -194,4 +195,37 @@ if (fork == 0) {
 	exit;
 }
 
-wait; wait; wait; wait;
+if (fork == 0) {
+	my $source = connect_db 'source';
+	my $destination = connect_db 'destination';
+	my ($max_batch) = $destination->selectrow_array('SELECT COALESCE(MAX(ping_stats.batch), TO_TIMESTAMP(0)) FROM ping_stats');
+	print "Dropping pings from batch $max_batch\n";
+	$destination->do('DELETE FROM ping_stats WHERE ping_stats.batch = ?', undef, $max_batch);
+	print "Getting pings not older than $max_batch\n";
+	my $store_stat = $destination->prepare('INSERT INTO ping_stats (batch, request, from_group, received, asked, resolved, min, max, avg) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)');
+	my $get_stat = $source->prepare('SELECT batch, request, group_members.in_group, SUM(received), COUNT(1), COUNT(ip), MIN(min), MAX(max), SUM(received * avg) / SUM(received) FROM pings JOIN group_members ON pings.client = group_members.client WHERE batch >= ? GROUP BY batch, request, group_members.in_group');
+	$get_stat->execute($max_batch);
+	my $stat_cnt = 0;
+	$store_stat->execute_for_fetch(sub {
+		my $data = $get_stat->fetchrow_arrayref;
+		$stat_cnt ++ if $data;
+		return $data;
+	});
+	print "Stored $stat_cnt ping statistics\n";
+	print "Getting IP address histograms since $max_batch\n";
+	my $store_hist = $destination->prepare('INSERT INTO ping_ips (ping_stat, ip, count) SELECT id, ?, ? FROM ping_stats WHERE batch = ? AND request = ? AND from_group = ?');
+	my $get_hist = $source->prepare('SELECT ip, COUNT(DISTINCT pings.client), batch, request, group_members.in_group FROM pings JOIN group_members ON pings.client = group_members.client WHERE batch >= ? GROUP BY request, batch, group_members.in_group, ip');
+	my $hist_cnt = 0;
+	$get_hist->execute($max_batch);
+	$store_hist->execute_for_fetch(sub {
+		my $data = $get_hist->fetchrow_arrayref;
+		$hist_cnt ++ if $data;
+		return $data;
+	});
+	print "Stored $hist_cnt ping histograms\n";
+	$destination->commit;
+	$source->commit;
+	exit;
+}
+
+wait for (1..5);
