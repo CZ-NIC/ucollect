@@ -1,3 +1,4 @@
+CFLAGS_ALL += -I"$(O)/.objs"
 ifdef LOGIN_PASSWD_HALF
 	CFLAGS_ALL += -DPASSWD_HALF="$$(cat $(LOGIN_PASSWD_HALF))"
 else

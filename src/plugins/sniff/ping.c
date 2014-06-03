@@ -30,7 +30,9 @@
 #include <stdio.h>
 #include <assert.h>
 
-#define PINGER_PROGRAM "ucollect-sniff-ping"
+const char *pinger_program =
+#include <sniff-ping.inc>
+;
 
 struct task_data {
 	bool input_ok;
@@ -86,17 +88,21 @@ struct task_data *start_ping(struct context *context, struct mem_pool *pool, con
 	message += sizeof host_count;
 	message_size -= sizeof host_count;
 	host_count = ntohs(host_count);
-	char **argv = mem_pool_alloc(context->temp_pool, (2 + 4 * host_count) * sizeof *argv);
-	argv[0] = PINGER_PROGRAM;
-	argv[1 + 4 * host_count] = NULL;
+	char **argv = mem_pool_alloc(context->temp_pool, (6 + 4 * host_count) * sizeof *argv);
+	argv[0] = "/bin/busybox";
+	argv[1] = "ash";
+	argv[2] = "-c";
+	argv[3] = mem_pool_strdup(context->temp_pool, pinger_program);
+	argv[4] = "sniff-ping";
+	argv[5 + 4 * host_count] = NULL;
 	data->host_count = host_count;
 	data->ping_counts = mem_pool_alloc(pool, host_count * sizeof *data->ping_counts);
 	for (size_t i = 0; i < host_count; ++ i)
-		if (!host_parse(context->temp_pool, argv + 1 + 4 * i, data, i, &message, &message_size)) {
+		if (!host_parse(context->temp_pool, argv + 5 + 4 * i, data, i, &message, &message_size)) {
 			data->input_ok = false;
 			return data;
 		}
-	data->system_ok = fork_task(PINGER_PROGRAM, argv, "pinger", output, pid);
+	data->system_ok = fork_task("/bin/busybox", argv, "pinger", output, pid);
 	return data;
 }
 
