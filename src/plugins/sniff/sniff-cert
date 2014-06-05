@@ -1,0 +1,55 @@
+#!/bin/busybox ash
+
+# Ucollect - small utility for real-time analysis of network data
+# Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+DIR="/tmp/sniff-cert-$$"
+trap 'rm -rf "$DIR"' EXIT ABRT QUIT TERM INT
+
+while [ "$1" ] ; do
+	HOST="$1"
+	PORT="$2"
+	STARTTLS="$3"
+	PARAMS=""
+	if [ "$STARTTLS" ] ; then
+		PARAMS="-starttls $STARTTLS"
+	fi
+	mkdir -p "$DIR"
+	cd "$DIR"
+	echo | openssl s_client -connect "$HOST":"$PORT" $PARAMS -showcerts -status >out 2>/dev/null
+	awk -v c=-1 '/-----BEGIN CERTIFICATE-----/{inc=1;c++} inc {print > (c ".pem")}' <out
+	grep '^SSL-Session:' -A 20 <out >session
+	echo '-----BEGIN HOST-----'
+	echo '-----CIPHER-----'
+	sed -ne 's/ *Cipher *: \(.*\)/\1/p' session
+	echo '-----PROTOCOL-----'
+	sed -ne 's/ *Protocol *: \(.*\)/\1/p' session
+	ls *.pem | sort -n | while read cert ; do
+		openssl x509 -in "$cert"
+		echo '-----FINGERPRINT-----'
+		openssl x509 -in "$cert" -noout -fingerprint -sha1 | sed -e 's/.*=//;s/://g'
+		echo '-----NAME-----'
+		(
+			openssl x509 -in "$cert" -noout -text | sed -ne 's/ *Subject:.*CN=\([^ \/]*\).*/\1/p'
+			openssl x509 -in "$cert" -noout -text | grep -A 1 'X509v3 Subject Alternative Name' | grep -o 'DNS:[^ ,]*' | sed -e 's/DNS://'
+		) | sort -u
+	done
+	echo '-----END HOST-----'
+	cd /tmp
+	rm -rf "$DIR"
+	shift 3
+done
