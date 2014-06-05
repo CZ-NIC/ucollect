@@ -17,31 +17,4 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include "task.h"
-#include "nop.h"
-#include "ping.h"
 #include "cert.h"
-
-struct task_desc task_descs[] = {
-	{
-		.name = 'N',
-		.label = "NOP",
-		.start = start_nop,
-		.finish = finish_nop
-	},
-	{
-		.name = 'P',
-		.label = "Ping",
-		.start = start_ping,
-		.finish = finish_ping
-	},
-	{
-		.name = 'C',
-		.label = "Certificate",
-		.start = start_cert,
-		.finish = finish_cert
-	},
-	{
-		.name = '\0'
-	}
-};
