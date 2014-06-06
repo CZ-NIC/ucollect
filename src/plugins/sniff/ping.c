@@ -30,7 +30,7 @@
 #include <assert.h>
 #include <stdio.h>
 
-const char *pinger_program =
+static const char *pinger_program =
 #include <sniff-ping.inc>
 ;
 

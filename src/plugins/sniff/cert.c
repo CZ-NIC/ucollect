@@ -23,11 +23,13 @@
 #include "../../core/util.h"
 #include "../../core/uplink.h"
 #include "../../core/mem_pool.h"
+#include "../../core/context.h"
 
 #include <string.h>
 #include <arpa/inet.h>
+#include <assert.h>
 
-const char *cert_program =
+static const char *cert_program =
 #include <sniff-cert.inc>
 ;
 
@@ -38,8 +40,8 @@ struct target {
 	bool want_params;
 };
 
-const uint8_t STARTTLS_PROTO_MASK = 1 | 2 | 4; // First 3 bits are the starttls protocol
-const char *tls_proto[] = {
+static const uint8_t STARTTLS_PROTO_MASK = 1 | 2 | 4; // First 3 bits are the starttls protocol
+static const char *tls_proto[] = {
 	"",
 	"smtp",
 	"pop3",
@@ -49,11 +51,11 @@ const char *tls_proto[] = {
 	NULL,
 	NULL
 };
-const uint8_t WANT_CERT = 1 << 3;
-const uint8_t WANT_CHAIN = 1 << 4;
-const uint8_t WANT_NAME = 1 << 5;
-const uint8_t WANT_PARAMS = 1 << 6;
-const uint8_t MORE_FLAGS = 1 << 7;
+static const uint8_t WANT_CERT = 1 << 3;
+static const uint8_t WANT_CHAIN = 1 << 4;
+static const uint8_t WANT_NAME = 1 << 5;
+static const uint8_t WANT_PARAMS = 1 << 6;
+static const uint8_t MORE_FLAGS = 1 << 7;
 
 static bool cert_parse(struct mem_pool *task_pool, struct mem_pool *tmp_pool, struct target *target, char **args, const uint8_t **message, size_t *message_size, size_t index) {
 	(void) task_pool;
@@ -91,4 +93,134 @@ static bool cert_parse(struct mem_pool *task_pool, struct mem_pool *tmp_pool, st
 
 struct task_data *start_cert(struct context *context, struct mem_pool *pool, const uint8_t *message, size_t message_size, int *output, pid_t *pid) {
 	return input_parse(context, pool, message, message_size, output, pid, cert_program, "sslcert", 3, sizeof(struct target), cert_parse);
+}
+
+static char *block(char **input, const char *end) {
+	char *found = strstr(*input, end);
+	if (found) {
+		size_t len = strlen(end);
+		for (size_t i = 0; i < len; i ++)
+			found[i] = '\0';
+		*input = found + len;
+		return found;
+	} else {
+		return NULL;
+	}
+}
+
+static const char *host_block_end = "-----END HOST-----\n";
+static const char *host_block_begin = "-----BEGIN HOST-----\n";
+static const char *mark_begin = "-----";
+static const char *mark_end = "-----\n";
+
+struct parsed_cert {
+	struct parsed_cert *next;
+	const char *cert;
+	const char *fingerprint;
+	const char *name;
+};
+
+struct parsed_ssl {
+	const char *cipher;
+	const char *proto;
+	size_t count;
+	struct parsed_ssl *next;
+	struct parsed_cert *head, *tail;
+};
+
+struct parsed {
+	size_t count;
+	struct parsed_ssl *head, *tail;
+};
+
+#define LIST_NODE struct parsed_cert
+#define LIST_BASE struct parsed_ssl
+#define LIST_COUNT count
+#define LIST_NAME(X) parsed_cert_##X
+#define LIST_WANT_APPEND_POOL
+#include "../../core/link_list.h"
+
+#define LIST_NODE struct parsed_ssl
+#define LIST_BASE struct parsed
+#define LIST_COUNT count
+#define LIST_NAME(X) parsed_ssl_##X
+#define LIST_WANT_APPEND_POOL
+#include "../../core/link_list.h"
+
+static bool block_parse(struct mem_pool *pool, char *text, struct parsed_ssl *dest) {
+	dest->cipher = NULL;
+	dest->proto = NULL;
+	dest->head = NULL;
+	dest->tail = NULL;
+	dest->count = 0;
+	struct parsed_cert *cert = NULL;
+	const char *prefix = block(&text, host_block_begin);
+	if (!prefix) {
+		ulog(LLOG_ERROR, "Host block begin not found\n");
+		return false;
+	}
+	if (*prefix) {
+		ulog(LLOG_ERROR, "Data before block begin\n");
+		return false;
+	}
+	prefix = block(&text, mark_begin);
+	if (!prefix) { // No more data in the block ‒ likely we couldn't connect to the host
+		ulog(LLOG_DEBUG, "Host block empty\n");
+		return true;
+	}
+	if (*prefix) {
+		ulog(LLOG_ERROR, "Stray data after block start\n");
+		return false;
+	}
+	const char *name;
+	while (*text && (name = block(&text, mark_end))) {
+		char *content = text;
+		block(&text, mark_begin); // Find the end of the content. The begin of the next marker might be missing (on the last one)
+		if (strcmp(name, "CIPHER") == 0)
+			dest->cipher = content;
+		else if (strcmp(name, "PROTOCOL") == 0)
+			dest->proto = content;
+		else if (strcmp(name, "BEGIN CERTIFICATE") == 0) {
+			cert = parsed_cert_append_pool(dest, pool);
+			cert->cert = content;
+			cert->fingerprint = NULL;
+			cert->name = NULL;
+		} else if (strcmp(name, "END CERTIFICATE") == 0) {
+			// OK, ignore.
+		} else if (strcmp(name, "FINGERPRINT") == 0) {
+			assert(cert);
+			cert->fingerprint = content;
+		} else if (strcmp(name, "NAME") == 0) {
+			assert(cert);
+			cert->name = content;
+		}
+	}
+	return true;
+}
+
+const uint8_t *finish_cert(struct context *context, struct task_data *data, uint8_t *output, size_t output_size, size_t *result_size, bool *ok) {
+	// TODO: Unify code
+#define FAIL(CODE, MESSAGE) do { *result_size = 1; *ok = false; ulog(LLOG_INFO, "Sending error cert response %s: %s\n", CODE, MESSAGE); return (const uint8_t *)(CODE); } while (0)
+	if (!data->input_ok)
+		FAIL("I", "Invalid certificate input");
+	if (!data->system_ok)
+		FAIL("F", "Failed to run certificate command");
+	if (!output)
+		FAIL("P", "Pipe error reading certificate output");
+	if (data->target_count && !output_size)
+		FAIL("R", "Read error while getting certificate output");
+	char *text = mem_pool_alloc(context->temp_pool, output_size + 1);
+	text[output_size] = '\0';
+	memcpy(text, output, output_size);
+	char *host;
+	struct parsed parsed = { .count = 0 };
+	while ((host = block(&text, host_block_end))) {
+		struct parsed_ssl *ssl = parsed_ssl_append_pool(&parsed, context->temp_pool);
+		if (!block_parse(context->temp_pool, host, ssl))
+			FAIL("B", mem_pool_printf(context->temp_pool, "Error parsing block %zu", parsed.count));
+	}
+	if (*text)
+		FAIL("E", "Unexpected end of output");
+	if (parsed.count != data->target_count)
+		FAIL("C", mem_pool_printf(context->temp_pool, "Wrong number of outputs, got %zu and expected %zu", parsed.count, data->target_count));
 }

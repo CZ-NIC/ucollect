@@ -34,20 +34,22 @@ while [ "$1" ] ; do
 	awk -v c=-1 '/-----BEGIN CERTIFICATE-----/{inc=1;c++} inc {print > (c ".pem")}' <out
 	grep '^SSL-Session:' -A 20 <out >session
 	echo '-----BEGIN HOST-----'
-	echo '-----CIPHER-----'
-	sed -ne 's/ *Cipher *: \(.*\)/\1/p' session
-	echo '-----PROTOCOL-----'
-	sed -ne 's/ *Protocol *: \(.*\)/\1/p' session
-	ls *.pem | sort -n | while read cert ; do
-		openssl x509 -in "$cert"
-		echo '-----FINGERPRINT-----'
-		openssl x509 -in "$cert" -noout -fingerprint -sha1 | sed -e 's/.*=//;s/://g'
-		echo '-----NAME-----'
-		(
-			openssl x509 -in "$cert" -noout -text | sed -ne 's/ *Subject:.*CN=\([^ \/]*\).*/\1/p'
-			openssl x509 -in "$cert" -noout -text | grep -A 1 'X509v3 Subject Alternative Name' | grep -o 'DNS:[^ ,]*' | sed -e 's/DNS://'
-		) | sort -u
-	done
+	if [ -s out ] ; then
+		echo '-----CIPHER-----'
+		sed -ne 's/ *Cipher *: \(.*\)/\1/p' session
+		echo '-----PROTOCOL-----'
+		sed -ne 's/ *Protocol *: \(.*\)/\1/p' session
+		ls *.pem | sort -n | while read cert ; do
+			openssl x509 -in "$cert"
+			echo '-----FINGERPRINT-----'
+			openssl x509 -in "$cert" -noout -fingerprint -sha1 | sed -e 's/.*=//;s/://g'
+			echo '-----NAME-----'
+			(
+				openssl x509 -in "$cert" -noout -text | sed -ne 's/ *Subject:.*CN=\([^ \/]*\).*/\1/p'
+				openssl x509 -in "$cert" -noout -text | grep -A 1 'X509v3 Subject Alternative Name' | grep -o 'DNS:[^ ,]*' | sed -e 's/DNS://'
+			) | sort -u
+		done
+	fi
 	echo '-----END HOST-----'
 	cd /tmp
 	rm -rf "$DIR"
