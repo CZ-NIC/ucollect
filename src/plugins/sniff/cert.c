@@ -138,6 +138,7 @@ struct parsed {
 #define LIST_COUNT count
 #define LIST_NAME(X) parsed_cert_##X
 #define LIST_WANT_APPEND_POOL
+#define LIST_WANT_LFOR
 #include "../../core/link_list.h"
 
 #define LIST_NODE struct parsed_ssl
@@ -145,6 +146,7 @@ struct parsed {
 #define LIST_COUNT count
 #define LIST_NAME(X) parsed_ssl_##X
 #define LIST_WANT_APPEND_POOL
+#define LIST_WANT_LFOR
 #include "../../core/link_list.h"
 
 static bool block_parse(struct mem_pool *pool, char *text, struct parsed_ssl *dest) {
@@ -209,11 +211,10 @@ const uint8_t *finish_cert(struct context *context, struct task_data *data, uint
 		FAIL("P", "Pipe error reading certificate output");
 	if (data->target_count && !output_size)
 		FAIL("R", "Read error while getting certificate output");
-	char *text = mem_pool_alloc(context->temp_pool, output_size + 1);
-	text[output_size] = '\0';
-	memcpy(text, output, output_size);
+	char *text = (char *) output;
 	char *host;
 	struct parsed parsed = { .count = 0 };
+	// Parse the text into parts
 	while ((host = block(&text, host_block_end))) {
 		struct parsed_ssl *ssl = parsed_ssl_append_pool(&parsed, context->temp_pool);
 		if (!block_parse(context->temp_pool, host, ssl))
@@ -223,4 +224,49 @@ const uint8_t *finish_cert(struct context *context, struct task_data *data, uint
 		FAIL("E", "Unexpected end of output");
 	if (parsed.count != data->target_count)
 		FAIL("C", mem_pool_printf(context->temp_pool, "Wrong number of outputs, got %zu and expected %zu", parsed.count, data->target_count));
+	size_t target_size = 0;
+	size_t i = 0;
+	// Compute size of output
+	LFOR(parsed_ssl, ssl, &parsed) {
+		target_size += 1;
+		if (ssl->count && data->targets[i].want_params)
+			target_size += 8 + strlen(ssl->cipher) + strlen(ssl->proto);
+		LFOR(parsed_cert, cert, ssl) {
+			target_size += 4 + strlen(data->targets[i].want_cert ? cert->cert : cert->fingerprint);
+			if (data->targets[i].want_name)
+				target_size += 4 + strlen(cert->name);
+			if (!data->targets[i].want_chain) {
+				// We take only 1 cert, no matter if there's more.
+				ssl->count = 1;
+				cert->next = NULL;
+				ssl->tail = cert;
+				break;
+			}
+		}
+		i ++;
+	}
+	// Prepare output
+	*result_size = target_size;
+	*ok = true;
+	uint8_t *result = mem_pool_alloc(context->temp_pool, target_size);
+	uint8_t *pos = result;
+	i = 0;
+	LFOR(parsed_ssl, ssl, &parsed) {
+		assert(target_size);
+		*(pos ++) = ssl->count;
+		target_size --;
+		if (ssl->count && data->targets[i].want_params) {
+			uplink_render_string(ssl->cipher, strlen(ssl->cipher), &pos, &target_size);
+			uplink_render_string(ssl->proto, strlen(ssl->proto), &pos, &target_size);
+		}
+		LFOR(parsed_cert, cert, ssl) {
+			const char *payload = data->targets[i].want_cert ? cert->cert : cert->fingerprint;
+			uplink_render_string(payload, strlen(payload), &pos, &target_size);
+			if (data->targets[i].want_name)
+				uplink_render_string(cert->name, strlen(cert->name), &pos, &target_size);
+		}
+		i ++;
+	}
+	assert(target_size == 0);
+	return result;
 }
