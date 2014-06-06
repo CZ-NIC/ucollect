@@ -42,7 +42,7 @@ static bool host_parse(struct mem_pool *task_pool, struct mem_pool *tmp_pool, st
 	(void) task_pool;
 	size_t header = sizeof(char) + sizeof(uint8_t) + sizeof(uint16_t);
 	if (*message_size < header) {
-		ulog(LLOG_ERROR, "Message too short, host %zu incomplete\n", index);
+		ulog(LLOG_ERROR, "Message too short, ping host %zu incomplete\n", index);
 		return false;
 	}
 	char proto = **message;
@@ -54,7 +54,7 @@ static bool host_parse(struct mem_pool *task_pool, struct mem_pool *tmp_pool, st
 	*message_size -= header;
 	char *host = uplink_parse_string(tmp_pool, message, message_size);
 	if (!host) {
-		ulog(LLOG_ERROR, "Hostname of host %zu is broken\n", index);
+		ulog(LLOG_ERROR, "Hostname of ping host %zu is broken\n", index);
 		return false;
 	}
 	if (proto != '4' && proto != '6' && proto != 'X') {
