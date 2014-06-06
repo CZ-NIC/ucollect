@@ -50,7 +50,7 @@ bool fork_task(const char *program, char **argv, const char *name, int *output, 
 			D("Failed to assign stdout of %s: %s\n", name, strerror(errno));
 		if (close(pipes[1]) == -1)
 			D("Failed to close copy of %s write pipe: %s\n", name, strerror(errno));
-		execvp(program, argv);
+		execv(program, argv);
 		D("Failed to execute %s (%s): %s\n", name, program, strerror(errno));
 	} else {
 		if (close(pipes[1]) == -1)
