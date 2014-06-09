@@ -28,7 +28,29 @@ from twisted.internet import reactor
 
 logger = logging.getLogger(name='sniff')
 
-def submit_data(data):
+def submit_data(client, payload, hosts, batch_time):
+	data = []
+	for (rid, count) in hosts:
+		(slen, payload) = (payload[:4], payload[4:])
+		(slen,) = struct.unpack('!L', slen)
+		if slen > 0:
+			(ip, times, payload) = (payload[:slen], payload[slen:slen + 4 * count], payload[slen + 4 * count:])
+			times = struct.unpack('!' + str(count) + 'L', times)
+			times = filter(lambda t: t < 2**32 - 1, times)
+		else:
+			times = []
+			ip = None
+		recv = len(times)
+		logger.trace('Ping data: ' + repr(times))
+		if times:
+			ma = max(times)
+			mi = min(times)
+			avg = sum(times) / recv
+		else:
+			ma = None
+			mi = None
+			avg = None
+		data.append((batch_time, rid, ip, recv, mi, ma, avg, client))
 	logger.trace('Submitting data: ' + repr(data))
 	with database.transaction() as t:
 		t.executemany("INSERT INTO pings (batch, client, timestamp, request, ip, received, min, max, avg) SELECT %s, clients.id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', %s, %s, %s, %s, %s, %s FROM clients WHERE name = %s", data);
@@ -49,29 +71,7 @@ class PingTask(Task):
 		return self.__message
 
 	def success(self, client, payload):
-		data = []
-		for (rid, count) in self.__hosts:
-			(slen, payload) = (payload[:4], payload[4:])
-			(slen,) = struct.unpack('!L', slen)
-			if slen > 0:
-				(ip, times, payload) = (payload[:slen], payload[slen:slen + 4 * count], payload[slen + 4 * count:])
-				times = struct.unpack('!' + str(count) + 'L', times)
-				times = filter(lambda t: t < 2**32 - 1, times)
-			else:
-				times = []
-				ip = None
-			recv = len(times)
-			logger.trace('Ping data: ' + repr(times))
-			if times:
-				ma = max(times)
-				mi = min(times)
-				avg = sum(times) / recv
-			else:
-				ma = None
-				mi = None
-				avg = None
-			data.append((self.__batch_time, rid, ip, recv, mi, ma, avg, client))
-		reactor.callInThread(submit_data, data)
+		reactor.callInThread(submit_data, client, payload, self.__hosts, self.__batch_time)
 		log_activity(client, 'pings')
 
 def encode_host(hostname, proto, count, size):
