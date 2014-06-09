@@ -66,7 +66,9 @@ static bool cert_parse(struct mem_pool *task_pool, struct mem_pool *tmp_pool, st
 	}
 	uint8_t flags = **message;
 	uint16_t port;
-	memcpy(&port, message + sizeof flags, sizeof port);
+	memcpy(&port, *message + sizeof flags, sizeof port);
+	*message += header;
+	*message_size -= header;
 	port = ntohs(port);
 	if (flags & MORE_FLAGS) {
 		ulog(LLOG_ERROR, "More SSL flags sent for host %zu, but I don't know how to parse\n", index);
@@ -96,13 +98,14 @@ struct task_data *start_cert(struct context *context, struct mem_pool *pool, con
 }
 
 static char *block(char **input, const char *end) {
+	char *orig = *input;
 	char *found = strstr(*input, end);
 	if (found) {
 		size_t len = strlen(end);
 		for (size_t i = 0; i < len; i ++)
 			found[i] = '\0';
 		*input = found + len;
-		return found;
+		return orig;
 	} else {
 		return NULL;
 	}
