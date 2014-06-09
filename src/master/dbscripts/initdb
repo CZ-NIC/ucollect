@@ -169,7 +169,7 @@ CREATE TABLE cert_requests (
 	active BOOL NOT NULL DEFAULT true,
 	want_cert BOOL NOT NULL DEFAULT false,
 	want_chain BOOL NOT NULL DEFAULT false,
-	want_name BOOL NOT NULL DEFAULT true,
+	want_details BOOL NOT NULL DEFAULT true,
 	want_params BOOL NOT NULL DEFAULT true,
 	FOREIGN KEY (starttls) REFERENCES starttls_protos(id),
 	UNIQUE(host, port)

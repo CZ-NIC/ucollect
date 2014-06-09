@@ -36,7 +36,7 @@ static const char *cert_program =
 struct target {
 	bool want_cert; // If not cert, then fingerprint only.
 	bool want_chain;
-	bool want_name;
+	bool want_details;
 	bool want_params;
 };
 
@@ -53,7 +53,7 @@ static const char *tls_proto[] = {
 };
 static const uint8_t WANT_CERT = 1 << 3;
 static const uint8_t WANT_CHAIN = 1 << 4;
-static const uint8_t WANT_NAME = 1 << 5;
+static const uint8_t WANT_DETAILS = 1 << 5;
 static const uint8_t WANT_PARAMS = 1 << 6;
 static const uint8_t MORE_FLAGS = 1 << 7;
 
@@ -74,7 +74,7 @@ static bool cert_parse(struct mem_pool *task_pool, struct mem_pool *tmp_pool, st
 	}
 	target->want_cert = flags & WANT_CERT;
 	target->want_chain = flags & WANT_CHAIN;
-	target->want_name = flags & WANT_NAME;
+	target->want_details = flags & WANT_DETAILS;
 	target->want_params = flags & WANT_PARAMS;
 	args[0] = uplink_parse_string(tmp_pool, message, message_size);
 	if (!args[0]) {
@@ -233,7 +233,7 @@ const uint8_t *finish_cert(struct context *context, struct task_data *data, uint
 			target_size += 8 + strlen(ssl->cipher) + strlen(ssl->proto);
 		LFOR(parsed_cert, cert, ssl) {
 			target_size += 4 + strlen(data->targets[i].want_cert ? cert->cert : cert->fingerprint);
-			if (data->targets[i].want_name)
+			if (data->targets[i].want_details)
 				target_size += 4 + strlen(cert->name);
 			if (!data->targets[i].want_chain) {
 				// We take only 1 cert, no matter if there's more.
@@ -262,7 +262,8 @@ const uint8_t *finish_cert(struct context *context, struct task_data *data, uint
 		LFOR(parsed_cert, cert, ssl) {
 			const char *payload = data->targets[i].want_cert ? cert->cert : cert->fingerprint;
 			uplink_render_string(payload, strlen(payload), &pos, &target_size);
-			if (data->targets[i].want_name)
+			if (data->targets[i].want_details)
+				// TODO: Date too, please
 				uplink_render_string(cert->name, strlen(cert->name), &pos, &target_size);
 		}
 		i ++;
