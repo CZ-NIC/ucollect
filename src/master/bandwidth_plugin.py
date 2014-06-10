@@ -32,12 +32,18 @@ logger = logging.getLogger(name='bandwidth')
 PROTO_ITEMS_PER_WINDOW = 3
 
 class Window:
+	"""
+	Class desigened to store data of one clients window.
+	"""
 	def __init__(self, window_length, in_max, out_max):
 		self.length = window_length
 		self.in_max = in_max
 		self.out_max = out_max
 
 class ClientData:
+	"""
+	Class that stores all windows of client
+	"""
 	def __init__(self):
 		self.cnt = 0
 		self.windows = {}
@@ -109,7 +115,8 @@ class BandwidthPlugin(plugin.Plugin):
 		# Message contains 64bit numbers - 3 numbers for every window
 		int_count = len(message) / 8
 		data = struct.unpack("!" + str(int_count) + "Q", message);
-		logger.debug("Data from client " + str(client) + ": " + str(data))
+
+		logger.debug("Bandwidth data from client %s: %s", client, data)
 
 		# Add client's record
 		if not client in self.__data:
@@ -121,7 +128,7 @@ class BandwidthPlugin(plugin.Plugin):
 		data = data[1:]
 
 		if timestamp < self.__last:
-			logger.info("Data snapshot on %s too old, ignoring (%s vs. %s)", client, timestamp, self.__last)
+			logger.info("Data of bandwidth snapshot on %s too old, ignoring (%s vs. %s)", client, timestamp, self.__last)
 			return
 
 		# Get data from message
