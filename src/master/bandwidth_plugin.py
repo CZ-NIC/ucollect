@@ -136,6 +136,9 @@ class BandwidthPlugin(plugin.Plugin):
 		for i in range(0, windows):
 			self.__data[client].add_window(data[i*PROTO_ITEMS_PER_WINDOW], data[i*PROTO_ITEMS_PER_WINDOW+1], data[i*PROTO_ITEMS_PER_WINDOW+2])
 
+		# Log client's activity
+		activity.log_activity(client, "bandwidth")
+
 
 	def client_connected(self, client):
 		"""
