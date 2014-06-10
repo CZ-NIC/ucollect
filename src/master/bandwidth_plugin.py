@@ -52,21 +52,16 @@ class ClientData:
 		self.cnt += 1
 		self.windows[window_length] = Window(window_length, in_max, out_max)
 
-def get_speed(bytes_in_window, window_size):
-	"""
-	Get speed in MB/s.
-	For debug purposes only.
-	"""
-	windows_in_second = 1000000/window_size
-	return (bytes_in_window*windows_in_second/float(1024*1024))
-
 def store_bandwidth(data):
-	#TODO: create real implementation
-	logger.debug("=========== Request to store data snapshot ========")
-	for client, cldata in data.items():
-		logger.debug("Data from client " + client + ":")
-		for window in cldata.windows.itervalues():
-			logger.debug("\tWindow with length %d has input maximum %d (%.1f MB/s), output maximum %d (%.1f  MB/s)" % (window.length, window.in_max, get_speed(window.in_max, window.length), window.out_max, get_speed(window.out_max, window.length)))
+	logger.info('Storing bandwidth snapshot')
+
+	with database.transaction() as t:
+		t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
+		(now,) = t.fetchone()
+
+		for client, cldata in data.items():
+			for window in cldata.windows.itervalues():
+				t.execute("INSERT INTO bandwidth (client, timestamp, window_length, in_max, out_max) SELECT clients.id AS client, %s, %s, %s, %s FROM clients WHERE name = %s;", (now, window.length, window.in_max, window.out_max, client))
 
 class BandwidthPlugin(plugin.Plugin):
 	"""
