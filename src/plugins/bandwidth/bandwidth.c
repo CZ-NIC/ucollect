@@ -91,12 +91,11 @@ static struct window init_window(struct mem_pool *pool, uint64_t length, size_t 
 
 void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
-	struct window *cwindow;
 
 	// Make the same operation for every window
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
 		// Make variables shorter
-		cwindow = &(d->windows[window]);
+		struct window *cwindow = &(d->windows[window]);
 
 		// Check that the clock did not change
 		// If some window received packet that is older then its history drop all history and start again
@@ -136,20 +135,18 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 }
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
 	struct user_data *d = context->user_data;
-	struct window *cwindow;
 
 	// Check validity of request
 	if (length != sizeof(uint64_t))
 		die("Invalid request from upstream to plugin bandwidth, size %zu\n", length);
 
 	// Get maximum also from buffered history
-	uint64_t frame_in_sum = 0, frame_out_sum = 0;
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
-		cwindow = &(d->windows[window]);
+		struct window *cwindow = &(d->windows[window]);
 
 		for (size_t frame = 0; frame < cwindow->cnt; frame++) {
-			frame_in_sum = cwindow->frames[(cwindow->current_frame + frame) % cwindow->cnt].in_sum;
-			frame_out_sum = cwindow->frames[(cwindow->current_frame + frame) % cwindow->cnt].out_sum;
+			uint64_t frame_in_sum = cwindow->frames[(cwindow->current_frame + frame) % cwindow->cnt].in_sum;
+			uint64_t frame_out_sum = cwindow->frames[(cwindow->current_frame + frame) % cwindow->cnt].out_sum;
 
 			if (frame_in_sum > cwindow->in_max) {
 				cwindow->in_max = frame_in_sum;
@@ -197,7 +194,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 
 	// Reset counters
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
-		cwindow = &(d->windows[window]);
+		struct window *cwindow = &(d->windows[window]);
 		cwindow->in_max = 0;
 		cwindow->out_max = 0;
 	}
