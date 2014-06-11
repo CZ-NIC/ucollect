@@ -30,22 +30,29 @@
 #include "../../core/packet.h"
 #include "../../core/uplink.h"
 
-#define WINDOWS_CNT 3
+#define WINDOW_GROUPS_CNT 3
+#define DEFAULT_WINDOWS_CNT 20
 
 //Settings for communication protocol
 #define PROTO_ITEMS_PER_WINDOW 3
 
+struct frame {
+	uint64_t in_sum;
+	uint64_t out_sum;
+};
+
 struct window {
 	uint64_t len; //length of window in us
+	size_t cnt;
+	size_t current_frame;
+	uint64_t timestamp;
 	uint64_t in_max;
-	uint64_t in_sum;
 	uint64_t out_max;
-	uint64_t out_sum;
-	uint64_t last_window_start;
+	struct frame *frames;
 };
 
 struct user_data {
-	struct window windows[WINDOWS_CNT];
+	struct window windows[WINDOW_GROUPS_CNT];
 	uint64_t timestamp;
 };
 
@@ -55,56 +62,98 @@ static float get_speed(uint64_t bytes_in_window, uint64_t window_size) {
 	return (bytes_in_window*windows_in_second/(float)(1024*1024));
 }
 
-static uint64_t reset_window_timestamp(void) {
+static uint64_t current_timestamp(void) {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	return (1000000*tv.tv_sec) + (tv.tv_usec);
 }
 
+static uint64_t delayed_timestamp(uint64_t timestamp, uint64_t window_len, size_t windows_cnt) {
+	return (timestamp - window_len*windows_cnt);
+}
+
+static struct window init_window(struct mem_pool *pool, uint64_t length, size_t count, uint64_t current_time) {
+	size_t mem_size = count * sizeof(struct frame);
+	struct frame *frames = mem_pool_alloc(pool, mem_size);
+	memset(frames, 0, mem_size);
+
+	return (struct window) {
+		.len = length,
+		.cnt = count,
+		.timestamp = delayed_timestamp(current_time, length, count),
+		.frames = frames
+	};
+}
+
 void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
+	struct window *cwindow;
 
-	for (size_t window = 0; window < WINDOWS_CNT; window++) {
+	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
+		//Make variables shorter
+		cwindow = &(d->windows[window]);
+
 		//Check that the clock did not change
-		if (info->timestamp < d->windows[window].last_window_start) {
+		if (info->timestamp < cwindow->timestamp) {
 			//The only reasonable reaction is replace position of window and drop numbers of "broken window"
-			d->windows[window].last_window_start = reset_window_timestamp();
-			d->windows[window].in_sum = 0;
-			d->windows[window].out_sum = 0;
+			cwindow->timestamp = delayed_timestamp(current_timestamp(), cwindow->len, cwindow->cnt);
+			memset(cwindow->frames, 0, cwindow->cnt);
+			cwindow->current_frame = 0;
 			ulog(LLOG_DEBUG_VERBOSE, "Dropping window - time changed?\n");
 		}
 
-		while (info->timestamp > d->windows[window].last_window_start + d->windows[window].len) {
-			d->windows[window].last_window_start += d->windows[window].len;
-			if (d->windows[window].in_sum > d->windows[window].in_max) {
-				d->windows[window].in_max = d->windows[window].in_sum;
-				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: New download maximum achieved: %" PRIu64 " (%f MB/s)\n", d->windows[window].len, d->windows[window].in_max, get_speed(d->windows[window].in_max, d->windows[window].len));
+		while (info->timestamp > cwindow->timestamp + cwindow->len) {
+			//Erase dropped frame
+
+			if (cwindow->frames[cwindow->current_frame].in_sum > cwindow->in_max) {
+				cwindow->in_max = cwindow->frames[cwindow->current_frame].in_sum;
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: New download maximum achieved: %" PRIu64 " (%f MB/s)\n", cwindow->len, cwindow->in_max, get_speed(cwindow->in_max, cwindow->len));
 			}
-			if (d->windows[window].out_sum > d->windows[window].out_max) {
-				d->windows[window].out_max = d->windows[window].out_sum;
-				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: New upload maximum achieved: %" PRIu64 " (%f MB/s)\n", d->windows[window].len, d->windows[window].out_max, get_speed(d->windows[window].out_max, d->windows[window].len));
+			if (cwindow->frames[cwindow->current_frame].out_sum > cwindow->out_max) {
+				cwindow->out_max = cwindow->frames[cwindow->current_frame].out_sum;
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: New upload maximum achieved: %" PRIu64 " (%f MB/s)\n", cwindow->len, cwindow->out_max, get_speed(cwindow->out_max, cwindow->len));
 			}
-			if (d->windows[window].in_sum != 0 || d->windows[window].out_sum != 0) {
-				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: DOWNLOAD: %" PRIu64 " (%.1f MB/s)\tUPLOAD: %" PRIu64 " (%.1f MB/s)\n", d->windows[window].len, d->windows[window].in_sum, get_speed(d->windows[window].in_sum, d->windows[window].len), d->windows[window].out_sum, get_speed(d->windows[window].out_sum, d->windows[window].len));
-			}
-			d->windows[window].in_sum = 0;
-			d->windows[window].out_sum = 0;
+
+			//Move current frame pointer and update timestamp!!
+			cwindow->frames[cwindow->current_frame] = (struct frame) { .in_sum = 0 };
+			cwindow->timestamp += cwindow->len;
+			cwindow->current_frame = (cwindow->current_frame + 1) % cwindow->cnt;
 		}
 
 		if (info->direction == DIR_IN) {
-			d->windows[window].in_sum += info->length;
+			cwindow->frames[cwindow->current_frame].in_sum += info->length;
 		} else {
-			d->windows[window].out_sum += info->length;
+			cwindow->frames[cwindow->current_frame].out_sum += info->length;
 		}
 	}
 }
-
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
 	struct user_data *d = context->user_data;
+	struct window *cwindow;
 
 	// Check validity of request
 	if (length != sizeof(uint64_t))
 		die("Invalid request from upstream to plugin bandwidth, size %zu\n", length);
+
+	//Get maximum also from buffered history
+	uint64_t frame_in_sum = 0, frame_out_sum = 0;
+	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
+		cwindow = &(d->windows[window]);
+
+		for (size_t frame = 0; frame < cwindow->cnt; frame++) {
+			frame_in_sum = cwindow->frames[(cwindow->current_frame + frame) % cwindow->cnt].in_sum;
+			frame_out_sum = cwindow->frames[(cwindow->current_frame + frame) % cwindow->cnt].out_sum;
+
+			if (frame_in_sum > cwindow->in_max) {
+				cwindow->in_max = frame_in_sum;
+			}
+
+			if (frame_out_sum > cwindow->out_max) {
+				cwindow->out_max = frame_out_sum;
+			}
+
+		}
+	}
 
 	/*
 		Prepare message.
@@ -116,13 +165,13 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			- out_max
 	*/
 	uint64_t *msg;
-	size_t msg_size = (PROTO_ITEMS_PER_WINDOW * WINDOWS_CNT + 1) * sizeof *msg;
+	size_t msg_size = (PROTO_ITEMS_PER_WINDOW * WINDOW_GROUPS_CNT + 1) * sizeof *msg;
 	msg = mem_pool_alloc(context->temp_pool, msg_size);
 
 	size_t fill = 0;
 	msg[fill++] = htobe64(d->timestamp);
 	ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: Sending timestamp %" PRIu64 "\n", d->timestamp);
-	for (size_t window = 0; window < WINDOWS_CNT; window++) {
+	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
 		msg[fill++] = htobe64(d->windows[window].len);
 		msg[fill++] = htobe64(d->windows[window].in_max);
 		msg[fill++] = htobe64(d->windows[window].out_max);
@@ -135,35 +184,30 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	uint64_t timestamp;
 	memcpy(&timestamp, data, length);
 	d->timestamp = be64toh(timestamp);
-	ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: Recieving timestamp %" PRIu64 "\n", d->timestamp);
+	ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: Receiving timestamp %" PRIu64 "\n", d->timestamp);
 
-	// Reset counters and store timestamp for new interval
-	for (size_t window = 0; window < WINDOWS_CNT; window++) {
-		d->windows[window].in_max = 0;
-		d->windows[window].out_max = 0;
+	// Reset counters
+	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
+		cwindow = &(d->windows[window]);
+		cwindow->in_max = 0;
+		cwindow->out_max = 0;
 	}
+
 }
 
 void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 
+	//Configuration of windows and static initialization
 	size_t i = 0;
-	uint64_t common_start_timestamp = reset_window_timestamp();
+	uint64_t common_start_timestamp = current_timestamp();
 	context->user_data->timestamp = 0;
-	context->user_data->windows[i++] = (struct window) {
-		.len = 5000,
-		.last_window_start = common_start_timestamp
-	};
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 5000, DEFAULT_WINDOWS_CNT, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 100000, DEFAULT_WINDOWS_CNT, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 1000000, DEFAULT_WINDOWS_CNT, common_start_timestamp);
 
-	context->user_data->windows[i++] = (struct window) {
-		.len = 100000,
-		.last_window_start = common_start_timestamp
-	};
+	//Dynamic initialization
 
-	context->user_data->windows[i++] = (struct window) {
-		.len = 1000000,
-		.last_window_start = common_start_timestamp
-	};
 }
 
 #ifdef STATIC
