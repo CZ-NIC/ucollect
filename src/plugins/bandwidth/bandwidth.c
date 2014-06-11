@@ -31,7 +31,6 @@
 #include "../../core/uplink.h"
 
 #define WINDOW_GROUPS_CNT 3
-#define DEFAULT_WINDOWS_CNT 20
 
 // Settings for communication protocol
 #define PROTO_ITEMS_PER_WINDOW 3
@@ -208,9 +207,10 @@ void init(struct context *context) {
 	size_t i = 0;
 	uint64_t common_start_timestamp = current_timestamp();
 	context->user_data->timestamp = 0;
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 5000, DEFAULT_WINDOWS_CNT, common_start_timestamp);
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 100000, DEFAULT_WINDOWS_CNT, common_start_timestamp);
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 1000000, DEFAULT_WINDOWS_CNT, common_start_timestamp);
+	// Parameter count should be number that windows_count*window_length is at least 1 second
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 5000, 200, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 100000, 10, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 1000000, 2, common_start_timestamp);
 }
 
 #ifdef STATIC
