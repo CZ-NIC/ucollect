@@ -44,8 +44,8 @@ struct frame {
 struct window {
 	uint64_t len; //length of window in us
 	size_t cnt;
-	size_t current_frame;
-	uint64_t timestamp;
+	uint64_t timestamp; //begin of history chain, not the current time
+	size_t current_frame; //frame that presents begin of history chain, not the newer one
 	uint64_t in_max;
 	uint64_t out_max;
 	struct frame *frames;
