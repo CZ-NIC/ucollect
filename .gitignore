@@ -13,3 +13,7 @@ src/plugins/buckets/hash_test
 src/master/collectmaster
 src/master/authenticator/authenticator
 tags
+src/master/soxy/*.o
+src/master/soxy/moc_*
+src/master/soxy/Makefile
+src/master/soxy/soxy
