@@ -107,11 +107,11 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		while (info->timestamp > cwindow->timestamp + cwindow->len * cwindow->cnt) {
 			if (cwindow->frames[cwindow->current_frame].in_sum > cwindow->in_max) {
 				cwindow->in_max = cwindow->frames[cwindow->current_frame].in_sum;
-				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: New download maximum achieved: %" PRIu64 " (%f MB/s)\n", cwindow->len, cwindow->in_max, get_speed(cwindow->in_max, cwindow->len));
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: PERIOD: %" PRIu64": WINDOW %" PRIu64 " us: New download maximum achieved: %" PRIu64 " (%f MB/s)\n", d->timestamp, cwindow->len, cwindow->in_max, get_speed(cwindow->in_max, cwindow->len));
 			}
 			if (cwindow->frames[cwindow->current_frame].out_sum > cwindow->out_max) {
 				cwindow->out_max = cwindow->frames[cwindow->current_frame].out_sum;
-				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: New upload maximum achieved: %" PRIu64 " (%f MB/s)\n", cwindow->len, cwindow->out_max, get_speed(cwindow->out_max, cwindow->len));
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: PERIOD: %" PRIu64 ": WINDOW %" PRIu64 " us: New upload maximum achieved: %" PRIu64 " (%f MB/s)\n", d->timestamp, cwindow->len, cwindow->out_max, get_speed(cwindow->out_max, cwindow->len));
 			}
 
 			//Move current frame pointer and update timestamp!!
@@ -149,10 +149,12 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 
 			if (frame_in_sum > cwindow->in_max) {
 				cwindow->in_max = frame_in_sum;
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: PERIOD: %" PRIu64": WINDOW %" PRIu64 " us: New download maximum found in history: %" PRIu64 " (%f MB/s)\n", d->timestamp, cwindow->len, cwindow->in_max, get_speed(cwindow->in_max, cwindow->len));
 			}
 
 			if (frame_out_sum > cwindow->out_max) {
 				cwindow->out_max = frame_out_sum;
+				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: PERIOD: %" PRIu64 ": WINDOW %" PRIu64 " us: New upload maximum found in history: %" PRIu64 " (%f MB/s)\n", d->timestamp, cwindow->len, cwindow->out_max, get_speed(cwindow->out_max, cwindow->len));
 			}
 
 		}
