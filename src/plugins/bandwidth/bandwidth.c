@@ -89,22 +89,22 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
 	struct window *cwindow;
 
+	//Make the same operation for every window
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
 		//Make variables shorter
 		cwindow = &(d->windows[window]);
 
 		//Check that the clock did not change
+		//If some window received packet that is older then its history drop all history and start again
 		if (info->timestamp < cwindow->timestamp) {
-			//The only reasonable reaction is replace position of window and drop numbers of "broken window"
 			cwindow->timestamp = delayed_timestamp(current_timestamp(), cwindow->len, cwindow->cnt);
-			memset(cwindow->frames, 0, cwindow->cnt);
+			memset(cwindow->frames, 0, cwindow->cnt * sizeof(struct frame));
 			cwindow->current_frame = 0;
 			ulog(LLOG_DEBUG_VERBOSE, "Dropping window - time changed?\n");
 		}
 
-		while (info->timestamp > cwindow->timestamp + cwindow->len) {
-			//Erase dropped frame
-
+		//"Rewind tape" to matching point
+		while (info->timestamp > cwindow->timestamp + cwindow->len * cwindow->cnt) {
 			if (cwindow->frames[cwindow->current_frame].in_sum > cwindow->in_max) {
 				cwindow->in_max = cwindow->frames[cwindow->current_frame].in_sum;
 				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: WINDOW %" PRIu64 " us: New download maximum achieved: %" PRIu64 " (%f MB/s)\n", cwindow->len, cwindow->in_max, get_speed(cwindow->in_max, cwindow->len));
@@ -120,10 +120,13 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 			cwindow->current_frame = (cwindow->current_frame + 1) % cwindow->cnt;
 		}
 
+		//In this point we are able to store packet in our set
+		//Just find the right frame and store the value
+		size_t corresponding_frame = (cwindow->current_frame + ((info->timestamp - cwindow->timestamp) / cwindow->len)) % cwindow->cnt;
 		if (info->direction == DIR_IN) {
-			cwindow->frames[cwindow->current_frame].in_sum += info->length;
+			cwindow->frames[corresponding_frame].in_sum += info->length;
 		} else {
-			cwindow->frames[cwindow->current_frame].out_sum += info->length;
+			cwindow->frames[corresponding_frame].out_sum += info->length;
 		}
 	}
 }
