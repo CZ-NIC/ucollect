@@ -132,6 +132,7 @@ static void parse_internal(struct packet_info *packet, struct mem_pool *pool) {
 			next->length = length_rest;
 			next->interface = packet->interface;
 			next->direction = packet->direction;
+			next->timestamp = packet->timestamp;
 			uc_parse_packet(next, pool, DLT_RAW);
 			return; // And we're done (no ports here)
 		case 6: // TCP
@@ -214,6 +215,7 @@ static void parse_type(struct packet_info *packet, struct mem_pool *pool, const 
 		.length = packet->length - skipped,
 		.interface = packet->interface,
 		.direction = packet->direction,
+		.timestamp = packet->timestamp,
 		.layer = 'I',
 		.app_protocol = '?'
 	};
