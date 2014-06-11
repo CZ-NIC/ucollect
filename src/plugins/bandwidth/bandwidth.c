@@ -33,7 +33,7 @@
 #define WINDOW_GROUPS_CNT 3
 #define DEFAULT_WINDOWS_CNT 20
 
-//Settings for communication protocol
+// Settings for communication protocol
 #define PROTO_ITEMS_PER_WINDOW 3
 
 struct frame {
@@ -56,22 +56,26 @@ struct user_data {
 	uint64_t timestamp;
 };
 
+// Get MB/s - for debug purposes only
 static float get_speed(uint64_t bytes_in_window, uint64_t window_size) {
 	uint64_t windows_in_second = 1000000/window_size;
 
 	return (bytes_in_window*windows_in_second/(float)(1024*1024));
 }
 
+// Get current time in us from epoch
 static uint64_t current_timestamp(void) {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	return (1000000*tv.tv_sec) + (tv.tv_usec);
 }
 
+// Get origin of history chain that is specific for window
 static uint64_t delayed_timestamp(uint64_t timestamp, uint64_t window_len, size_t windows_cnt) {
 	return (timestamp - window_len*windows_cnt);
 }
 
+// Window initialization - fill up static parts, allocate dynamic parts and init their values
 static struct window init_window(struct mem_pool *pool, uint64_t length, size_t count, uint64_t current_time) {
 	size_t mem_size = count * sizeof(struct frame);
 	struct frame *frames = mem_pool_alloc(pool, mem_size);
@@ -89,13 +93,13 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
 	struct window *cwindow;
 
-	//Make the same operation for every window
+	// Make the same operation for every window
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
-		//Make variables shorter
+		// Make variables shorter
 		cwindow = &(d->windows[window]);
 
-		//Check that the clock did not change
-		//If some window received packet that is older then its history drop all history and start again
+		// Check that the clock did not change
+		// If some window received packet that is older then its history drop all history and start again
 		if (info->timestamp < cwindow->timestamp) {
 			cwindow->timestamp = delayed_timestamp(current_timestamp(), cwindow->len, cwindow->cnt);
 			memset(cwindow->frames, 0, cwindow->cnt * sizeof(struct frame));
@@ -103,7 +107,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 			ulog(LLOG_DEBUG_VERBOSE, "Dropping window - time changed?\n");
 		}
 
-		//"Rewind tape" to matching point
+		// "Rewind tape" to matching point
 		while (info->timestamp > cwindow->timestamp + cwindow->len * cwindow->cnt) {
 			if (cwindow->frames[cwindow->current_frame].in_sum > cwindow->in_max) {
 				cwindow->in_max = cwindow->frames[cwindow->current_frame].in_sum;
@@ -114,14 +118,14 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: PERIOD: %" PRIu64 ": WINDOW %" PRIu64 " us: New upload maximum achieved: %" PRIu64 " (%f MB/s)\n", d->timestamp, cwindow->len, cwindow->out_max, get_speed(cwindow->out_max, cwindow->len));
 			}
 
-			//Move current frame pointer and update timestamp!!
+			// Move current frame pointer and update timestamp!!
 			cwindow->frames[cwindow->current_frame] = (struct frame) { .in_sum = 0 };
 			cwindow->timestamp += cwindow->len;
 			cwindow->current_frame = (cwindow->current_frame + 1) % cwindow->cnt;
 		}
 
-		//In this point we are able to store packet in our set
-		//Just find the right frame and store the value
+		// In this point we are able to store packet in our set
+		// Just find the right frame and store the value
 		size_t corresponding_frame = (cwindow->current_frame + ((info->timestamp - cwindow->timestamp) / cwindow->len)) % cwindow->cnt;
 		if (info->direction == DIR_IN) {
 			cwindow->frames[corresponding_frame].in_sum += info->length;
@@ -138,7 +142,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	if (length != sizeof(uint64_t))
 		die("Invalid request from upstream to plugin bandwidth, size %zu\n", length);
 
-	//Get maximum also from buffered history
+	// Get maximum also from buffered history
 	uint64_t frame_in_sum = 0, frame_out_sum = 0;
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
 		cwindow = &(d->windows[window]);
@@ -203,16 +207,13 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 
-	//Configuration of windows and static initialization
+	// Configuration of windows and static initialization
 	size_t i = 0;
 	uint64_t common_start_timestamp = current_timestamp();
 	context->user_data->timestamp = 0;
 	context->user_data->windows[i++] = init_window(context->permanent_pool, 5000, DEFAULT_WINDOWS_CNT, common_start_timestamp);
 	context->user_data->windows[i++] = init_window(context->permanent_pool, 100000, DEFAULT_WINDOWS_CNT, common_start_timestamp);
 	context->user_data->windows[i++] = init_window(context->permanent_pool, 1000000, DEFAULT_WINDOWS_CNT, common_start_timestamp);
-
-	//Dynamic initialization
-
 }
 
 #ifdef STATIC
