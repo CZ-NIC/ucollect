@@ -23,13 +23,40 @@ import struct
 import database
 from task import Task
 from activity import log_activity
+from protocol import extract_string
+from twisted.internet import reactor
+import dateutil.parser
 
 logger = logging.getLogger(name='sniff')
 
+def store_certs(client, payload, hosts, batch_time):
+	with database.transaction() as t:
+		for (rid, want_details, want_params) in hosts:
+			(count,) = struct.unpack("!B", payload[0])
+			payload = payload[1:]
+			if count > 0:
+				cipher = None
+				proto = None
+				if want_params:
+					(cipher, payload) = extract_string(payload)
+					(proto, payload) = extract_string(payload)
+				t.execute("INSERT INTO certs (request, client, batch, timestamp, proto, cipher) SELECT %s, clients.id, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', %s, %s FROM clients WHERE name = %s RETURNING id", (rid, batch_time, proto, cipher, client))
+				(cert_id,) = t.fetchone()
+				for i in range(0, count):
+					(cert, payload) = extract_string(payload)
+					if want_details:
+						(name, payload) = extract_string(payload)
+						(expiry, payload) = extract_string(payload)
+					else:
+						name = None
+						expiry = None
+					t.execute("INSERT INTO cert_chains (cert, ord, is_full, value, name, expiry) VALUES(%s, %s, %s, %s, %s, %s)", (cert_id, i, len(cert) > 40, cert, name, dateutil.parser.parse(expiry).isoformat() if expiry else None))
+
 class CertTask(Task):
-	def __init__(self, message):
+	def __init__(self, message, hosts):
 		Task.__init__(self)
 		self.__message = message
+		self.__hosts = hosts
 		with database.transaction() as t:
 			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'")
 			(self.__batch_time,) = t.fetchone()
@@ -41,7 +68,7 @@ class CertTask(Task):
 		return self.__message
 
 	def success(self, client, payload):
-		print(repr(payload))
+		reactor.callInThread(store_certs, client, payload, self.__hosts, self.__batch_time)
 		log_activity(client, 'certs')
 
 def encode_host(host, port, starttls, want_cert, want_chain, want_details, want_params):
@@ -60,6 +87,7 @@ class Cert:
 		logger.debug("Starting cert scan")
 		encoded = ''
 		host_count = 0
+		hosts = []
 		with database.transaction() as t:
 			t.execute('SELECT id, host, port, starttls, want_cert, want_chain, want_details, want_params FROM cert_requests WHERE active')
 			requests = t.fetchall()
@@ -67,4 +95,5 @@ class Cert:
 			(rid, host, port, starttls, want_cert, want_chain, want_details, want_params) = request
 			host_count += 1
 			encoded += encode_host(host, port, starttls, want_cert, want_chain, want_details, want_params)
-		return [CertTask(struct.pack('!H', host_count) + encoded)]
+			hosts.append((rid, want_details, want_params))
+		return [CertTask(struct.pack('!H', host_count) + encoded, hosts)]
