@@ -121,6 +121,7 @@ struct parsed_cert {
 	const char *cert;
 	const char *fingerprint;
 	const char *name;
+	const char *expiry;
 };
 
 struct parsed_ssl {
@@ -198,6 +199,9 @@ static bool block_parse(struct mem_pool *pool, char *text, struct parsed_ssl *de
 		} else if (strcmp(name, "NAME") == 0) {
 			assert(cert);
 			cert->name = content;
+		} else if (strcmp(name, "EXPIRY") == 0) {
+			assert(cert);
+			cert->expiry = content;
 		}
 	}
 	return true;
@@ -237,7 +241,7 @@ const uint8_t *finish_cert(struct context *context, struct task_data *data, uint
 		LFOR(parsed_cert, cert, ssl) {
 			target_size += 4 + strlen(data->targets[i].want_cert ? cert->cert : cert->fingerprint);
 			if (data->targets[i].want_details)
-				target_size += 4 + strlen(cert->name);
+				target_size += 8 + strlen(cert->name) + strlen(cert->expiry);
 			if (!data->targets[i].want_chain) {
 				// We take only 1 cert, no matter if there's more.
 				ssl->count = 1;
@@ -265,9 +269,10 @@ const uint8_t *finish_cert(struct context *context, struct task_data *data, uint
 		LFOR(parsed_cert, cert, ssl) {
 			const char *payload = data->targets[i].want_cert ? cert->cert : cert->fingerprint;
 			uplink_render_string(payload, strlen(payload), &pos, &target_size);
-			if (data->targets[i].want_details)
-				// TODO: Date too, please
+			if (data->targets[i].want_details) {
 				uplink_render_string(cert->name, strlen(cert->name), &pos, &target_size);
+				uplink_render_string(cert->expiry, strlen(cert->expiry), &pos, &target_size);
+			}
 		}
 		i ++;
 	}

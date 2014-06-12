@@ -48,6 +48,9 @@ while [ "$1" ] ; do
 				openssl x509 -in "$cert" -noout -text | sed -ne 's/ *Subject:.*CN=\([^ \/]*\).*/\1/p'
 				openssl x509 -in "$cert" -noout -text | grep -A 1 'X509v3 Subject Alternative Name' | grep -o 'DNS:[^ ,]*' | sed -e 's/DNS://'
 			) | sort -u
+			echo '-----EXPIRY-----'
+
+			openssl x509 -in "$cert" -noout -text | sed -ne 's/ *Not After *: *\([^ ].*[^ ]\) */\1/p'
 		done
 	fi
 	echo '-----END HOST-----'
