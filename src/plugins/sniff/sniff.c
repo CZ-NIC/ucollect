@@ -148,6 +148,7 @@ static void in_request(struct context *context, const uint8_t *data, size_t leng
 		memcpy(error, &id, sizeof id);
 		memcpy(error + sizeof id, "U", 1);
 		uplink_plugin_send_message(context, error, sizeof error);
+		return;
 	}
 	// Abort any existing task with the same ID (the server might not know about it → it is of no use, or ask to terminate it with a NOP task)
 	LFOR(tasks, old, context->user_data)
