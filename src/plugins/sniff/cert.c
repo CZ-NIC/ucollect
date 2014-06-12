@@ -71,7 +71,7 @@ static bool cert_parse(struct mem_pool *task_pool, struct mem_pool *tmp_pool, st
 	*message_size -= header;
 	port = ntohs(port);
 	if (flags & MORE_FLAGS) {
-		ulog(LLOG_ERROR, "More SSL flags sent for host %zu, but I don't know how to parse\n", index);
+		ulog(LLOG_ERROR, "More SSL flags sent for host %zu, but I don't know how to parse them\n", index);
 		return false;
 	}
 	target->want_cert = flags & WANT_CERT;
@@ -153,6 +153,18 @@ struct parsed {
 #define LIST_WANT_LFOR
 #include "../../core/link_list.h"
 
+static char *strip(char *str) {
+	if (!str)
+		return NULL;
+	while (*str == ' ' || *str == '\t' || *str == '\n')
+		str ++;
+	size_t len = strlen(str);
+	while (str[len - 1] == ' ' || str[len - 1] == '\t' || str[len - 1] == '\n') {
+		str[-- len] = '\0';
+	}
+	return str;
+}
+
 static bool block_parse(struct mem_pool *pool, char *text, struct parsed_ssl *dest) {
 	dest->cipher = NULL;
 	dest->proto = NULL;
@@ -183,25 +195,25 @@ static bool block_parse(struct mem_pool *pool, char *text, struct parsed_ssl *de
 		char *content = text;
 		block(&text, mark_begin); // Find the end of the content. The begin of the next marker might be missing (on the last one)
 		if (strcmp(name, "CIPHER") == 0)
-			dest->cipher = content;
+			dest->cipher = strip(content);
 		else if (strcmp(name, "PROTOCOL") == 0)
-			dest->proto = content;
+			dest->proto = strip(content);
 		else if (strcmp(name, "BEGIN CERTIFICATE") == 0) {
 			cert = parsed_cert_append_pool(dest, pool);
-			cert->cert = content;
+			cert->cert = strip(content);
 			cert->fingerprint = NULL;
 			cert->name = NULL;
 		} else if (strcmp(name, "END CERTIFICATE") == 0) {
 			// OK, ignore.
 		} else if (strcmp(name, "FINGERPRINT") == 0) {
 			assert(cert);
-			cert->fingerprint = content;
+			cert->fingerprint = strip(content);
 		} else if (strcmp(name, "NAME") == 0) {
 			assert(cert);
-			cert->name = content;
+			cert->name = strip(content);
 		} else if (strcmp(name, "EXPIRY") == 0) {
 			assert(cert);
-			cert->expiry = content;
+			cert->expiry = strip(content);
 		}
 	}
 	return true;
