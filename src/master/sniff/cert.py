@@ -19,6 +19,7 @@
 
 import logging
 import struct
+import time
 
 import database
 from task import Task
@@ -78,22 +79,28 @@ def encode_host(host, port, starttls, want_cert, want_chain, want_details, want_
 
 class Cert:
 	def __init__(self, config):
-		pass
+		self.__last_task = 0
+		self.__task_interval = int(config['cert_interval'])
 
 	def code(self):
 		return 'C'
 
 	def check_schedule(self):
-		logger.debug("Starting cert scan")
-		encoded = ''
-		host_count = 0
-		hosts = []
-		with database.transaction() as t:
-			t.execute('SELECT id, host, port, starttls, want_cert, want_chain, want_details, want_params FROM cert_requests WHERE active')
-			requests = t.fetchall()
-		for request in requests:
-			(rid, host, port, starttls, want_cert, want_chain, want_details, want_params) = request
-			host_count += 1
-			encoded += encode_host(host, port, starttls, want_cert, want_chain, want_details, want_params)
-			hosts.append((rid, want_details, want_params))
-		return [CertTask(struct.pack('!H', host_count) + encoded, hosts)]
+		now = int(time.time())
+		if self.__task_interval + self.__last_task <= now:
+			encoded = ''
+			host_count = 0
+			hosts = []
+			with database.transaction() as t:
+				t.execute('SELECT id, host, port, starttls, want_cert, want_chain, want_details, want_params FROM cert_requests WHERE active')
+				requests = t.fetchall()
+			for request in requests:
+				(rid, host, port, starttls, want_cert, want_chain, want_details, want_params) = request
+				host_count += 1
+				encoded += encode_host(host, port, starttls, want_cert, want_chain, want_details, want_params)
+				hosts.append((rid, want_details, want_params))
+			self.__last_task = now
+			return [CertTask(struct.pack('!H', host_count) + encoded, hosts)]
+		else:
+			logger.debug('Not asking for certs yet')
+			return []
