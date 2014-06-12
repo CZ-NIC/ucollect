@@ -102,7 +102,7 @@ class SniffPlugin(plugin.Plugin):
 			reactor.callLater(self.__task_timeout, lambda: self.__timeout_task(task, client))
 			task.active_clients[client] = 1
 		else:
-			logger.debug("No clients to send the task to now")
+			logger.debug("No clients to send the task to now (%s/%s)", task.name(), task.task_id)
 
 	def __start_task(self, task):
 		"""

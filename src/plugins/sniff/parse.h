@@ -17,31 +17,27 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include "task.h"
-#include "nop.h"
-#include "ping.h"
-#include "cert.h"
+#ifndef UCOLLECT_SNIFF_PARSE_H
+#define UCOLLECT_SNIFF_PARSE_H
 
-struct task_desc task_descs[] = {
-	{
-		.name = 'N',
-		.label = "NOP",
-		.start = start_nop,
-		.finish = finish_nop
-	},
-	{
-		.name = 'P',
-		.label = "Ping",
-		.start = start_ping,
-		.finish = finish_ping
-	},
-	{
-		.name = 'C',
-		.label = "Certificate",
-		.start = start_cert,
-		.finish = finish_cert
-	},
-	{
-		.name = '\0'
-	}
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+struct target;
+
+struct task_data {
+	bool input_ok;
+	bool system_ok;
+	size_t target_count;
+	struct target *targets;
 };
+
+struct context;
+struct mem_pool;
+
+typedef bool (*task_parse_t)(struct mem_pool *task_pool, struct mem_pool *tmp_pool, struct target *target, char **args, const uint8_t **message, size_t *message_size, size_t index);
+
+struct task_data *input_parse(struct context *context, struct mem_pool *pool, const uint8_t *message, size_t message_size, int *output, pid_t *pid, const char *program, const char *name, size_t params_per_target, size_t target_size, task_parse_t task_parse);
+
+#endif

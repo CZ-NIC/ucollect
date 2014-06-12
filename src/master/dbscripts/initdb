@@ -16,9 +16,13 @@ DROP TABLE IF EXISTS anomalies;
 DROP TABLE IF EXISTS anomaly_types;
 DROP TABLE IF EXISTS group_members;
 DROP TABLE IF EXISTS groups;
-DROP TABLE IF EXISTS clients;
 DROP TABLE IF EXISTS pings;
 DROP TABLE IF EXISTS ping_requests;
+DROP TABLE IF EXISTS cert_chains;
+DROP TABLE IF EXISTS certs;
+DROP TABLE IF EXISTS cert_requests;
+DROP TABLE IF EXISTS starttls_protos;
+DROP TABLE IF EXISTS clients;
 
 CREATE TABLE clients (
 	id INT PRIMARY KEY NOT NULL,
@@ -156,12 +160,58 @@ CREATE TABLE pings (
 	avg INT,
 	UNIQUE (request, batch, client),
 	FOREIGN KEY (request) REFERENCES ping_requests(id),
+	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(min <= max),
 	CHECK(min <= avg),
 	CHECK(avg <= max)
 );
 
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth');
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs');
+CREATE TABLE starttls_protos (
+	id SMALLINT NOT NULL PRIMARY KEY,
+	name TEXT NOT NULL,
+	UNIQUE(name)
+);
+CREATE TABLE cert_requests (
+	id INT NOT NULL PRIMARY KEY,
+	host TEXT NOT NULL,
+	port SMALLINT NOT NULL,
+	starttls SMALLINT NOT NULL DEFAULT 0,
+	active BOOL NOT NULL DEFAULT true,
+	want_cert BOOL NOT NULL DEFAULT false,
+	want_chain BOOL NOT NULL DEFAULT false,
+	want_details BOOL NOT NULL DEFAULT true,
+	want_params BOOL NOT NULL DEFAULT true,
+	FOREIGN KEY (starttls) REFERENCES starttls_protos(id),
+	UNIQUE(host, port)
+);
+CREATE SEQUENCE cert_requests_id OWNED BY cert_requests.id;
+ALTER TABLE cert_requests ALTER COLUMN id SET DEFAULT NEXTVAL('cert_requests_id');
+CREATE TABLE certs (
+	id INT NOT NULL PRIMARY KEY,
+	request INT NOT NULL,
+	client INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	proto TEXT,
+	cipher TEXT,
+	FOREIGN KEY (request) REFERENCES cert_requests(id),
+	FOREIGN KEY (client) REFERENCES clients(id),
+	UNIQUE(request, client, batch)
+);
+CREATE SEQUENCE certs_id OWNED BY certs.id;
+ALTER TABLE certs ALTER COLUMN id SET DEFAULT NEXTVAL('certs_id');
+CREATE TABLE cert_chains (
+	cert INT NOT NULL,
+	ord SMALLINT NOT NULL,
+	is_full BOOL NOT NULL,
+	value TEXT NOT NULL,
+	name TEXT,
+	expiry TIMESTAMP,
+	FOREIGN KEY (cert) REFERENCES certs(id),
+	UNIQUE(cert, ord)
+);
+
 INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port'), ('L', 'Remote IP address and local port'), ('i', 'Remote IP address of outbound packets'), ('p', 'Remote port of outbound packets'), ('b', 'Remote IP address and port of outbound packets'), ('l', 'Remote IP address and local port of outbound packets');
 INSERT INTO count_types (name, description, ord) VALUES
 	('All', 'Any packet is included in this category', 1),
@@ -180,6 +230,7 @@ INSERT INTO count_types (name, description, ord) VALUES
 	('PUSH', 'TCP packets with the PUSH flag set.', 14),
 	('SERVER', 'Communication with the server', 15),
 	('V6TUNNEL', 'Packets sent over IPv6-tunelled connectivity', 16);
+INSERT INTO starttls_protos (id, name) VALUES (0, ''), (1, 'smtp'), (2, 'pop3'), (3, 'imap'), (4, 'ftp'), (5, 'xmpp');
 
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
@@ -200,6 +251,11 @@ GRANT INSERT ON counts TO $DBUPDATER;
 GRANT INSERT ON capture_stats TO $DBUPDATER;
 GRANT INSERT ON pings TO $DBUPDATER;
 GRANT SELECT ON ping_requests TO $DBUPDATER;
+GRANT SELECT ON cert_requests TO $DBUPDATER;
+GRANT ALL ON certs_id TO $DBUPDATER;
+GRANT INSERT ON certs TO $DBUPDATER;
+GRANT INSERT ON cert_chains TO $DBUPDATER;
+GRANT SELECT ON certs TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
@@ -210,10 +266,14 @@ GRANT SELECT (timestamp) ON activities TO $DBCLEANER;
 GRANT SELECT (timestamp) ON anomalies TO $DBCLEANER;
 GRANT SELECT (timestamp) ON count_snapshots TO $DBCLEANER;
 GRANT SELECT (batch) ON pings TO $DBCLEANER;
+GRANT SELECT (batch, id) ON certs TO $DBCLEANER;
+GRANT SELECT (cert) ON cert_chains TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
 GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
 GRANT DELETE ON pings TO $DBCLEANER;
+GRANT DELETE ON certs TO $DBCLEANER;
+GRANT DELETE ON cert_chains TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
@@ -227,6 +287,9 @@ GRANT SELECT ON count_snapshots TO $DBARCHIVIST;
 GRANT SELECT ON group_members TO $DBARCHIVIST;
 GRANT SELECT ON pings TO $DBARCHIVIST;
 GRANT SELECT ON ping_requests TO $DBARCHIVIST;
+GRANT SELECT ON cert_requests TO $DBARCHIVIST;
+GRANT SELECT ON certs TO $DBARCHIVIST;
+GRANT SELECT ON cert_chains TO $DBARCHIVIST;
 
 COMMIT;
 ENDSQL

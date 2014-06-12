@@ -212,7 +212,7 @@ void doFork(QCoreApplication &app) {
 		c(sigaction(*sig, &action, NULL), "action reset");
 	}
 	// TODO: Do we need the threads too, if we have prefork? Threads only didn't seem to work :-(.
-	for (int i = 0; i < tcount; i ++) {
+	for (int i = 0; i < 2; i ++) {
 		Handler *h = new Handler;
 		h->start();
 		handlers << h;

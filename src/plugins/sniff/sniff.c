@@ -113,6 +113,7 @@ static void data_received(struct context *context, int fd, struct task *task) {
 			task->buffer_used = 0;
 			task->buffer = NULL;
 		}
+		task->buffer[task->buffer_used] = '\0'; // Terminate by null byte (not part of the size)
 		tasks_remove(context->user_data, task); // Remove the task and its FD
 		loop_plugin_unregister_fd(context, fd);
 		if (close(fd) == -1)
