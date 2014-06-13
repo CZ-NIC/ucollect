@@ -22,6 +22,8 @@
 #include <string.h>
 #include <endian.h>
 #include <inttypes.h>
+#include <stdio.h>
+#include <errno.h>
 
 #include "../../core/plugin.h"
 #include "../../core/context.h"
@@ -29,11 +31,17 @@
 #include "../../core/mem_pool.h"
 #include "../../core/packet.h"
 #include "../../core/uplink.h"
+#include "../../core/loop.h"
 
 #define WINDOW_GROUPS_CNT 5
 
 // Settings for communication protocol
 #define PROTO_ITEMS_PER_WINDOW 3
+
+// Settings for debug dumps
+#define DBG_DUMP_INTERVAL 3000 //in ms
+#define DBG_DUMP_FILE "/tmp/ucollect_bandwidth_dump"
+#define DBG_DUMP_PREP_FILE "/tmp/.ucollect_bandwidth_dump_next"
 
 struct frame {
 	uint64_t in_sum;
@@ -47,12 +55,15 @@ struct window {
 	size_t current_frame; //frame that presents begin of history chain, not the newer one
 	uint64_t in_max;
 	uint64_t out_max;
+	uint64_t dbg_dump_in_max;
+	uint64_t dbg_dump_out_max;
 	struct frame *frames;
 };
 
 struct user_data {
 	struct window windows[WINDOW_GROUPS_CNT];
 	uint64_t timestamp;
+	size_t dbg_dump_timeout;
 };
 
 // Get MB/s - for debug purposes only
@@ -120,6 +131,14 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 			if (cwindow->frames[cwindow->current_frame].out_sum > cwindow->out_max) {
 				cwindow->out_max = cwindow->frames[cwindow->current_frame].out_sum;
 				ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: PERIOD: %" PRIu64 ": WINDOW %" PRIu64 " us: New upload maximum achieved: %" PRIu64 " (%f MB/s)\n", d->timestamp, cwindow->len, cwindow->out_max, get_speed(cwindow->out_max, cwindow->len));
+			}
+
+			// Debug dump - short time maximum values
+			if (cwindow->frames[cwindow->current_frame].in_sum > cwindow->dbg_dump_in_max) {
+				cwindow->dbg_dump_in_max = cwindow->frames[cwindow->current_frame].in_sum;
+			}
+			if (cwindow->frames[cwindow->current_frame].out_sum > cwindow->dbg_dump_out_max) {
+				cwindow->dbg_dump_out_max = cwindow->frames[cwindow->current_frame].out_sum;
 			}
 
 			// Move current frame pointer and update timestamp!!
@@ -206,12 +225,75 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 
 }
 
+void dbg_dump(struct context *context, void *data, size_t id) {
+	(void) data;
+	(void) id;
+	struct user_data *d = context->user_data;
+
+	// Prepare file
+	FILE *ofile = fopen(DBG_DUMP_PREP_FILE, "w+");
+	if (ofile == NULL) {
+		ulog(LLOG_ERROR, "BANDWIDTH: Can't open output file for debug-dump\n");
+		//Schedule next dump anyway...
+		context->user_data->dbg_dump_timeout = loop_timeout_add(context->loop, DBG_DUMP_INTERVAL, context, NULL, dbg_dump);
+		return;
+	}
+
+	fprintf(ofile,
+		"%6s%20s%20s%20s%20s%20s\n",
+		"type", "win_length", "download (Bpw)", "download (MBps)", "upload (Bpw)", "upload (MBps)"
+	);
+
+	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
+		struct window *cwindow = &(d->windows[window]);
+		fprintf(ofile,
+			"%6s%20" PRIu64 "%20" PRIu64 "%20.3f%20" PRIu64 "%20.3f\n",
+			"debug",
+			cwindow->len,
+			cwindow->dbg_dump_in_max,
+			get_speed(cwindow->dbg_dump_in_max, cwindow->len),
+			d->windows[window].dbg_dump_out_max,
+			get_speed(cwindow->dbg_dump_out_max, cwindow->len)
+		);
+	}
+
+	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
+		struct window *cwindow = &(d->windows[window]);
+		fprintf(ofile,
+			"%6s%20" PRIu64 "%20" PRIu64 "%20.3f%20" PRIu64 "%20.3f\n",
+			"server",
+			d->windows[window].len,
+			d->windows[window].in_max,
+			get_speed(cwindow->in_max, cwindow->len),
+			d->windows[window].out_max,
+			get_speed(cwindow->out_max, cwindow->len)
+		);
+	}
+
+	fclose(ofile);
+
+	if (rename(DBG_DUMP_PREP_FILE, DBG_DUMP_FILE) != 0) {
+		ulog(LLOG_ERROR, "BANDWIDTH: rename() failed with error: %s\n", strerror(errno));
+	}
+
+	// Reset counters
+	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
+		struct window *cwindow = &(d->windows[window]);
+		cwindow->dbg_dump_in_max = 0;
+		cwindow->dbg_dump_out_max = 0;
+	}
+
+	//Schedule next dump
+	context->user_data->dbg_dump_timeout = loop_timeout_add(context->loop, DBG_DUMP_INTERVAL, context, NULL, dbg_dump);
+}
+
 void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 
 	// User data initialization
 	uint64_t common_start_timestamp = current_timestamp();
 	context->user_data->timestamp = 0;
+	context->user_data->dbg_dump_timeout = loop_timeout_add(context->loop, DBG_DUMP_INTERVAL, context, NULL, dbg_dump);
 
 	// Windows settings
 	// Parameter count should be number that windows_count*window_length is at least 1 second
