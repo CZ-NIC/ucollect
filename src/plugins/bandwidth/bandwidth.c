@@ -66,15 +66,15 @@ struct user_data {
 	size_t dbg_dump_timeout;
 };
 
+#define SEC 1000000
+
 // Get MB/s - for debug purposes only
 static float get_speed(uint64_t bytes_in_window, uint64_t window_size) {
-	uint64_t sec = 1000000;
-
-	if (window_size < sec) {
-		uint64_t windows_in_second = sec/window_size;
+	if (window_size < SEC) {
+		uint64_t windows_in_second = SEC/window_size;
 		return (bytes_in_window*windows_in_second/(float)(1024*1024));
 	} else {
-		uint64_t ratio = window_size/sec;
+		uint64_t ratio = window_size/SEC;
 		return (bytes_in_window/(float)ratio)/(float)(1024*1024);
 	}
 }
