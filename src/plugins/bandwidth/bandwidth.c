@@ -57,9 +57,15 @@ struct user_data {
 
 // Get MB/s - for debug purposes only
 static float get_speed(uint64_t bytes_in_window, uint64_t window_size) {
-	uint64_t windows_in_second = 1000000/window_size;
+	uint64_t sec = 1000000;
 
-	return (bytes_in_window*windows_in_second/(float)(1024*1024));
+	if (window_size < sec) {
+		uint64_t windows_in_second = sec/window_size;
+		return (bytes_in_window*windows_in_second/(float)(1024*1024));
+	} else {
+		uint64_t ratio = window_size/sec;
+		return (bytes_in_window/(float)ratio)/(float)(1024*1024);
+	}
 }
 
 // Get current time in us from epoch
