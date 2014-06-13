@@ -30,7 +30,7 @@
 #include "../../core/packet.h"
 #include "../../core/uplink.h"
 
-#define WINDOW_GROUPS_CNT 3
+#define WINDOW_GROUPS_CNT 5
 
 // Settings for communication protocol
 #define PROTO_ITEMS_PER_WINDOW 3
@@ -216,9 +216,11 @@ void init(struct context *context) {
 	// Windows settings
 	// Parameter count should be number that windows_count*window_length is at least 1 second
 	size_t i = 0;
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 5000, 200, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 50000, 20, common_start_timestamp);
 	context->user_data->windows[i++] = init_window(context->permanent_pool, 100000, 10, common_start_timestamp);
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 1000000, 2, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 1000000, 1, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 2000000, 1, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 3000000, 1, common_start_timestamp);
 }
 
 #ifdef STATIC
