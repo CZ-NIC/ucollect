@@ -203,11 +203,13 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 
-	// Configuration of windows and static initialization
-	size_t i = 0;
+	// User data initialization
 	uint64_t common_start_timestamp = current_timestamp();
 	context->user_data->timestamp = 0;
+
+	// Windows settings
 	// Parameter count should be number that windows_count*window_length is at least 1 second
+	size_t i = 0;
 	context->user_data->windows[i++] = init_window(context->permanent_pool, 5000, 200, common_start_timestamp);
 	context->user_data->windows[i++] = init_window(context->permanent_pool, 100000, 10, common_start_timestamp);
 	context->user_data->windows[i++] = init_window(context->permanent_pool, 1000000, 2, common_start_timestamp);
