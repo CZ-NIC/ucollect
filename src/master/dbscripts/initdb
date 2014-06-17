@@ -117,7 +117,7 @@ CREATE TABLE counts (
 CREATE TABLE bandwidth (
 	timestamp TIMESTAMP NOT NULL,
 	client INT NOT NULL,
-	window_length INT NOT NULL,
+	win_len INT NOT NULL,
 	in_max BIGINT NOT NULL,
 	out_max BIGINT NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
