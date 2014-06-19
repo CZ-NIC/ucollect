@@ -301,6 +301,49 @@ struct key_answer {
 	uint8_t data[]; // The keys to be sent
 } __attribute__((packed));
 
+static struct key_candidates *scan_keys(uint32_t *indices, uint32_t length, size_t criterion, struct user_data *u, struct generation *g, struct mem_pool *pool) {
+	assert(length);
+	uint32_t index_count = indices[0];
+	length --;
+	assert(length >= index_count);
+	indices ++;
+	struct key_candidates *candidates = mem_pool_alloc(pool, sizeof *candidates);
+	*candidates = (struct key_candidates) { .count = 0 };
+	size_t key_size = u->criteria[criterion]->key_size;
+	for (size_t i = 0; i < index_count; i ++)
+		LFOR(keys, key, &g->criteria[criterion].hashed_keys[indices[i]])
+			key_candidates_append_pool(candidates, pool)->key = key;
+	// Iterate the other levels and remove keys not passing the filter of indices
+	for (size_t i = 1; i < u->hash_count; i ++) {
+		// Move to the next group of indices
+		indices += index_count;
+		length -= index_count;
+		assert(length);
+		index_count = *indices;
+		length --;
+		indices ++;
+		assert(length >= index_count);
+		// Not using LFOR here, we need to manipulate the variable in the process
+		struct key_candidate *candidate = candidates->head;
+		while (candidate) {
+			uint32_t h = hash(candidate->key->data, key_size, u->hash_data + i * u->hash_line_size);
+			h %= u->bucket_count;
+			struct key_candidate *to_del = candidate;
+			for (size_t j = 0; j < index_count; j ++)
+				if (indices[j] == h) {
+					// This one is in a bucket we want
+					to_del = NULL;
+					break;
+				}
+			candidate = candidate->next; // Move to the next before we potentially remove it
+			if (to_del)
+				key_candidates_remove(candidates, to_del);
+		}
+	}
+	assert(length == index_count); // All indices eaten
+	return candidates;
+}
+
 static void provide_keys(struct context *context, const uint8_t *data, size_t length) {
 	struct user_data *u = context->user_data;
 	// No key index is split in half
@@ -326,57 +369,21 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 		uplink_plugin_send_message(context, message, 1 + sizeof request->req_id);
 		return;
 	}
-	// Walk the data and extract the keys for 0th hash function (directly stored)
+	// Walk the keys and convert them to local endians.
 	for (size_t i = 0; i < length; i ++)
 		request->key_indices[i] = ntohl(request->key_indices[i]);
-	assert(length);
-	uint32_t index_count = request->key_indices[0];
-	length --;
-	assert(length >= index_count);
-	uint32_t *indices = &request->key_indices[1];
-	struct key_candidates candidates = { .count = 0 };
 	size_t criterion = ntohl(request->criterion);
 	assert(criterion < u->criteria_count);
-	for (size_t i = 0; i < index_count; i ++)
-		LFOR(keys, key, &g->criteria[criterion].hashed_keys[indices[i]])
-			key_candidates_append_pool(&candidates, context->temp_pool)->key = key;
-	// Iterate the other levels and remove keys not passing the filter of indices
-	size_t key_size = u->criteria[criterion]->key_size;
-	for (size_t i = 1; i < u->hash_count; i ++) {
-		// Move to the next group of indices
-		indices += index_count;
-		length -= index_count;
-		assert(length);
-		index_count = *indices;
-		length --;
-		indices ++;
-		assert(length >= index_count);
-		// Not using LFOR here, we need to manipulate the variable in the process
-		struct key_candidate *candidate = candidates.head;
-		while (candidate) {
-			uint32_t h = hash(candidate->key->data, key_size, u->hash_data + i * u->hash_line_size);
-			h %= u->bucket_count;
-			struct key_candidate *to_del = candidate;
-			for (size_t j = 0; j < index_count; j ++)
-				if (indices[j] == h) {
-					// This one is in a bucket we want
-					to_del = NULL;
-					break;
-				}
-			candidate = candidate->next; // Move to the next before we potentially remove it
-			if (to_del)
-				key_candidates_remove(&candidates, to_del);
-		}
-	}
-	assert(length == index_count); // All indices eaten
+	struct key_candidates *candidates = scan_keys(request->key_indices, length, criterion, u, g, context->temp_pool);
 	// Build the answer - just copy all the passed keys to the result
-	size_t answer_length = sizeof(struct key_answer) + key_size * candidates.count;
+	size_t key_size = u->criteria[criterion]->key_size;
+	size_t answer_length = sizeof(struct key_answer) + key_size * candidates->count;
 	struct key_answer *answer = mem_pool_alloc(context->temp_pool, answer_length);
 	answer->code = 'K';
 	// Copy the request id. By memcpy, since answer doesn't have to be aligned
 	memcpy(&answer->req_id, &request->req_id, sizeof answer->req_id);
 	size_t index = 0;
-	LFOR(key_candidates, candidate, &candidates)
+	LFOR(key_candidates, candidate, candidates)
 		memcpy(answer->data + index ++ * key_size, candidate->key->data, key_size);
 	uplink_plugin_send_message(context, answer, answer_length);
 }
