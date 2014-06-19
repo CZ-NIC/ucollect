@@ -32,7 +32,8 @@ CREATE TABLE clients (
 	builtin_passwd TEXT,
 	slot_id SMALLINT,
 	tag TEXT,
-	devel_note TEXT
+	devel_note TEXT,
+	asnum INT,
 );
 CREATE SEQUENCE clients_id OWNED BY clients.id;
 ALTER TABLE clients ALTER COLUMN id SET DEFAULT NEXTVAL('clients_id');
