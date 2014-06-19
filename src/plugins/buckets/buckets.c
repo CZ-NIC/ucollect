@@ -125,9 +125,8 @@ static void connected(struct context *context) {
 	struct user_data *u = context->user_data;
 	if (u->initialized) {
 		for (size_t i = 0; i <= u->history_size; i ++)
-			if (i != u->current_generation)
-				// Reset activity. We may have been away for a long time.
-				u->generations[i].active = false;
+			// Reset activity. We may have been away for a long time.
+			u->generations[i].active = false;
 	}
 }
 
