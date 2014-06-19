@@ -356,27 +356,52 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 	length /= sizeof(uint32_t);
 	// Find the generation
 	struct generation *g = NULL;
-	for (size_t i = 0; i <= u->history_size; i ++)
-		if (u->generations[i].timestamp == be64toh(request->generation_timestamp)) {
-			g = &u->generations[i];
-			break;
-		}
-	if (!g) {
-		// Say we are missing this generation
-		uint8_t *message = mem_pool_alloc(context->temp_pool, 1 + sizeof request->req_id);
-		*message = 'M';
-		memcpy(message + 1, &request->req_id, sizeof request->req_id);
-		uplink_plugin_send_message(context, message, 1 + sizeof request->req_id);
-		return;
-	}
 	// Walk the keys and convert them to local endians.
 	for (size_t i = 0; i < length; i ++)
 		request->key_indices[i] = ntohl(request->key_indices[i]);
 	size_t criterion = ntohl(request->criterion);
 	assert(criterion < u->criteria_count);
-	struct key_candidates *candidates = scan_keys(request->key_indices, length, criterion, u, g, context->temp_pool);
-	// Build the answer - just copy all the passed keys to the result
+	uint64_t timestamp = be64toh(request->generation_timestamp);
 	size_t key_size = u->criteria[criterion]->key_size;
+	struct key_candidates *candidates = NULL;
+	if (timestamp) {
+		for (size_t i = 0; i <= u->history_size; i ++)
+			if (u->generations[i].timestamp == timestamp) {
+				g = &u->generations[i];
+				break;
+			}
+		if (!g) {
+			// Say we are missing this generation
+			uint8_t *message = mem_pool_alloc(context->temp_pool, 1 + sizeof request->req_id);
+			*message = 'M';
+			memcpy(message + 1, &request->req_id, sizeof request->req_id);
+			uplink_plugin_send_message(context, message, 1 + sizeof request->req_id);
+			return;
+		}
+		candidates = scan_keys(request->key_indices, length, criterion, u, g, context->temp_pool);
+	} else {
+		candidates = mem_pool_alloc(context->temp_pool, sizeof *candidates);
+		*candidates = (struct key_candidates) { .count = 0 };
+		// 0 means all keys
+		for (size_t i = 0; i <= u->history_size; i ++)
+			if (u->generations[i].active) {
+				struct key_candidates *partial = scan_keys(request->key_indices, length, criterion, u, &u->generations[i], context->temp_pool);
+				// Take the new linklist apart and put the yet nonexistent to the real one
+				while (partial->head) {
+					struct key_candidate *can = partial->head;
+					key_candidates_remove(partial, can);
+					bool found = false;
+					LFOR(key_candidates, candidate, candidates)
+						if (memcmp(candidate->key, can->key, key_size) == 0) {
+							found = true;
+							break;
+						}
+					if (!found)
+						key_candidates_insert_after(candidates, can, candidates->tail);
+				}
+			}
+	}
+	// Build the answer - just copy all the passed keys to the result
 	size_t answer_length = sizeof(struct key_answer) + key_size * candidates->count;
 	struct key_answer *answer = mem_pool_alloc(context->temp_pool, answer_length);
 	answer->code = 'K';
