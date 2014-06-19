@@ -84,6 +84,7 @@ struct generation {
 	struct mem_pool *pool; // Pool where the keys will be allocated from
 	struct criterion *criteria;
 	uint64_t timestamp;
+	bool active; // Was it used already?
 };
 
 struct user_data {
@@ -121,6 +122,13 @@ static void connected(struct context *context) {
 	 * gone.
 	 */
 	uplink_plugin_send_message(context, "C", 1);
+	struct user_data *u = context->user_data;
+	if (u->initialized) {
+		for (size_t i = 0; i <= u->history_size; i ++)
+			if (i != u->current_generation)
+				// Reset activity. We may have been away for a long time.
+				u->generations[i].active = false;
+	}
 }
 
 /*
@@ -153,6 +161,7 @@ static void generation_activate(struct user_data *u, size_t generation, uint64_t
 	}
 	mem_pool_reset(g->pool);
 	g->timestamp = timestamp;
+	g->active = true;
 	u->current_generation = generation;
 	u->timeslot_start = loop_now;
 	u->biggest_timeslot = 0;
