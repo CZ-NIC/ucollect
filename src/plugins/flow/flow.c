@@ -17,10 +17,13 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#include "filter.h"
+
 #include "../../core/plugin.h"
 #include "../../core/context.h"
 #include "../../core/mem_pool.h"
 #include "../../core/loop.h"
+#include "../../core/packet.h"
 
 #include <stdbool.h>
 #include <assert.h>
@@ -32,6 +35,7 @@ struct flow  {
 struct user_data {
 	struct mem_pool *conf_pool;
 	struct flow *flows;
+	struct filter *filter;
 	uint32_t timeout;
 	size_t timeout_id;
 	uint32_t max_flows;
@@ -60,8 +64,7 @@ static void schedule_timeout(struct context *context) {
 	u->timeout_scheduled = true;
 }
 
-static void configure(struct context *context, uint32_t max_flows, uint32_t timeout) {
-	// TODO: Filters go here
+static void configure(struct context *context, uint32_t max_flows, uint32_t timeout, const uint8_t *filter_desc, size_t filter_size) {
 	struct user_data *u = context->user_data;
 	if (u->configured) {
 		flush(context);
@@ -74,13 +77,18 @@ static void configure(struct context *context, uint32_t max_flows, uint32_t time
 	u->max_flows = max_flows;
 	u->timeout = timeout;
 	schedule_timeout(context);
+	u->filter = filter_parse(u->conf_pool, filter_desc, filter_size);
 	u->configured = true;
 }
 
 static void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *u = context->user_data;
 	if (!u->configured)
-		return;
+		return; // We are just starting up and waiting for server to send us what to collect
+	while (info->next)
+		info = info->next;
+	if (!filter_apply(u->filter, info))
+		return; // This packet is not interesting
 }
 
 static void initialize(struct context *context) {
@@ -89,7 +97,7 @@ static void initialize(struct context *context) {
 		.conf_pool = loop_pool_create(context->loop, context, "Flow conf pool")
 	};
 	// FIXME: This is just for testing purposes
-	configure(context, 10000, 1000 * 900);
+	configure(context, 10000, 1000 * 900, NULL, 0);
 }
 
 #ifdef STATIC
