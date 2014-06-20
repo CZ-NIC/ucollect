@@ -165,7 +165,7 @@ class Client:
 					c(data, success)
 			# And send the request
 			rid = manager.register(mycallback, time.time() + 60) # One minute as a timeout is enough
-			message = struct.pack('!QLL' + str(len(keys)) + 'L', generation, rid, criterion, *keys)
+			message = struct.pack('!QLL' + str(len(keys)) + 'L', 0, rid, criterion, *keys)
 			self.__send('K' + message)
 		else:
 			logger.trace("Found in cache %s/%s/%s", generation, criterion, knames)
