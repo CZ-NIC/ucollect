@@ -391,7 +391,7 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 					key_candidates_remove(partial, can);
 					bool found = false;
 					LFOR(key_candidates, candidate, candidates)
-						if (memcmp(candidate->key, can->key, key_size) == 0) {
+						if (memcmp(candidate->key->data, can->key->data, key_size) == 0) {
 							found = true;
 							break;
 						}
