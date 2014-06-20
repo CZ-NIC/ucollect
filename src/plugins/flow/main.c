@@ -18,6 +18,7 @@
 */
 
 #include "filter.h"
+#include "flow.h"
 
 #include "../../core/plugin.h"
 #include "../../core/context.h"
@@ -25,31 +26,32 @@
 #include "../../core/loop.h"
 #include "../../core/packet.h"
 
-#include <stdbool.h>
 #include <assert.h>
-
-struct flow  {
-
-};
 
 struct user_data {
 	struct mem_pool *conf_pool;
-	struct flow *flows;
+	struct flow *flows; // TODO: Some kind of hashing here?
 	struct filter *filter;
+	uint32_t conf_id;
+	uint32_t max_flows;
+	uint32_t flow_count;
 	uint32_t timeout;
 	size_t timeout_id;
-	uint32_t max_flows;
 	bool configured;
 	bool timeout_scheduled;
 };
 
 static void flush(struct context *context) {
 	struct user_data *u = context->user_data;
+	// TODO: Send the data
+	u->flow_count = 0;
 }
 
 static void schedule_timeout(struct context *context);
 
 static void timeout_fired(struct context *context, void *unused_data, size_t unused_id) {
+	(void) unused_data;
+	(void) unused_id;
 	struct user_data *u = context->user_data;
 	assert(u->timeout_scheduled);
 	u->timeout_scheduled = false;
@@ -64,7 +66,7 @@ static void schedule_timeout(struct context *context) {
 	u->timeout_scheduled = true;
 }
 
-static void configure(struct context *context, uint32_t max_flows, uint32_t timeout, const uint8_t *filter_desc, size_t filter_size) {
+static void configure(struct context *context, uint32_t conf_id, uint32_t max_flows, uint32_t timeout, const uint8_t *filter_desc, size_t filter_size) {
 	struct user_data *u = context->user_data;
 	if (u->configured) {
 		flush(context);
@@ -73,6 +75,7 @@ static void configure(struct context *context, uint32_t max_flows, uint32_t time
 		u->timeout_scheduled = false;
 		mem_pool_reset(u->conf_pool);
 	}
+	u->conf_id = conf_id;
 	u->flows = mem_pool_alloc(u->conf_pool, max_flows * sizeof *u->flows);
 	u->max_flows = max_flows;
 	u->timeout = timeout;
@@ -89,6 +92,34 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 		info = info->next;
 	if (!filter_apply(u->filter, info))
 		return; // This packet is not interesting
+	if (info->direction >= DIR_UNKNOWN)
+		return; // Broken packet, we don't want that
+	size_t idx = u->max_flows;
+	for (size_t i = 0; i < u->flow_count; i ++)
+		if (flow_cmp(&u->flows[i], info)) {
+			idx = i;
+			break;
+		}
+	if (idx == u->max_flows) {
+		// The flow is not there, create a new one
+		if (u->flow_count == u->max_flows) {
+			// The table is full, flush it.
+			flush(context);
+			assert(u->timeout_scheduled);
+			loop_timeout_cancel(context->loop, u->timeout_id);
+			u->timeout_scheduled = false;
+			schedule_timeout(context);
+		}
+		// Put the flow into the table
+		idx = u->flow_count ++;
+		flow_parse(&u->flows[idx], info);
+	}
+	// Add to statisticts
+	u->flows[idx].count[info->direction] ++;
+	u->flows[idx].size[info->direction] += info->length;
+	u->flows[idx].last_time[info->direction] = loop_now(context->loop);
+	if (!u->flows[idx].last_time[info->direction])
+		u->flows[idx].first_time[info->direction] = loop_now(context->loop);
 }
 
 static void initialize(struct context *context) {
@@ -97,7 +128,7 @@ static void initialize(struct context *context) {
 		.conf_pool = loop_pool_create(context->loop, context, "Flow conf pool")
 	};
 	// FIXME: This is just for testing purposes
-	configure(context, 10000, 1000 * 900, NULL, 0);
+	configure(context, 0, 10000, 1000 * 900, NULL, 0);
 }
 
 #ifdef STATIC
