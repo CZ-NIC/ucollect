@@ -383,7 +383,8 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 		*candidates = (struct key_candidates) { .count = 0 };
 		// 0 means all keys
 		for (size_t i = 0; i <= u->history_size; i ++)
-			if (u->generations[i].active) {
+			if (u->generations[i].active && i != u->current_generation) {
+				// Active generations, but not the one that is being filled right now (the server may not be asking about that anyway)
 				struct key_candidates *partial = scan_keys(request->key_indices, length, criterion, u, &u->generations[i], context->temp_pool);
 				// Take the new linklist apart and put the yet nonexistent to the real one
 				while (partial->head) {
