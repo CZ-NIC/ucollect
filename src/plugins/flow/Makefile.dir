@@ -1,0 +1,2 @@
+LIBRARIES += src/plugins/flow/libplugin_flow
+libplugin_flow_MODULES := flow
