@@ -613,7 +613,9 @@ void loop_run(struct loop *loop) {
 		} else {
 			wait_time = -1; // Forever, if no timeouts
 		}
+		alarm(0); // The epoll_wait can run forever
 		int ready = epoll_pwait(loop->epoll_fd, events, MAX_EVENTS, wait_time, &original_mask);
+		alarm(60); // But catch any infinite loops in the processing (60 seconds should be enough)
 		loop_get_now(loop);
 		loop->fd_invalidated = false;
 		if (loop->reconfigure) { // We are asked to reconfigure
