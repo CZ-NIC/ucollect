@@ -145,8 +145,37 @@ static void initialize(struct context *context) {
 	*context->user_data = (struct user_data) {
 		.conf_pool = loop_pool_create(context->loop, context, "Flow conf pool")
 	};
-	// FIXME: This is just for testing purposes
-	configure(context, 0, 10000, 1000 * 900, NULL, 0);
+}
+
+static void connected(struct context *context) {
+	// Ask for config.
+	uplink_plugin_send_message(context, "C", 1);
+}
+
+struct config {
+	uint32_t conf_id;
+	uint32_t max_flows;
+	uint32_t timeout;
+};
+
+static void config_parse(struct context *context, const uint8_t *data, size_t length) {
+	struct config config;
+	assert(length >= sizeof config);
+	memcpy(&config, data, sizeof config); // Copy out, because of alignment
+	configure(context, ntohl(config.conf_id), ntohl(config.max_flows), ntohl(config.timeout), data + sizeof config, length - sizeof config);
+}
+
+static void communicate(struct context *context, const uint8_t *data, size_t length) {
+	assert(length);
+	switch (*data) {
+		case 'F': // Force-flush flows. Probably unused now, but ready in case we find need.
+			assert(length == 1);
+			flush(context);
+			break;
+		case 'C': // Config. Either requested, or flushed. But accept it anyway.
+			config_parse(context, data + 1, length - 1);
+			break;
+	}
 }
 
 #ifdef STATIC
@@ -157,6 +186,8 @@ struct plugin *plugin_info(void) {
 	static struct plugin plugin = {
 		.packet_callback = packet_handle,
 		.init_callback = initialize,
+		.uplink_connected_callback = connected,
+		.uplink_data_callback = communicate,
 		.name = "Flow"
 	};
 	return &plugin;
