@@ -25,8 +25,11 @@
 #include "../../core/mem_pool.h"
 #include "../../core/loop.h"
 #include "../../core/packet.h"
+#include "../../core/uplink.h"
 
 #include <assert.h>
+#include <arpa/inet.h>
+#include <string.h>
 
 struct user_data {
 	struct mem_pool *conf_pool;
@@ -43,7 +46,22 @@ struct user_data {
 
 static void flush(struct context *context) {
 	struct user_data *u = context->user_data;
-	// TODO: Send the data
+	size_t size = 0;
+	size_t *sizes = mem_pool_alloc(context->temp_pool, u->flow_count * sizeof *sizes);
+	for (size_t i = 0; i < u->flow_count; i ++)
+		size += sizes[i] = flow_size(&u->flows[i]);
+	size_t header = sizeof(char) + sizeof(uint32_t);
+	size_t total_size = size + header;
+	uint8_t *message = mem_pool_alloc(context->temp_pool, total_size);
+	*message = 'D';
+	uint32_t conf_id = htonl(u->conf_id);
+	memcpy(message + sizeof(char), &conf_id, sizeof conf_id);
+	size_t pos = 0;
+	for (size_t i = 0; i < u->flow_count; i ++) {
+		flow_render(message + pos + header, sizes[i], &u->flows[i]);
+		pos += sizes[i];
+	}
+	uplink_plugin_send_message(context, message, total_size);
 	u->flow_count = 0;
 }
 
