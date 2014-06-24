@@ -1165,7 +1165,7 @@ static void send_plugin_versions(struct loop *loop) {
 		pos += sizeof version;
 	}
 	assert(rest == 0);
-	uplink_send_message(loop->uplink, 'L', message, message_size);
+	uplink_send_message(loop->uplink, 'V', message, message_size);
 }
 
 void loop_uplink_connected(struct loop *loop) {
