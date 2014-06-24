@@ -214,7 +214,8 @@ struct plugin *plugin_info(void) {
 		.name = "Sniff",
 		.init_callback = initialize,
 		.uplink_data_callback = in_request,
-		.fd_callback = (fd_callback_t) data_received
+		.fd_callback = (fd_callback_t) data_received,
+		.version = 1
 	};
 	return &plugin;
 }

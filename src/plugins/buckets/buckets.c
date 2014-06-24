@@ -517,7 +517,8 @@ struct plugin *plugin_info(void) {
 		.init_callback = initialize,
 		.uplink_connected_callback = connected,
 		.uplink_data_callback = communicate,
-		.packet_callback = packet
+		.packet_callback = packet,
+		.version = 1
 	};
 	return &plugin;
 }

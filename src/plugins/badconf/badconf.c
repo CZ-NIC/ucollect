@@ -81,7 +81,8 @@ struct plugin *plugin_info(void) {
 	static struct plugin plugin = {
 		.name = "Badconf",
 		.packet_callback = packet_handle,
-		.init_callback = initialize
+		.init_callback = initialize,
+		.version = 1
 	};
 	return &plugin;
 }

@@ -38,6 +38,7 @@ struct plugin {
 	void (*uplink_disconnected_callback)(struct context *context);
 	void (*uplink_data_callback)(struct context *context, const uint8_t *data, size_t length);
 	fd_callback_t fd_callback;
+	uint16_t version; // Protocol version (not necessarily increased after each code change in the plugin, only if it may need change on the server)
 };
 
 #endif

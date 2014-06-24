@@ -203,7 +203,8 @@ struct plugin *plugin_info(void) {
 		.name = "Count",
 		.packet_callback = packet_handle,
 		.init_callback = initialize,
-		.uplink_data_callback = communicate
+		.uplink_data_callback = communicate,
+		.version = 1
 	};
 	return &plugin;
 }
