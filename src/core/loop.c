@@ -42,6 +42,7 @@
 #include <limits.h>
 #include <setjmp.h>
 #include <stdlib.h>
+#include <arpa/inet.h>
 
 /*
  * Low-level error handling.
@@ -1147,7 +1148,28 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	loop->plugins = configurator->plugins;
 }
 
+static void send_plugin_versions(struct loop *loop) {
+	ulog(LLOG_DEBUG, "Sending list of plugins\n");
+	size_t message_size = 0; // For the 'L'
+	LFOR(plugin, plugin, &loop->plugins)
+		message_size += sizeof(uint32_t) + sizeof(uint16_t); // Size prefix of the string and the plugin version
+	uint8_t *message = mem_pool_alloc(loop->temp_pool, message_size);
+	uint8_t *pos = message;
+	size_t rest = message_size;
+	LFOR(plugin, plugin, &loop->plugins) {
+		uplink_render_string(plugin->plugin.name, strlen(plugin->plugin.name), &pos, &rest);
+		uint16_t version = htons(plugin->plugin.version);
+		assert(rest >= sizeof version);
+		memcpy(pos, &version, sizeof version);
+		rest -= sizeof version;
+		pos += sizeof version;
+	}
+	assert(rest == 0);
+	uplink_send_message(loop->uplink, 'L', message, message_size);
+}
+
 void loop_uplink_connected(struct loop *loop) {
+	send_plugin_versions(loop);
 	LFOR(plugin, plugin, &loop->plugins)
 		plugin_uplink_connected(plugin);
 }
