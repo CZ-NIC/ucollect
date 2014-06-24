@@ -22,7 +22,7 @@ from twisted.internet import reactor
 import twisted.internet.protocol
 import twisted.protocols.basic
 import random
-import hashlib
+import struct
 from protocol import extract_string
 import logging
 import database
@@ -50,6 +50,12 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__auth_buffer = []
 		self.__wait_auth = False
 		self.__fastpings = fastpings
+		self.__available_plugins = {
+			'Badconf': 1,
+			'Buckets': 1,
+			'Count': 1,
+			'Sniff': 1
+		}
 
 	def __ping(self):
 		"""
@@ -154,8 +160,16 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__pings_outstanding = 0
 		elif msg == 'R': # Route data to a plugin
 			(plugin, data) = extract_string(params)
+			try:
 			self.__plugins.route_to_plugin(plugin, data, self.cid())
 			# TODO: Handle the possibility the plugin doesn't exist somehow (#2705)
+		elif msg == 'V': # New list of versions of the client
+			self.__available_plugins = {}
+			while len(params) > 0:
+				(name, params) = extract_string(params)
+				(version,) = struct.unpack('!H', params[:2])
+				self.__available_plugins[name] = version
+				params = params[2:]
 		else:
 			logger.warn("Unknown message from client %s: %s", self.cid(), msg)
 
