@@ -26,10 +26,26 @@
 
 struct packet_info;
 
+enum flow_ipv {
+	FLOW_V4 = 0,
+	FLOW_V6 = 1
+};
+
+enum flow_proto {
+	FLOW_TCP = 0,
+	FLOW_UDP = 2// Maybe others?
+};
+
+typedef uint8_t flow_addr_t[16];
+
 struct flow  {
 	uint32_t count[2];
 	uint64_t size[2];
 	uint64_t first_time[2], last_time[2];
+	uint16_t ports[2];
+	flow_addr_t addrs[2];
+	enum flow_ipv ipv;
+	enum flow_proto proto;
 };
 
 bool flow_cmp(const struct flow *flow, const struct packet_info *packet) __attribute__((nonnull));

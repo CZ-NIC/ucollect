@@ -22,8 +22,20 @@
 #include <string.h>
 
 bool flow_cmp(const struct flow *flow, const struct packet_info *packet) {
-	// TODO: Implement
-	return false;
+	// TODO: Something better?
+	struct flow packet_flow;
+	flow_parse(&packet_flow, packet);
+	if (flow->ipv != packet_flow.ipv)
+		return false;
+	if (flow->proto != packet_flow.proto)
+		return false;
+	for (size_t i = 0; i < 2; i ++) {
+		if (flow->ports[i] != packet_flow.ports[i])
+			return false;
+		if (memcmp(flow->addrs[i], packet_flow.addrs[i], sizeof packet_flow.addrs[i]) != 0)
+			return false;
+	}
+	return true;
 }
 
 void flow_parse(struct flow *target, const struct packet_info *packet) {
