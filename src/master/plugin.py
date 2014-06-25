@@ -71,7 +71,7 @@ class Plugin:
 		clients.
 		"""
 		logger.trace('Broadcasting message to all clients: %s', repr(message))
-		self.__plugins.broadcast(self.__routed_message(message))
+		self.__plugins.broadcast(self.__routed_message(message), self.name())
 
 	def send(self, message, to):
 		"""
@@ -137,12 +137,15 @@ class Plugins:
 		else:
 			logger.debug('Not removing client ' + client.cid())
 
-	def broadcast(self, message):
+	def broadcast(self, message, from_plugin):
 		"""
 		Send a message to all the connected clients.
 		"""
 		for c in self.__clients.values():
-			c.sendString(message)
+			if c.has_plugin(from_plugin):
+				c.sendString(message)
+			else:
+				logger.trace('Not broadcasting to %s, client does not have plugin %s', c.cid(), from_plugin)
 
 	def send(self, message, to):
 		"""

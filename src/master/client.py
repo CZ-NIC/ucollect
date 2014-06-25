@@ -57,6 +57,9 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			'Sniff': 1
 		}
 
+	def has_plugin(self, plugin_name):
+		return plugin_name in self.__available_plugins
+
 	def __ping(self):
 		"""
 		Send a ping every now and then, to see the client is
