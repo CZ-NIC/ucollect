@@ -112,6 +112,8 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 		return; // This packet is not interesting
 	if (info->direction >= DIR_UNKNOWN)
 		return; // Broken packet, we don't want that
+	if (info->layer != 'I' || (info->ip_protocol != 4 && info->ip_protocol != 6) || (info->app_protocol != 'T' && info->app_protocol != 'U'))
+		return; // Something we don't track
 	size_t idx = u->max_flows;
 	struct flow tmp_flow;
 	flow_parse(&tmp_flow, info);
