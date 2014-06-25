@@ -78,7 +78,7 @@ class Plugin:
 		Send a message from this plugin to the client given by name.
 		"""
 		logger.trace('Sending message to %s: %s', to, repr(message))
-		self.__plugins.send(self.__routed_message(message), to)
+		return self.__plugins.send(self.__routed_message(message), to, self.name())
 
 	def __routed_message(self, message):
 		return 'R' + format_string(self.name()) + message
@@ -147,12 +147,18 @@ class Plugins:
 			else:
 				logger.trace('Not broadcasting to %s, client does not have plugin %s', c.cid(), from_plugin)
 
-	def send(self, message, to):
+	def send(self, message, to, plugin=None):
 		"""
 		Send a message to the named client.
 		"""
 		# TODO: Client of that name might not exist
-		self.__clients[to].sendString(message)
+		client = self.__clients[to]
+		if plugin is not None and not client.has_plugin(plugin):
+			logger.debug('Plugin %s not available on client %s', plugin, to)
+			return False
+		else:
+			self.__clients[to].sendString(message)
+			return True
 
 	def route_to_plugin(self, name, message, client):
 		"""
