@@ -113,8 +113,10 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 	if (info->direction >= DIR_UNKNOWN)
 		return; // Broken packet, we don't want that
 	size_t idx = u->max_flows;
+	struct flow tmp_flow;
+	flow_parse(&tmp_flow, info);
 	for (size_t i = 0; i < u->flow_count; i ++)
-		if (flow_cmp(&u->flows[i], info)) {
+		if (flow_cmp(&u->flows[i], &tmp_flow)) {
 			idx = i;
 			break;
 		}

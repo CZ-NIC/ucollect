@@ -21,18 +21,15 @@
 
 #include <string.h>
 
-bool flow_cmp(const struct flow *flow, const struct packet_info *packet) {
-	// TODO: Something better?
-	struct flow packet_flow;
-	flow_parse(&packet_flow, packet);
-	if (flow->ipv != packet_flow.ipv)
+bool flow_cmp(const struct flow *_1, const struct flow *_2) {
+	if (_1->ipv != _2->ipv)
 		return false;
-	if (flow->proto != packet_flow.proto)
+	if (_1->proto != _2->proto)
 		return false;
 	for (size_t i = 0; i < 2; i ++) {
-		if (flow->ports[i] != packet_flow.ports[i])
+		if (_1->ports[i] != _2->ports[i])
 			return false;
-		if (memcmp(flow->addrs[i], packet_flow.addrs[i], sizeof packet_flow.addrs[i]) != 0)
+		if (memcmp(_1->addrs[i], _2->addrs[i], sizeof _2->addrs[i]) != 0)
 			return false;
 	}
 	return true;
