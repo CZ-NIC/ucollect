@@ -19,6 +19,8 @@
 
 #include "flow.h"
 
+#include "../../core/packet.h"
+
 #include <string.h>
 
 bool flow_cmp(const struct flow *_1, const struct flow *_2) {
@@ -36,8 +38,15 @@ bool flow_cmp(const struct flow *_1, const struct flow *_2) {
 }
 
 void flow_parse(struct flow *target, const struct packet_info *packet) {
-	// TODO: Implement
-	memset(target, 0, sizeof *target);
+	enum endpoint local = local_endpoint(packet->direction);
+	enum endpoint remote = remote_endpoint(packet->direction);
+	*target = (struct flow) {
+		.ports = { packet->ports[local], packet->ports[remote] },
+		.ipv = packet->ip_protocol == 4 ? FLOW_V4 : FLOW_V6,
+		.proto = packet->app_protocol == 'T' ? FLOW_TCP : FLOW_UDP
+	};
+	memcpy(target->addrs[0], packet->addresses[local], packet->addr_len);
+	memcpy(target->addrs[1], packet->addresses[remote], packet->addr_len);
 }
 
 size_t flow_size(const struct flow *flow) {

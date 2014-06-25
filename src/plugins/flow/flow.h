@@ -38,6 +38,7 @@ enum flow_proto {
 
 typedef uint8_t flow_addr_t[16];
 
+// Order is in, out, resp local/remote
 struct flow  {
 	uint32_t count[2];
 	uint64_t size[2];
