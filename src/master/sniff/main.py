@@ -96,13 +96,18 @@ class SniffPlugin(plugin.Plugin):
 			logger.debug("Sending task %s/%s to %s", task.name(), task.task_id, client)
 			message = struct.pack('!Lc', task.task_id, task.code) + task.message(client)
 			try:
-				self.send(message, client)
+				if not self.send(message, client):
+					task.finished_clients.add(client)
+					task.failure(client, None)
+					# The client doesn't have the sniff plugin, so try with another one
+					return self.__send_to_client(task)
 			except Exception as e:
 				logger.error("Failed to send task %s/%s to client %s: %s", task.name(), task.task_id, client, e)
 			reactor.callLater(self.__task_timeout, lambda: self.__timeout_task(task, client))
 			task.active_clients[client] = 1
 		else:
 			logger.debug("No clients to send the task to now (%s/%s)", task.name(), task.task_id)
+			self.__check_finished(task)
 
 	def __start_task(self, task):
 		"""
