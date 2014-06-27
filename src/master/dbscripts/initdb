@@ -5,6 +5,7 @@
 psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
+DROP TABLE IF EXISTS flows;
 DROP TABLE IF EXISTS capture_stats;
 DROP TABLE IF EXISTS counts;
 DROP TABLE IF EXISTS count_types;
@@ -33,7 +34,7 @@ CREATE TABLE clients (
 	slot_id SMALLINT,
 	tag TEXT,
 	devel_note TEXT,
-	asnum INT,
+	asnum INT
 );
 CREATE SEQUENCE clients_id OWNED BY clients.id;
 ALTER TABLE clients ALTER COLUMN id SET DEFAULT NEXTVAL('clients_id');
@@ -122,7 +123,7 @@ CREATE TABLE bandwidth (
 	in_max BIGINT NOT NULL,
 	out_max BIGINT NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
-	PRIMARY KEY (timestamp, client, window_length)
+	PRIMARY KEY (timestamp, client, win_len)
 );
 CREATE TABLE capture_stats (
 	snapshot BIGINT NOT NULL,
@@ -167,7 +168,20 @@ CREATE TABLE pings (
 	CHECK(avg <= max)
 );
 
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs');
+CREATE TABLE flows (
+	client INT NOT NULL,
+	ip_from TEXT NOT NULL,
+	ip_to TEXT NOT NULL,
+	port_from INT NOT NULL,
+	port_to INT NOT NULL,
+	proto CHAR(1) NOT NULL,
+	start TIMESTAMP NOT NULL,
+	stop TIMESTAMP NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id),
+	CHECK(proto = 'T' OR proto = 'U')
+);
+
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flows');
 CREATE TABLE starttls_protos (
 	id SMALLINT NOT NULL PRIMARY KEY,
 	name TEXT NOT NULL,
@@ -273,7 +287,7 @@ GRANT SELECT (cert) ON cert_chains TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
 GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
-GRAND DELETE ON bandwidth to $DBCLEANER;
+GRANT DELETE ON bandwidth to $DBCLEANER;
 GRANT DELETE ON pings TO $DBCLEANER;
 GRANT DELETE ON certs TO $DBCLEANER;
 GRANT DELETE ON cert_chains TO $DBCLEANER;
