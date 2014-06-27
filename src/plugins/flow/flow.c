@@ -22,6 +22,8 @@
 #include "../../core/packet.h"
 
 #include <string.h>
+#include <assert.h>
+#include <arpa/inet.h>
 
 bool flow_cmp(const struct flow *_1, const struct flow *_2) {
 	if (_1->ipv != _2->ipv)
@@ -49,11 +51,51 @@ void flow_parse(struct flow *target, const struct packet_info *packet) {
 	memcpy(target->addrs[1], packet->addresses[remote], packet->addr_len);
 }
 
+// Encoding:
+// flags (1 byte), count (2*32 bit), size (2*64 bit), ports (2*16 bit), times (4 * 64bit), addresses (either 2*32 bit or 2*128bit).
 size_t flow_size(const struct flow *flow) {
-	// TODO: Implement
-	return 0;
+	size_t size = 1 + 2 * sizeof(uint32_t) + 2 * sizeof(uint64_t) + 2* sizeof(uint16_t) + 4 * sizeof(uint64_t);
+	if (flow->ipv == FLOW_V4)
+		size += 2 * sizeof(uint32_t);
+	else
+		size += 2 * 16;
+	return size;
 }
 
 void flow_render(uint8_t *dst, size_t dst_size, const struct flow *flow) {
-	// TODO: Implement
+	// Size check
+	size_t size = flow_size(flow);
+	assert(dst_size == size);
+	*dst = flow->ipv | flow->proto;
+	dst ++;
+	// Encode counts
+	for (size_t i = 0; i < 2; i ++) {
+		uint32_t cnt = htonl(flow->count[i]);
+		memcpy(dst, &cnt, sizeof cnt);
+		dst += sizeof cnt;
+	}
+	// Encode sizes
+	for (size_t i = 0; i < 2; i ++) {
+		uint64_t sz = htobe64(flow->size[i]);
+		memcpy(dst, &sz, sizeof sz);
+		dst += sizeof sz;
+	}
+	// Ports
+	for (size_t i = 0; i < 2; i ++) {
+		uint16_t port = htons(flow->ports[i]);
+		memcpy(dst, &port, sizeof port);
+		dst += sizeof port;
+	}
+	// The four times
+	uint64_t times[] = { flow->first_time[0], flow->first_time[1], flow->last_time[0], flow->last_time[1] };
+	for (size_t i = 0; i < 4 ; i++) {
+		uint64_t time = htobe64(times[i]);
+		memcpy(dst, &time, sizeof time);
+		dst += sizeof time;
+	}
+	size_t addr_size = flow->ipv == FLOW_V4 ? 4 : 16;
+	for (size_t i = 0; i < 2; i ++) {
+		memcpy(dst, flow->addrs[i], addr_size);
+		dst += addr_size;
+	}
 }
