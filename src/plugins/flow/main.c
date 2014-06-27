@@ -50,12 +50,14 @@ static void flush(struct context *context) {
 	size_t *sizes = mem_pool_alloc(context->temp_pool, u->flow_count * sizeof *sizes);
 	for (size_t i = 0; i < u->flow_count; i ++)
 		size += sizes[i] = flow_size(&u->flows[i]);
-	size_t header = sizeof(char) + sizeof(uint32_t);
+	size_t header = sizeof(char) + sizeof(uint32_t) + sizeof(uint64_t);
 	size_t total_size = size + header;
 	uint8_t *message = mem_pool_alloc(context->temp_pool, total_size);
 	*message = 'D';
 	uint32_t conf_id = htonl(u->conf_id);
 	memcpy(message + sizeof(char), &conf_id, sizeof conf_id);
+	uint64_t now = htobe64(loop_now(context->loop));
+	memcpy(message + sizeof(char) + sizeof conf_id, &now, sizeof now);
 	size_t pos = 0;
 	for (size_t i = 0; i < u->flow_count; i ++) {
 		flow_render(message + pos + header, sizes[i], &u->flows[i]);
