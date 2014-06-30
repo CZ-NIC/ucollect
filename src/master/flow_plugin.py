@@ -22,11 +22,45 @@ import plugin
 import struct
 import logging
 import activity
+import database
+import socket
 
 logger = logging.getLogger(name='flow')
 
-def store_flows(client, message):
-	pass
+def store_flows(client, message, expect_conf_id):
+	(header, message) = (message[:12], message[12:])
+	(conf_id, calib_time) = struct.unpack('!IQ', header)
+	if conf_id != expect_conf_id:
+		logger.warn('Flows of different config (%s vs. %s) received from client %s', conf_id, expect_conf_id, client)
+		return
+	if not message:
+		logger.warn('Empty list of flows from %s', client)
+		return
+	values = []
+	while message:
+		(flow, message) = (message[:61], message[61:])
+		(flags, cin, cout, sin, sout, ploc, prem, tbin, tbout, tein, teout) = struct.unpack('!BIIQQHHQQQQ', flow)
+		v6 = flags & 1
+		udp = flags & 2
+		if v6:
+			size = 16
+			tp = socket.AF_INET6
+		else:
+			size = 4
+			tp = socket.AF_INET
+		(aloc, arem, message) = (message[:size], message[size:2 * size], message[2 * size:])
+		(aloc, arem) = map (lambda addr: socket.inet_ntop(tp, addr), (aloc, arem))
+		if udp:
+			proto = 'U'
+		else:
+			proto = 'T'
+		logger.trace("Flow times: %s, %s, %s, %s, %s", calib_time, tbin, tbout, tein, teout);
+		if cin:
+			values.append((arem, aloc, prem, ploc, proto, calib_time - tbin, calib_time - tein, sin, cin, client))
+		if cout:
+			values.append((aloc, arem, ploc, prem, proto, calib_time - tbout, calib_time - teout, sout, cout, client))
+	with database.transaction() as t:
+		t.executemany("INSERT INTO flows (client, ip_from, ip_to, port_from, port_to, proto, start, stop, size, count) SELECT clients.id, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', %s, %s FROM clients WHERE clients.name = %s", values)
 
 class FlowPlugin(plugin.Plugin):
 	"""
