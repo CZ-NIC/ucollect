@@ -180,7 +180,8 @@ CREATE TABLE flows (
 	size BIGINT NOT NULL,
 	count INT NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id),
-	CHECK(proto = 'T' OR proto = 'U')
+	CHECK(proto = 'T' OR proto = 'U'),
+	CHECK(start <= stop)
 );
 
 INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flows');
