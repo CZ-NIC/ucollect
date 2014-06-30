@@ -26,6 +26,7 @@
 #include "../../core/loop.h"
 #include "../../core/packet.h"
 #include "../../core/uplink.h"
+#include "../../core/util.h"
 
 #include <assert.h>
 #include <arpa/inet.h>
@@ -48,6 +49,7 @@ static void flush(struct context *context) {
 	struct user_data *u = context->user_data;
 	size_t size = 0;
 	size_t *sizes = mem_pool_alloc(context->temp_pool, u->flow_count * sizeof *sizes);
+	ulog(LLOG_DEBUG, "Sending %zu flows\n", (size_t)u->flow_count);
 	for (size_t i = 0; i < u->flow_count; i ++)
 		size += sizes[i] = flow_size(&u->flows[i]);
 	size_t header = sizeof(char) + sizeof(uint32_t) + sizeof(uint64_t);
@@ -87,6 +89,7 @@ static void schedule_timeout(struct context *context) {
 }
 
 static void configure(struct context *context, uint32_t conf_id, uint32_t max_flows, uint32_t timeout, const uint8_t *filter_desc, size_t filter_size) {
+	ulog(LLOG_INFO, "Received configuration %u (max. %u flows, %u s timeout)\n", (unsigned)conf_id, (unsigned)max_flows, (unsigned)timeout);
 	struct user_data *u = context->user_data;
 	if (u->configured) {
 		flush(context);
@@ -142,7 +145,7 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 	u->flows[idx].count[info->direction] ++;
 	u->flows[idx].size[info->direction] += info->length;
 	u->flows[idx].last_time[info->direction] = loop_now(context->loop);
-	if (!u->flows[idx].last_time[info->direction])
+	if (!u->flows[idx].first_time[info->direction])
 		u->flows[idx].first_time[info->direction] = loop_now(context->loop);
 }
 
@@ -180,6 +183,9 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			break;
 		case 'C': // Config. Either requested, or flushed. But accept it anyway.
 			config_parse(context, data + 1, length - 1);
+			break;
+		default:
+			ulog(LLOG_WARN, "Unknown message opcode '%c' (%hhu), ignoring\n", *data, *data);
 			break;
 	}
 }
