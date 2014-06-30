@@ -40,12 +40,12 @@ class FlowPlugin(plugin.Plugin):
 
 	def message_from_client(self, message, client):
 		if message[0] == 'C':
-			logger.debug('Sending config to %s', client.cid())
-			self.send(struct.pack('!III', self.__conf_id, self.__max_flows, self.__timeout), client.cid())
+			logger.debug('Sending config to %s', client)
+			self.send('C' + struct.pack('!III', self.__conf_id, self.__max_flows, self.__timeout), client)
 		elif message[0] == 'D':
-			logger.debug('Flows from %s', client.cid())
+			logger.debug('Flows from %s', client)
 			activity.log_activity(client, 'flow')
-			reactor.callInThread(store_flows, client, message[1:])
+			reactor.callInThread(store_flows, client, message[1:], self.__conf_id)
 
 	def name(self):
 		return 'Flow'
