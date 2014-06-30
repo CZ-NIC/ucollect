@@ -177,6 +177,8 @@ CREATE TABLE flows (
 	proto CHAR(1) NOT NULL,
 	start TIMESTAMP NOT NULL,
 	stop TIMESTAMP NOT NULL,
+	size BIGINT NOT NULL,
+	count INT NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U')
 );
