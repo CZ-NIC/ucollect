@@ -170,8 +170,8 @@ CREATE TABLE pings (
 
 CREATE TABLE flows (
 	client INT NOT NULL,
-	ip_from TEXT NOT NULL,
-	ip_to TEXT NOT NULL,
+	ip_from INET NOT NULL,
+	ip_to INET NOT NULL,
 	port_from INT NOT NULL,
 	port_to INT NOT NULL,
 	proto CHAR(1) NOT NULL,
