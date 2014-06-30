@@ -33,6 +33,7 @@ class FlowPlugin(plugin.Plugin):
 	Plugin for storing netflow information.
 	"""
 	def __init__(self, plugins, config):
+		plugin.Plugin.__init__(self, plugins)
 		self.__conf_id = int(config['version'])
 		self.__max_flows = int(config['max_flows'])
 		self.__timeout = int(config['timeout']) * 1000
