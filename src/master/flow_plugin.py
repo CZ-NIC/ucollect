@@ -54,7 +54,7 @@ def store_flows(client, message, expect_conf_id):
 			proto = 'U'
 		else:
 			proto = 'T'
-		logger.trace("Flow times: %s, %s, %s, %s, %s", calib_time, tbin, tbout, tein, teout);
+		logger.trace("Flow times: %s, %s, %s, %s, %s (%s/%s packets)", calib_time, tbin, tbout, tein, teout, cin, cout);
 		if cin:
 			values.append((arem, aloc, prem, ploc, proto, calib_time - tbin, calib_time - tein, sin, cin, client))
 		if cout:
