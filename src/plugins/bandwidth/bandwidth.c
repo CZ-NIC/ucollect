@@ -83,7 +83,7 @@ static float get_speed(uint64_t bytes_in_window, uint64_t window_size) {
 static uint64_t current_timestamp(void) {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
-	return (1000000*tv.tv_sec) + (tv.tv_usec);
+	return (1000000*(uint64_t)tv.tv_sec) + (uint64_t)tv.tv_usec;
 }
 
 // Get origin of history chain that is specific for window

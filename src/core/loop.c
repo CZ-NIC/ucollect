@@ -375,7 +375,7 @@ struct loop_configurator {
 static void packet_handler(struct pcap_interface *interface, const struct pcap_pkthdr *header, const unsigned char *data) {
 	struct packet_info info = {
 		.length = header->caplen,
-		.timestamp = 1000000*header->ts.tv_sec + header->ts.tv_usec,
+		.timestamp = 1000000*(uint64_t)header->ts.tv_sec + (uint64_t)header->ts.tv_usec,
 		.data = data,
 		.interface = interface->name,
 		.direction = interface->in ? DIR_IN : DIR_OUT
