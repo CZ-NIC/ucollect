@@ -86,6 +86,7 @@ struct uplink {
 	size_t addr_len;
 	uint8_t address[IPV6_LEN];
 	enum auth_status auth_status;
+	size_t login_failure_count;
 };
 
 static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect);
@@ -256,6 +257,8 @@ static void uplink_connect(struct uplink *uplink) {
 		connect_fail(uplink);
 		return;
 	}
+	if (uplink->login_failure_count ++ >= LOGIN_FAILURE_LIMIT)
+		die("Too many login failures, giving up\n");
 	uplink->last_connect = loop_now(uplink->loop);
 	bool connected = uplink_connect_internal(uplink);
 	if (!connected) {
@@ -395,6 +398,7 @@ static void handle_buffer(struct uplink *uplink) {
 			if (uplink->auth_status == AUTHENTICATED) {
 				switch (command) {
 					case 'R': { // Route data to given plugin
+							  uplink->login_failure_count = 0; // If we got data, we know the login was successful
 							  const char *plugin_name = uplink_parse_string(uplink->buffer_pool, &uplink->buffer, &uplink->buffer_size);
 							  /*
 							   * The loop_plugin_send_data contains call to plugin callback.
