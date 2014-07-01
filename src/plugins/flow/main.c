@@ -49,7 +49,7 @@ static void flush(struct context *context) {
 	struct user_data *u = context->user_data;
 	size_t size = 0;
 	size_t *sizes = mem_pool_alloc(context->temp_pool, u->flow_count * sizeof *sizes);
-	ulog(LLOG_DEBUG, "Sending %zu flows\n", (size_t)u->flow_count);
+	ulog(LLOG_INFO, "Sending %zu flows\n", (size_t)u->flow_count);
 	for (size_t i = 0; i < u->flow_count; i ++)
 		size += sizes[i] = flow_size(&u->flows[i]);
 	size_t header = sizeof(char) + sizeof(uint32_t) + sizeof(uint64_t);
