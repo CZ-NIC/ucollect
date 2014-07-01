@@ -66,4 +66,7 @@
 // Time to sleep when we receive the stray read (milliseconds)
 #define STRAY_READ_SLEEP 500
 
+// How many attempts to log in before giving up and exiting?
+#define LOGIN_FAILURE_LIMIT 10
+
 #endif
