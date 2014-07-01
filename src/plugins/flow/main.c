@@ -89,7 +89,7 @@ static void schedule_timeout(struct context *context) {
 }
 
 static void configure(struct context *context, uint32_t conf_id, uint32_t max_flows, uint32_t timeout, const uint8_t *filter_desc, size_t filter_size) {
-	ulog(LLOG_INFO, "Received configuration %u (max. %u flows, %u s timeout)\n", (unsigned)conf_id, (unsigned)max_flows, (unsigned)timeout);
+	ulog(LLOG_INFO, "Received configuration %u (max. %u flows, %u ms timeout)\n", (unsigned)conf_id, (unsigned)max_flows, (unsigned)timeout);
 	struct user_data *u = context->user_data;
 	if (u->configured) {
 		flush(context);
