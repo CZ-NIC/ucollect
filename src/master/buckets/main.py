@@ -26,7 +26,6 @@ import socket
 import logging
 import importlib
 import re
-import threading
 
 import database
 import activity
@@ -113,7 +112,6 @@ class BucketsPlugin(plugin.Plugin):
 		self.__aggregating_keys = False
 		self.__have_keys = False
 		self.__hasher = buckets.rng.Hash(self.__seed, self.__hash_count, 256 * max(map(lambda c: c.item_len(), self.__criteria)))
-		self.__data_lock = threading.Lock()
 		# Do we have keys to commit?
 		self.__background_processing = False
 
@@ -259,8 +257,16 @@ class BucketsPlugin(plugin.Plugin):
 	def name(self):
 		return "Buckets"
 
-	def __parse_generation(self, message, client):
-		with self.__data_lock:
+	def message_from_client(self, message, client):
+		kind = message[0]
+		if kind == 'C':
+			logger.debug('Config %s for client %s at %s', self.__config_version, client, int(time.time()))
+			# It asks for config. Send some.
+			self.send('C' + self.__config(), client)
+			# And that makes it active.
+			self.__clients[client].activate()
+		elif kind == 'G':
+			# Generation data.
 			# Parse it. Something less error-prone when confused config?
 			count = (len(message) - 17) / 4
 			deserialized = struct.unpack('!QLL' + str(count) + 'L', message[1:])
@@ -291,18 +297,6 @@ class BucketsPlugin(plugin.Plugin):
 						to_merge.append(tslot_data)
 						tslot_data = []
 				self.__merge(timestamp, map(lambda g: self.__groups[crit.code()][g], self.__clients[client].groups()), to_merge)
-
-	def message_from_client(self, message, client):
-		kind = message[0]
-		if kind == 'C':
-			logger.debug('Config %s for client %s at %s', self.__config_version, client, int(time.time()))
-			# It asks for config. Send some.
-			self.send('C' + self.__config(), client)
-			# And that makes it active.
-			self.__clients[client].activate()
-		elif kind == 'G':
-			# Generation data.
-			reactor.callInThread(self.__parse_generation, message, client)
 			activity.log_activity(client, "buckets")
 		elif kind == 'K':
 			# Got keys from the plugin
