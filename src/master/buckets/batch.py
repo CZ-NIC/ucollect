@@ -17,6 +17,7 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+from twisted.internet.task import LoopingCall
 from twisted.internet import threads
 from twisted.python.failure import Failure
 import logging
@@ -49,9 +50,9 @@ def flush():
 	"""
 	Submit all work to execution, even if it doesn't make a full batch yet.
 	"""
-	logger.debug("Batch flush")
 	global __batch
 	if __batch:
+		logger.debug("Batch flush")
 		deferred = threads.deferToThread(__execute, __batch)
 		deferred.addCallback(__distribute)
 		__batch = []
@@ -66,3 +67,6 @@ def submit(f, callback, *args):
 	__batch.append((f, args, callback))
 	if len(__batch) >= __limit:
 		flush()
+
+flusher = LoopingCall(flush)
+flusher.start(2, False)

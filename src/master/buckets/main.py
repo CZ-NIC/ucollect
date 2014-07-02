@@ -257,6 +257,38 @@ class BucketsPlugin(plugin.Plugin):
 	def name(self):
 		return "Buckets"
 
+	def __process_generation(self, message, client):
+		# Parse it. Something less error-prone when confused config?
+		count = (len(message) - 17) / 4
+		deserialized = struct.unpack('!QLL' + str(count) + 'L', message[1:])
+		(timestamp, version, timeslots) = deserialized[:3]
+		logger.debug('Recevied generation from %s (timestamp = %s)', client, timestamp)
+		if timeslots == 0:
+			logger.warn('Timeslot overflow on client %s and timestamp %s', client, timestamp)
+			return
+		deserialized = deserialized[3:]
+		for crit in self.__criteria:
+			if deserialized[0]:
+				logger.warn('Overflow on client %s and criterion %c at %s', client, crit.code(), timestamp)
+			deserialized = deserialized[1:] # The overflow flag
+			local = deserialized[:self.__bucket_count * self.__hash_count * timeslots]
+			deserialized = deserialized[self.__bucket_count * self.__hash_count * timeslots:]
+			total = sum(local)
+			tslot = 0
+			lnum = 0
+			to_merge = []
+			tslot_data = []
+			while local:
+				line = local[:self.__bucket_count]
+				tslot_data.append(line)
+				local = local[self.__bucket_count:]
+				lnum += 1
+				if lnum % self.__hash_count == 0:
+					tslot += 1
+					to_merge.append(tslot_data)
+					tslot_data = []
+			self.__merge(timestamp, map(lambda g: self.__groups[crit.code()][g], self.__clients[client].groups()), to_merge)
+
 	def message_from_client(self, message, client):
 		kind = message[0]
 		if kind == 'C':
@@ -267,36 +299,7 @@ class BucketsPlugin(plugin.Plugin):
 			self.__clients[client].activate()
 		elif kind == 'G':
 			# Generation data.
-			# Parse it. Something less error-prone when confused config?
-			count = (len(message) - 17) / 4
-			deserialized = struct.unpack('!QLL' + str(count) + 'L', message[1:])
-			(timestamp, version, timeslots) = deserialized[:3]
-			logger.debug('Recevied generation from %s (timestamp = %s)', client, timestamp)
-			if timeslots == 0:
-				logger.warn('Timeslot overflow on client %s and timestamp %s', client, timestamp)
-				return
-			deserialized = deserialized[3:]
-			for crit in self.__criteria:
-				if deserialized[0]:
-					logger.warn('Overflow on client %s and criterion %c at %s', client, crit.code(), timestamp)
-				deserialized = deserialized[1:] # The overflow flag
-				local = deserialized[:self.__bucket_count * self.__hash_count * timeslots]
-				deserialized = deserialized[self.__bucket_count * self.__hash_count * timeslots:]
-				total = sum(local)
-				tslot = 0
-				lnum = 0
-				to_merge = []
-				tslot_data = []
-				while local:
-					line = local[:self.__bucket_count]
-					tslot_data.append(line)
-					local = local[self.__bucket_count:]
-					lnum += 1
-					if lnum % self.__hash_count == 0:
-						tslot += 1
-						to_merge.append(tslot_data)
-						tslot_data = []
-				self.__merge(timestamp, map(lambda g: self.__groups[crit.code()][g], self.__clients[client].groups()), to_merge)
+			buckets.batch.submit(self.__process_generation, lambda x: None, message, client)
 			activity.log_activity(client, "buckets")
 		elif kind == 'K':
 			# Got keys from the plugin
