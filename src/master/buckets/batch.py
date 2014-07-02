@@ -18,7 +18,7 @@
 #
 
 from twisted.internet.task import LoopingCall
-from twisted.internet import threads
+from twisted.internet import threads, reactor
 from twisted.python.failure import Failure
 import logging
 
@@ -53,7 +53,7 @@ def flush():
 	global __batch
 	if __batch:
 		logger.debug("Batch flush")
-		deferred = threads.deferToThread(__execute, __batch)
+		deferred = threads.deferToThreadPool(reactor, reactor.getThreadPool(), __execute, __batch)
 		deferred.addCallback(__distribute)
 		__batch = []
 
