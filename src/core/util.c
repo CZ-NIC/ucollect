@@ -48,6 +48,7 @@ void die(const char *format, ...) {
 }
 
 static const char *names[] = {
+	[LLOG_DIE] = "\x1b[31;1mDIE\x1b[0m: ",
 	[LLOG_ERROR] = "\x1b[31mERROR\x1b[0m: ",
 	[LLOG_WARN] =  "\x1b[35mWARN\x1b[0m:  ",
 	[LLOG_INFO] =  "\x1b[34mINFO\x1b[0m:  ",
@@ -56,6 +57,7 @@ static const char *names[] = {
 };
 
 static const int prios[] = {
+	[LLOG_DIE] = LOG_CRIT,
 	[LLOG_ERROR] = LOG_ERR,
 	[LLOG_WARN] = LOG_WARNING,
 	[LLOG_INFO] = LOG_INFO,

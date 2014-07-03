@@ -1,0 +1,4 @@
+The `bandwidth` plugin
+======================
+
+Bandwidth is plugin for passive measurement of available bandwidth of network connection.

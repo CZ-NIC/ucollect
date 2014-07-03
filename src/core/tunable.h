@@ -50,6 +50,8 @@
 #define RECONNECT_MAX (1000 * 5 * 60)
 // Double the time for reconnect attempt on failure
 #define RECONNECT_MULTIPLY 2
+// The time to wait before reconnecting because of failed login
+#define RECONNECT_AUTH (1000 * 60 * 10)
 
 // How much time to wait between pings? 60s could be enough but not too much to timeout NAT
 #define PING_TIMEOUT (60 * 1000)
@@ -63,5 +65,8 @@
 
 // Time to sleep when we receive the stray read (milliseconds)
 #define STRAY_READ_SLEEP 500
+
+// How many attempts to log in before giving up and exiting?
+#define LOGIN_FAILURE_LIMIT 10
 
 #endif

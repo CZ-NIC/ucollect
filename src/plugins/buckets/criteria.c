@@ -52,20 +52,19 @@ static const uint8_t *extract_ip_address(const struct packet_info *packet, struc
 	return result;
 }
 
-static bool copy_port(uint8_t *where, const struct packet_info *packet) {
-	enum endpoint remote = remote_endpoint(packet->direction);
-	if (remote == END_COUNT)
+static bool copy_port(uint8_t *where, const struct packet_info *packet, enum endpoint which) {
+	if (which == END_COUNT)
 		return false;
-	if (packet->ports[remote] == 0)
+	if (packet->ports[which] == 0)
 		return false;
-	uint16_t port_net = htons(packet->ports[remote]);
+	uint16_t port_net = htons(packet->ports[which]);
 	memcpy(where, &port_net, sizeof port_net);
 	return true;
 }
 
 static const uint8_t *extract_port(const struct packet_info *packet, struct mem_pool *tmp_pool) {
 	uint8_t *result = mem_pool_alloc(tmp_pool, PORT_SIZE);
-	if (copy_port(result, packet))
+	if (copy_port(result, packet, remote_endpoint(packet->direction)))
 		return result;
 	else
 		return NULL;
@@ -73,11 +72,34 @@ static const uint8_t *extract_port(const struct packet_info *packet, struct mem_
 
 static const uint8_t *extract_both(const struct packet_info *packet, struct mem_pool *tmp_pool) {
 	uint8_t *result = mem_pool_alloc(tmp_pool, PORT_SIZE + ADDR_SIZE);
-	if (copy_port(result, packet) && copy_ip(result + PORT_SIZE, packet))
+	if (copy_port(result, packet, remote_endpoint(packet->direction)) && copy_ip(result + PORT_SIZE, packet))
 		return result;
 	else
 		return NULL;
 }
+
+static const uint8_t *extract_lport_addr(const struct packet_info *packet, struct mem_pool *tmp_pool) {
+	uint8_t *result = mem_pool_alloc(tmp_pool, PORT_SIZE + ADDR_SIZE);
+	if (copy_port(result, packet, local_endpoint(packet->direction)) && copy_ip(result + PORT_SIZE, packet))
+		return result;
+	else
+		return NULL;
+}
+
+#define OUT(NAME) \
+static const uint8_t *NAME##_out(const struct packet_info *packet, struct mem_pool *tmp_pool) { \
+	for (const struct packet_info *p = packet; p; p = p->next) \
+		if (p->layer == 'I' && (p->app_protocol == 'i' || p->app_protocol == 'I')) \
+			return NULL; \
+	if (packet->direction == DIR_OUT) \
+		return NAME(packet, tmp_pool); \
+	else \
+		return NULL; \
+}
+OUT(extract_ip_address)
+OUT(extract_port)
+OUT(extract_both)
+OUT(extract_lport_addr)
 
 struct criterion_def criteria[] = {
 	{ // Remote address
@@ -94,6 +116,32 @@ struct criterion_def criteria[] = {
 		.key_size = PORT_SIZE + ADDR_SIZE,
 		.name = 'B',
 		.extract_key = extract_both
+	},
+	{ // Local port and remote address
+		.key_size = PORT_SIZE + ADDR_SIZE,
+		.name = 'L',
+		.extract_key = extract_lport_addr
+	},
+	// The same ones, but only outgoing packets
+	{ // Remote address
+		.key_size = ADDR_SIZE,
+		.name = 'i',
+		.extract_key = extract_ip_address_out
+	},
+	{ // Remote port
+		.key_size = PORT_SIZE,
+		.name = 'p',
+		.extract_key = extract_port_out
+	},
+	{ // Both port and address
+		.key_size = PORT_SIZE + ADDR_SIZE,
+		.name = 'b',
+		.extract_key = extract_both_out
+	},
+	{ // Local port and remote address
+		.key_size = PORT_SIZE + ADDR_SIZE,
+		.name = 'l',
+		.extract_key = extract_lport_addr_out
 	},
 	{ // Sentinel
 		.name = '\0'

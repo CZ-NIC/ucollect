@@ -48,6 +48,7 @@ class AuthClient(basic.LineReceiver):
 			self.transport.loseConnection()
 			print "Asked to terminate"
 			return
+		print("Line: " + line)
 		match = auth.match(line)
 		if match:
 			mode, client, challenge, response = match.groups()
@@ -66,7 +67,7 @@ class AuthClient(basic.LineReceiver):
 						challenge = log_info[2] + challenge
 					# TODO: Other mechanisms, for debug.
 					if len(challenge) != 64 or len(client) != 16 or len(log_info[0]) != 64:
-						print "Wrong length"
+						print "Wrong length" + str(len(challenge)) + '/' + str(len(client)) + '/' + str(len(log_info[0]))
 						self.sendLine('NO')
 						return
 					expected = atsha204.hmac(log_info[3], client.decode('hex'), log_info[0].decode('hex'), challenge.decode('hex'))
@@ -74,7 +75,7 @@ class AuthClient(basic.LineReceiver):
 						print "Login of " + client
 						self.sendLine('YES')
 					else:
-						print "Doesn't match"
+						print "Doesn't match for " + client
 						self.sendLine('NO')
 				else:
 					print "Bad mechanism " + log_info[1]

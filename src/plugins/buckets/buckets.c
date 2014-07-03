@@ -84,6 +84,7 @@ struct generation {
 	struct mem_pool *pool; // Pool where the keys will be allocated from
 	struct criterion *criteria;
 	uint64_t timestamp;
+	bool active; // Was it used already?
 };
 
 struct user_data {
@@ -121,6 +122,12 @@ static void connected(struct context *context) {
 	 * gone.
 	 */
 	uplink_plugin_send_message(context, "C", 1);
+	struct user_data *u = context->user_data;
+	if (u->initialized) {
+		for (size_t i = 0; i <= u->history_size; i ++)
+			// Reset activity. We may have been away for a long time.
+			u->generations[i].active = false;
+	}
 }
 
 /*
@@ -153,6 +160,7 @@ static void generation_activate(struct user_data *u, size_t generation, uint64_t
 	}
 	mem_pool_reset(g->pool);
 	g->timestamp = timestamp;
+	g->active = true;
 	u->current_generation = generation;
 	u->timeslot_start = loop_now;
 	u->biggest_timeslot = 0;
@@ -166,14 +174,8 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 	// Extract the elements of the header
 	struct user_data *u = context->user_data;
 	if (u->initialized && u->config_version != ntohl(header->config_version)) {
-		// We can't switch the configuration at runtime, so restart. But only
-		// if the configuration is different.
-		//loop_plugin_reinit(context);
-		// FIXME (#2887): The loop_lugin_reinit doesn't work for some very mysterious reason.
-		// Terminate ucollect and let it be started by the watchdog later.
-		ulog(LLOG_WARN, "Buckets config changed. Not able to update at runtime, goint to exit instead");
-		exit(0);
-		return;
+		// We can't reload configuration, so we reinitialize the whole plugin.
+		loop_plugin_reinit(context);
 	}
 	u->bucket_count = ntohl(header->bucket_count);
 	u->hash_count = ntohl(header->hash_count);
@@ -298,47 +300,19 @@ struct key_answer {
 	uint8_t data[]; // The keys to be sent
 } __attribute__((packed));
 
-static void provide_keys(struct context *context, const uint8_t *data, size_t length) {
-	struct user_data *u = context->user_data;
-	// No key index is split in half
-	assert((length - sizeof(struct key_request)) % sizeof(uint32_t) == 0);
-	// Copy the data so it is properly aligned
-	struct key_request *request = mem_pool_alloc(context->temp_pool, length);
-	memcpy(request, data, length);
-	// How many indices are thele?
-	length -= sizeof(struct key_request);
-	length /= sizeof(uint32_t);
-	// Find the generation
-	struct generation *g = NULL;
-	for (size_t i = 0; i <= u->history_size; i ++)
-		if (u->generations[i].timestamp == be64toh(request->generation_timestamp)) {
-			g = &u->generations[i];
-			break;
-		}
-	if (!g) {
-		// Say we are missing this generation
-		uint8_t *message = mem_pool_alloc(context->temp_pool, 1 + sizeof request->req_id);
-		*message = 'M';
-		memcpy(message + 1, &request->req_id, sizeof request->req_id);
-		uplink_plugin_send_message(context, message, 1 + sizeof request->req_id);
-		return;
-	}
-	// Walk the data and extract the keys for 0th hash function (directly stored)
-	for (size_t i = 0; i < length; i ++)
-		request->key_indices[i] = ntohl(request->key_indices[i]);
+static struct key_candidates *scan_keys(uint32_t *indices, uint32_t length, size_t criterion, struct user_data *u, struct generation *g, struct mem_pool *pool) {
 	assert(length);
-	uint32_t index_count = request->key_indices[0];
+	uint32_t index_count = indices[0];
 	length --;
 	assert(length >= index_count);
-	uint32_t *indices = &request->key_indices[1];
-	struct key_candidates candidates = { .count = 0 };
-	size_t criterion = ntohl(request->criterion);
-	assert(criterion < u->criteria_count);
+	indices ++;
+	struct key_candidates *candidates = mem_pool_alloc(pool, sizeof *candidates);
+	*candidates = (struct key_candidates) { .count = 0 };
+	size_t key_size = u->criteria[criterion]->key_size;
 	for (size_t i = 0; i < index_count; i ++)
 		LFOR(keys, key, &g->criteria[criterion].hashed_keys[indices[i]])
-			key_candidates_append_pool(&candidates, context->temp_pool)->key = key;
+			key_candidates_append_pool(candidates, pool)->key = key;
 	// Iterate the other levels and remove keys not passing the filter of indices
-	size_t key_size = u->criteria[criterion]->key_size;
 	for (size_t i = 1; i < u->hash_count; i ++) {
 		// Move to the next group of indices
 		indices += index_count;
@@ -349,7 +323,7 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 		indices ++;
 		assert(length >= index_count);
 		// Not using LFOR here, we need to manipulate the variable in the process
-		struct key_candidate *candidate = candidates.head;
+		struct key_candidate *candidate = candidates->head;
 		while (candidate) {
 			uint32_t h = hash(candidate->key->data, key_size, u->hash_data + i * u->hash_line_size);
 			h %= u->bucket_count;
@@ -362,18 +336,79 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 				}
 			candidate = candidate->next; // Move to the next before we potentially remove it
 			if (to_del)
-				key_candidates_remove(&candidates, to_del);
+				key_candidates_remove(candidates, to_del);
 		}
 	}
 	assert(length == index_count); // All indices eaten
+	return candidates;
+}
+
+static void provide_keys(struct context *context, const uint8_t *data, size_t length) {
+	struct user_data *u = context->user_data;
+	// No key index is split in half
+	assert((length - sizeof(struct key_request)) % sizeof(uint32_t) == 0);
+	// Copy the data so it is properly aligned
+	struct key_request *request = mem_pool_alloc(context->temp_pool, length);
+	memcpy(request, data, length);
+	// How many indices are thele?
+	length -= sizeof(struct key_request);
+	length /= sizeof(uint32_t);
+	// Find the generation
+	struct generation *g = NULL;
+	// Walk the keys and convert them to local endians.
+	for (size_t i = 0; i < length; i ++)
+		request->key_indices[i] = ntohl(request->key_indices[i]);
+	size_t criterion = ntohl(request->criterion);
+	assert(criterion < u->criteria_count);
+	uint64_t timestamp = be64toh(request->generation_timestamp);
+	size_t key_size = u->criteria[criterion]->key_size;
+	struct key_candidates *candidates = NULL;
+	if (timestamp) {
+		for (size_t i = 0; i <= u->history_size; i ++)
+			if (u->generations[i].timestamp == timestamp) {
+				g = &u->generations[i];
+				break;
+			}
+		if (!g) {
+			// Say we are missing this generation
+			uint8_t *message = mem_pool_alloc(context->temp_pool, 1 + sizeof request->req_id);
+			*message = 'M';
+			memcpy(message + 1, &request->req_id, sizeof request->req_id);
+			uplink_plugin_send_message(context, message, 1 + sizeof request->req_id);
+			return;
+		}
+		candidates = scan_keys(request->key_indices, length, criterion, u, g, context->temp_pool);
+	} else {
+		candidates = mem_pool_alloc(context->temp_pool, sizeof *candidates);
+		*candidates = (struct key_candidates) { .count = 0 };
+		// 0 means all keys
+		for (size_t i = 0; i <= u->history_size; i ++)
+			if (u->generations[i].active && i != u->current_generation) {
+				// Active generations, but not the one that is being filled right now (the server may not be asking about that anyway)
+				struct key_candidates *partial = scan_keys(request->key_indices, length, criterion, u, &u->generations[i], context->temp_pool);
+				// Take the new linklist apart and put the yet nonexistent to the real one
+				while (partial->head) {
+					struct key_candidate *can = partial->head;
+					key_candidates_remove(partial, can);
+					bool found = false;
+					LFOR(key_candidates, candidate, candidates)
+						if (memcmp(candidate->key->data, can->key->data, key_size) == 0) {
+							found = true;
+							break;
+						}
+					if (!found)
+						key_candidates_insert_after(candidates, can, candidates->tail);
+				}
+			}
+	}
 	// Build the answer - just copy all the passed keys to the result
-	size_t answer_length = sizeof(struct key_answer) + key_size * candidates.count;
+	size_t answer_length = sizeof(struct key_answer) + key_size * candidates->count;
 	struct key_answer *answer = mem_pool_alloc(context->temp_pool, answer_length);
 	answer->code = 'K';
 	// Copy the request id. By memcpy, since answer doesn't have to be aligned
 	memcpy(&answer->req_id, &request->req_id, sizeof answer->req_id);
 	size_t index = 0;
-	LFOR(key_candidates, candidate, &candidates)
+	LFOR(key_candidates, candidate, candidates)
 		memcpy(answer->data + index ++ * key_size, candidate->key->data, key_size);
 	uplink_plugin_send_message(context, answer, answer_length);
 }
@@ -482,7 +517,8 @@ struct plugin *plugin_info(void) {
 		.init_callback = initialize,
 		.uplink_connected_callback = connected,
 		.uplink_data_callback = communicate,
-		.packet_callback = packet
+		.packet_callback = packet,
+		.version = 1
 	};
 	return &plugin;
 }

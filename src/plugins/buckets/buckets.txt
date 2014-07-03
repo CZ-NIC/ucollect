@@ -150,6 +150,9 @@ timestamp::
   `uint64_t`. The timestamp at which the generation the server is
   interested in started. The client searches the available generations
   and identifies the one that matches.
++
+This may be 0, which means all the active generations in client. The
+results from them are unified together.
 req_id::
   `uint_32_t`. This is opaque data which will be included with the
   answer, so the server can match the answer with the query.
@@ -196,6 +199,14 @@ by single character each:
 `B`::
   Both the remote port and IP address. It is encoded as 19 bytes,
   first 2 bytes for the port, than 17 bytes for the address.
+`L`::
+  Similar to `B`, but the port carried is the local one.
+
+Also, there are lower-case variants of those. These consider only
+outbound non-ICMP packets. This has the advantage of not getting
+cluttered by inbound packets dropped by firewall (nor by ICMP packets
+refusing them), while still preserving all the bidirectional
+connections.
 
 The hashes used
 ---------------

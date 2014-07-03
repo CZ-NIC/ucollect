@@ -154,3 +154,56 @@ class AddressAndPort(CompoundCriterion):
 		if ':' in ip:
 			ip = '[' + ip + ']'
 		return ':'.join([ip, port])
+
+class AddressAndLocalPort(CompoundCriterion):
+	"""
+	Just port followed by an address, but with different syntax.
+	"""
+	def __init__(self):
+		CompoundCriterion.__init__(self, [Port(), Address()], '->')
+
+	def code(self):
+		"""
+		The on-wire code of this criterion.
+		"""
+		return 'L'
+
+	def decode(self, data):
+		"""
+		Decode data to string representation.
+
+		We use custom formatting of the parts together, since they are in reverse order than
+		what we want. Also, IPv6 addresses are usually put to square brackets.
+		"""
+		(port, ip) = self.decode_parts(data)
+		if ':' in ip:
+			ip = '[' + ip + ']'
+		return '->'.join([ip, port])
+
+class PortOut(Port):
+	"""
+	Port of outbound packets.
+	"""
+	def code(self):
+		return 'p'
+
+class AddressOut(Address):
+	"""
+	Adress of outbound packets.
+	"""
+	def code(self):
+		return 'i'
+
+class AddressAndPortOut(AddressAndPort):
+	"""
+	Address and port of outbound packets.
+	"""
+	def code(self):
+		return 'b'
+
+class AddressAndLocalPortOut(AddressAndLocalPort):
+	"""
+	Remote address and local port of outbound packets. It is probably useless and is supported just for completeness.
+	"""
+	def code(self):
+		return 'l'

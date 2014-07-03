@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013,2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -33,6 +33,7 @@
 #include <string.h> // Why is memcpy in string?
 #include <errno.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include <pcap/pcap.h>
 #include <sys/epoll.h>
@@ -41,6 +42,7 @@
 #include <limits.h>
 #include <setjmp.h>
 #include <stdlib.h>
+#include <arpa/inet.h>
 
 /*
  * Low-level error handling.
@@ -78,6 +80,7 @@ static void abort_safe(void) {
 }
 
 static void sig_handler(int signal) {
+#ifdef SIGNAL_REINIT
 	if (jump_ready && current_context) {
 		jump_ready = 0; // Don't try to jump twice in a row if anything goes bad
 		// There's a handler
@@ -93,6 +96,10 @@ static void sig_handler(int signal) {
 #endif
 		longjmp(jump_env, 1);
 	} else {
+#else
+	{
+#endif
+		ulog(LLOG_DIE, "Got signal %d with context %p, aborting\n", signal, (void *)current_context);
 		// Not ready to jump. Abort.
 		abort_safe();
 	}
@@ -204,6 +211,16 @@ struct pcap_list {
 #define LIST_WANT_LFOR
 #include "link_list.h"
 
+struct plugin_holder;
+
+struct plugin_fd {
+	void (*handler)(struct plugin_fd *fd, uint32_t events);
+	int fd;
+	void *tag;
+	struct plugin_holder *plugin;
+	struct plugin_fd *next, *prev;
+};
+
 struct plugin_holder {
 	/*
 	 * This one is first, so we can cast the current_context back in case
@@ -219,6 +236,7 @@ struct plugin_holder {
 	struct pool_list pool_list;
 	struct plugin_holder *next;
 	struct plugin_holder *original; // When copying, in the configurator
+	struct plugin_fd *fd_head, *fd_tail, *fd_unused;
 	bool mark; // Mark for configurator.
 	size_t failed;
 	uint8_t hash[CHALLENGE_LEN / 2];
@@ -235,6 +253,23 @@ struct plugin_list {
 #define LIST_WANT_APPEND_POOL
 #define LIST_WANT_LFOR
 #include "link_list.h"
+
+#define LIST_NODE struct plugin_fd
+#define LIST_BASE struct plugin_holder
+#define LIST_NAME(X) plugin_fds_##X
+#define LIST_HEAD fd_head
+#define LIST_TAIL fd_tail
+#define LIST_PREV prev
+#define LIST_WANT_INSERT_AFTER
+#define LIST_WANT_LFOR
+#define LIST_WANT_REMOVE
+#include "link_list.h"
+
+#define RECYCLER_NODE struct plugin_fd
+#define RECYCLER_BASE struct plugin_holder
+#define RECYCLER_HEAD fd_unused
+#define RECYCLER_NAME(X) plugin_fd_recycler_##X
+#include "recycler.h"
 
 /*
  * Generate a wrapper around a plugin callback that:
@@ -281,6 +316,7 @@ GEN_CALL_WRAPPER(uplink_connected)
 GEN_CALL_WRAPPER(uplink_disconnected)
 GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
 GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
+GEN_CALL_WRAPPER_PARAM_2(fd, int, void *)
 
 struct timeout {
 	uint64_t when;
@@ -339,11 +375,12 @@ struct loop_configurator {
 static void packet_handler(struct pcap_interface *interface, const struct pcap_pkthdr *header, const unsigned char *data) {
 	struct packet_info info = {
 		.length = header->caplen,
+		.timestamp = 1000000*(uint64_t)header->ts.tv_sec + (uint64_t)header->ts.tv_usec,
 		.data = data,
 		.interface = interface->name,
 		.direction = interface->in ? DIR_IN : DIR_OUT
 	};
-	ulog(LLOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s (starting %016llX%016llX, on layer %d)\n", info.length, interface->name, *(long long unsigned *) info.data, *(1 + (long long unsigned *) info.data), interface->datalink);
+	ulog(LLOG_DEBUG_VERBOSE, "Packet of size %zu on interface %s (starting %016llX%016llX, on layer %d) at %" PRIu64 "\n", info.length, interface->name, *(long long unsigned *) info.data, *(1 + (long long unsigned *) info.data), interface->datalink, info.timestamp);
 	uc_parse_packet(&info, interface->loop->batch_pool, interface->datalink);
 	LFOR(plugin, plugin, &interface->loop->plugins)
 		plugin_packet(plugin, &info);
@@ -433,6 +470,7 @@ void loop_break(struct loop *loop) {
 }
 
 static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
+	// Deinit the plugin, if it didn't crash.
 	ulog(LLOG_INFO, "Removing plugin %s\n", plugin->plugin.name);
 	if (setjmp(jump_env)) {
 		ulog(LLOG_ERROR, "Signal %d during plugin finish, doing emergency shutdown instead\n", jump_signum);
@@ -441,8 +479,10 @@ static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
 	jump_ready = true;
 	if (!emergency)
 		plugin_finish(plugin);
+	jump_ready = false;
 	size_t pos = 0;
 	struct loop *loop = plugin->context.loop;
+	// Kill timeouts belonging to the plugin
 	while (pos < loop->timeout_count) {
 		if (loop->timeouts[pos].context == &plugin->context) {
 			// Drop this timeout, as we kill the corresponding plugin
@@ -451,9 +491,18 @@ static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
 		} else
 			pos ++;
 	}
-	jump_ready = false;
+	// Kill FDs belonging to the plugin
+	LFOR(plugin_fds, fd, plugin) {
+		loop->fd_invalidated = true;
+		if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_DEL, fd->fd, NULL) == -1)
+			ulog(LLOG_ERROR, "Couldn't stop epolling FD %d belonging to removed plugin %s: %s\n", fd->fd, fd->plugin->plugin.name, strerror(errno));
+		if (close(fd->fd) == -1)
+			ulog(LLOG_ERROR, "Couldn't close FD %d belonging to removed plugin %s: %s\n", fd->fd, fd->plugin->plugin.name, strerror(errno));
+	};
+	// Release the memory of the plugin
 	pool_list_destroy(&plugin->pool_list);
 	mem_pool_destroy(plugin->context.permanent_pool);
+	// Unload the library
 	plugin_unload(plugin->plugin_handle);
 }
 
@@ -565,7 +614,9 @@ void loop_run(struct loop *loop) {
 		} else {
 			wait_time = -1; // Forever, if no timeouts
 		}
+		alarm(0); // The epoll_wait can run forever
 		int ready = epoll_pwait(loop->epoll_fd, events, MAX_EVENTS, wait_time, &original_mask);
+		alarm(60); // But catch any infinite loops in the processing (60 seconds should be enough)
 		loop_get_now(loop);
 		loop->fd_invalidated = false;
 		if (loop->reconfigure) { // We are asked to reconfigure
@@ -787,8 +838,7 @@ size_t *loop_pcap_stats(struct context *context) {
 			} else {
 				result[pos ++] += ps.ps_recv;
 				result[pos ++] += ps.ps_drop;
-				result[pos ++] += ps.ps_ifdrop - interface->if_dropped;
-				interface->if_dropped = ps.ps_ifdrop;
+				result[pos ++] += ps.ps_ifdrop;
 			}
 			pos -= 3;
 		}
@@ -1098,7 +1148,28 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	loop->plugins = configurator->plugins;
 }
 
+static void send_plugin_versions(struct loop *loop) {
+	ulog(LLOG_DEBUG, "Sending list of plugins\n");
+	size_t message_size = 0; // For the 'L'
+	LFOR(plugin, plugin, &loop->plugins)
+		message_size += sizeof(uint32_t) + sizeof(uint16_t) + strlen(plugin->plugin.name); // Size prefix of the string and the plugin version
+	uint8_t *message = mem_pool_alloc(loop->temp_pool, message_size);
+	uint8_t *pos = message;
+	size_t rest = message_size;
+	LFOR(plugin, plugin, &loop->plugins) {
+		uplink_render_string(plugin->plugin.name, strlen(plugin->plugin.name), &pos, &rest);
+		uint16_t version = htons(plugin->plugin.version);
+		assert(rest >= sizeof version);
+		memcpy(pos, &version, sizeof version);
+		rest -= sizeof version;
+		pos += sizeof version;
+	}
+	assert(rest == 0);
+	uplink_send_message(loop->uplink, 'V', message, message_size);
+}
+
 void loop_uplink_connected(struct loop *loop) {
+	send_plugin_versions(loop);
 	LFOR(plugin, plugin, &loop->plugins)
 		plugin_uplink_connected(plugin);
 }
@@ -1131,4 +1202,44 @@ void loop_xor_plugins(struct loop *loop, uint8_t *hash) {
 		for (size_t i = 0; i < CHALLENGE_LEN / 2; i ++)
 			hash[i] ^= plugin->hash[i];
 	}
+}
+
+static void plugin_fd_event(struct plugin_fd *fd, uint32_t events) {
+	(void) events;
+	ulog(LLOG_DEBUG, "Event on fd %d of plugin %s\n", fd->fd, fd->plugin->plugin.name);
+	plugin_fd(fd->plugin, fd->fd, fd->tag);
+}
+
+void loop_plugin_register_fd(struct context *context, int fd, void *tag) {
+	struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+	assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+	struct plugin_fd *handler = plugin_fd_recycler_get(holder, context->permanent_pool);
+	*handler = (struct plugin_fd) {
+		.handler = plugin_fd_event,
+		.fd = fd,
+		.tag = tag,
+		.plugin = holder
+	};
+	plugin_fds_insert_after(holder, handler, holder->fd_tail);
+	loop_register_fd(context->loop, fd, (struct epoll_handler*)handler);
+	ulog(LLOG_DEBUG, "Watching fd %d of plugin %s\n", fd, holder->plugin.name);
+}
+
+void loop_plugin_unregister_fd(struct context *context, int fd) {
+	struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+	assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+	LFOR(plugin_fds, handler, holder)
+		if (handler->fd == fd) {
+			// Found the one, remove it (and let caller close it)
+			loop_unregister_fd(context->loop, fd);
+			plugin_fds_remove(holder, handler);
+			plugin_fd_recycler_release(holder, handler);
+			ulog(LLOG_DEBUG, "Unregistered fd %d of plugin %s\n", fd, holder->plugin.name);
+			return;
+		}
+	ulog(LLOG_WARN, "Asked to unregister plugin's %s fd %d, but it is not present; ignoring request\n", holder->plugin.name, fd);
 }

@@ -1,3 +1,4 @@
+CFLAGS_ALL += -I"$(O)/.objs"
 ifdef LOGIN_PASSWD_HALF
 	CFLAGS_ALL += -DPASSWD_HALF="$$(cat $(LOGIN_PASSWD_HALF))"
 else
@@ -5,6 +6,9 @@ else
 endif
 ifdef SOFT_LOGIN
 	CFLAGS_ALL += -DSOFT_LOGIN=1
+endif
+ifndef NO_SIGNAL_REINIT
+	CFLAGS += -DSIGNAL_REINIT
 endif
 
 include $(S)/build/Makefile.top

@@ -22,7 +22,7 @@ from twisted.internet import reactor
 import twisted.internet.protocol
 import twisted.protocols.basic
 import random
-import hashlib
+import struct
 from protocol import extract_string
 import logging
 import database
@@ -40,7 +40,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 
 	It also routes messages to other parts of system.
 	"""
-	def __init__(self, plugins, addr):
+	def __init__(self, plugins, addr, fastpings):
 		self.__plugins = plugins
 		self.__addr = addr
 		self.__pings_outstanding = 0
@@ -49,6 +49,16 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__cid = None
 		self.__auth_buffer = []
 		self.__wait_auth = False
+		self.__fastpings = fastpings
+		self.__available_plugins = {
+			'Badconf': 1,
+			'Buckets': 1,
+			'Count': 1,
+			'Sniff': 1
+		}
+
+	def has_plugin(self, plugin_name):
+		return plugin_name in self.__available_plugins
 
 	def __ping(self):
 		"""
@@ -77,6 +87,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__pinger.stop()
 			self.__plugins.unregister_client(self)
 			activity.log_activity(self.cid(), "logout")
+			self.transport.abortConnection()
 
 	def __check_logged(self):
 		if self.__connected and not self.__logged_in:
@@ -130,12 +141,18 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				self.__wait_auth = True
 			elif msg == 'H':
 				if self.__authenticated:
-					self.__logged_in = True
-					self.__pinger = LoopingCall(self.__ping)
-					self.__pinger.start(120, False)
-					self.__plugins.register_client(self)
-					activity.log_activity(self.cid(), "login")
-					logger.info('Client %s logged in', self.cid())
+					if self.__plugins.register_client(self):
+						self.__logged_in = True
+						self.__pinger = LoopingCall(self.__ping)
+						if self.cid() in self.__fastpings:
+							logger.info('Doing fast pings for %s', self.cid())
+							self.__pinger.start(45, False)
+						else:
+							self.__pinger.start(120, False)
+						activity.log_activity(self.cid(), "login")
+						logger.info('Client %s logged in', self.cid())
+					else:
+						return
 				else:
 					login_failure('Asked for session before loging in')
 					return
@@ -148,6 +165,13 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			(plugin, data) = extract_string(params)
 			self.__plugins.route_to_plugin(plugin, data, self.cid())
 			# TODO: Handle the possibility the plugin doesn't exist somehow (#2705)
+		elif msg == 'V': # New list of versions of the client
+			self.__available_plugins = {}
+			while len(params) > 0:
+				(name, params) = extract_string(params)
+				(version,) = struct.unpack('!H', params[:2])
+				self.__available_plugins[name] = version
+				params = params[2:]
 		else:
 			logger.warn("Unknown message from client %s: %s", self.cid(), msg)
 
@@ -166,8 +190,9 @@ class ClientFactory(twisted.internet.protocol.Factory):
 	Just a factory to create the clients. Stores a reference to the
 	plugins and passes them to the client.
 	"""
-	def __init__(self, plugins):
+	def __init__(self, plugins, fastpings):
 		self.__plugins = plugins
+		self.__fastpings = fastpings
 
 	def buildProtocol(self, addr):
-		return ClientConn(self.__plugins, addr)
+		return ClientConn(self.__plugins, addr, self.__fastpings)

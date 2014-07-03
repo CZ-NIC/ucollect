@@ -36,6 +36,7 @@
 #include <openssl/sha.h>
 #include <atsha204.h>
 #include <time.h>
+#include <stdio.h>
 
 static void atsha_log_callback(const char *msg) {
 	ulog(LLOG_ERROR, "ATSHA: %s\n", msg);
@@ -44,7 +45,8 @@ static void atsha_log_callback(const char *msg) {
 enum auth_status {
 	AUTHENTICATED,
 	SENT,
-	NOT_STARTED
+	NOT_STARTED,
+	FAILED
 };
 
 #define IPV6_LEN 16
@@ -71,6 +73,7 @@ struct uplink {
 	size_t buffer_size, size_rest;
 	uint32_t reconnect_timeout;
 	bool has_size;
+	bool last_ipv6; // Was the last attempt over IPv6?
 	// Timeouts for pings, etc.
 	size_t ping_timeout; // The ID of the timeout.
 	size_t pings_unanswered; // Number of pings sent without answer (in a row)
@@ -83,6 +86,7 @@ struct uplink {
 	size_t addr_len;
 	uint8_t address[IPV6_LEN];
 	enum auth_status auth_status;
+	size_t login_failure_count;
 };
 
 static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect);
@@ -195,6 +199,7 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 		ulog(LLOG_ERROR, "Can't fork: %s\n", strerror(errno));
 		return false;
 	}
+	uplink->last_ipv6 = !uplink->last_ipv6;
 	if (socat) {
 		close(sockets[1]);
 		close(errs[1]);
@@ -225,7 +230,18 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 		}
 		close(sockets[1]);
 		close(errs[1]);
-		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=%s,cipher=HIGH:!LOW:!MEDIUM:!SSLv2:!aNULL:!eNULL:!DES:!3DES:!AES128:!CAMELLIA128,compress=auto,method=TLS", uplink->remote_name, uplink->service, uplink->cert);
+		/*
+		 * Explanation of the last_ipv6:
+		 * Socat won't, unfortunately, try both IPv4 and IPv6 if both are
+		 * available. So it goes for IPv4 or IPv6 ‒ but whatever we chose
+		 * might be the wrong choice. So we keep switching from one to
+		 * another on each connection attempt. If only one is available,
+		 * every other connection attempt will fail, but that's acceptable.
+		 * We could do something more clever, but this is simple and works.
+		 * See ticket #3106.
+		 */
+		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=%s,cipher=HIGH:!LOW:!MEDIUM:!SSLv2:!aNULL:!eNULL:!DES:!3DES:!AES128:!CAMELLIA128,compress=auto,method=TLS,pf=ip%d", uplink->remote_name, uplink->service, uplink->cert, uplink->last_ipv6 ? 6 : 4);
+		ulog(LLOG_DEBUG, "Starting socat with %s\n", remote);
 		execlp("socat", "socat", "STDIO", remote, (char *) NULL);
 		die("Exec should never exit but it did: %s\n", strerror(errno));
 	}
@@ -241,6 +257,8 @@ static void uplink_connect(struct uplink *uplink) {
 		connect_fail(uplink);
 		return;
 	}
+	if (uplink->login_failure_count ++ >= LOGIN_FAILURE_LIMIT)
+		die("Too many login failures, giving up\n");
 	uplink->last_connect = loop_now(uplink->loop);
 	bool connected = uplink_connect_internal(uplink);
 	if (!connected) {
@@ -271,7 +289,10 @@ static void reconnect_now(struct context *unused, void *data, size_t id_unused) 
 
 static void connect_fail(struct uplink *uplink) {
 	assert(!uplink->reconnect_scheduled);
-	if (uplink->reconnect_timeout) {
+	if (uplink->auth_status == FAILED) {
+		uplink->auth_status = NOT_STARTED;
+		uplink->reconnect_timeout = RECONNECT_AUTH;
+	} else if (uplink->reconnect_timeout) {
 		// Some subsequent reconnect.
 		uplink->reconnect_timeout *= RECONNECT_MULTIPLY;
 		if (uplink->reconnect_timeout > RECONNECT_MAX)
@@ -336,7 +357,7 @@ static void send_ping(struct context *context_unused, void *data, size_t id_unus
 	uplink->ping_scheduled = true;
 }
 
-const char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) {
+char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) {
 	size_t len_size = sizeof(uint32_t);
 	if (*length < len_size) {
 		return NULL;
@@ -377,6 +398,7 @@ static void handle_buffer(struct uplink *uplink) {
 			if (uplink->auth_status == AUTHENTICATED) {
 				switch (command) {
 					case 'R': { // Route data to given plugin
+							  uplink->login_failure_count = 0; // If we got data, we know the login was successful
 							  const char *plugin_name = uplink_parse_string(uplink->buffer_pool, &uplink->buffer, &uplink->buffer_size);
 							  /*
 							   * The loop_plugin_send_data contains call to plugin callback.
@@ -417,6 +439,10 @@ static void handle_buffer(struct uplink *uplink) {
 						  break;
 					case 'F':
 						  ulog(LLOG_ERROR, "Server rejected our authentication\n");
+						  // Schedule another attempt in 10 minutes
+						  uplink_disconnect(uplink, true);
+						  uplink->auth_status = FAILED;
+						  connect_fail(uplink);
 						  break;
 					default:
 						  ulog(LLOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
@@ -434,6 +460,14 @@ static void handle_buffer(struct uplink *uplink) {
 					server_challenge.bytes = HALF_SIZE + uplink->buffer_size;
 					memcpy(server_challenge.data, local_half, HALF_SIZE);
 					memcpy(server_challenge.data + HALF_SIZE, uplink->buffer, uplink->buffer_size);
+					// Log our xor
+					uint8_t pure_plugins[HALF_SIZE] = { 0 };
+					loop_xor_plugins(uplink->loop, pure_plugins);
+					char hash_str[2 * HALF_SIZE + 1];
+					hash_str[2 * HALF_SIZE] = '\0';
+					for (size_t i = 0; i < HALF_SIZE; i ++)
+						sprintf(hash_str + 2 * i, "%02hhX", pure_plugins[i]);
+					ulog(LLOG_INFO, "Trying to log in with plugin hash %s\n", hash_str);
 					// Get the chip handle
 					atsha_set_log_callback(atsha_log_callback);
 					struct atsha_handle *cryptochip = atsha_open();
@@ -542,8 +576,11 @@ CLOSED:
 			uplink->seen_data = true;
 			uplink->buffer_pos += amount;
 			uplink->size_rest -= amount;
-			if (uplink->size_rest == 0)
+			if (uplink->size_rest == 0) {
 				handle_buffer(uplink);
+				if (uplink->fd == -1)
+					break; // The connection got closed in handle_buffer
+			}
 		}
 	}
 }
@@ -663,6 +700,8 @@ void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) {
 		uplink->login = mem_pool_strdup(pool, uplink->login);
 	if (uplink->password)
 		uplink->password = mem_pool_strdup(pool, uplink->password);
+	if (uplink->cert)
+		uplink->cert = mem_pool_strdup(pool, uplink->cert);
 }
 
 struct addrinfo *uplink_addrinfo(struct uplink *uplink) {

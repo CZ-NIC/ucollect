@@ -29,8 +29,6 @@ $passwd =~ s/[,{}]//g;
 $passwd =~ s/\s//g;
 $passwd =~ s/0x//g;
 
-my @passwd = parse $passwd;
-
 open my $cfile, '<', $categories or die "Could not read category file '$categories': $!\n";
 my %categories;
 my $current;
@@ -65,6 +63,10 @@ sub get_hash($) {
 		$name => "usr/lib/libplugin_${file}_${version}.so"
 	} @packages;
 
+	my @passwd = parse $passwd;
+
+	my $had_plugin;
+
 	for my $plugin (@plugins) {
 		system 'wget', ($packages{$plugin} // next), '-O', 'package.ipk' and die "Couldn't download package $packages{$plugin}\n";
 		system 'tar', 'xf', 'package.ipk' and die "Can't unpack package for $plugin\n";
@@ -72,13 +74,17 @@ sub get_hash($) {
 		my $library = $paths{$plugin};
 		my $sha = Digest::SHA->new(256);
 		$sha->addfile($library);
-		my @digest = parse $sha->hexdigest;
+		my $digest = $sha->hexdigest;
+		warn "Digest of $plugin is $digest\n";
+		my @digest = parse $digest;
 		for my $i (0..@passwd - 1) {
 			$passwd[$i] ^= $digest[$i];
 		}
 		rmtree 'usr';
+		$had_plugin = 1;
 	}
 
+	die "No plugin seen\n" unless $had_plugin;
 	return join '', map sprintf("%02X", $_), @passwd;
 }
 my $hash = get_hash $default;
@@ -86,4 +92,4 @@ my %hashes = map {
 	$_ => get_hash $_
 } values %branches;
 say "UPDATE clients SET builtin_passwd = '$hash' WHERE name like '$serie%';";
-say "UPDATE clients SET builtin_passwd = '$hashes{$branches{$categories{$_}}}' WHERE name = '" . lc($_) . "'" for grep { /^$serie/ } keys %categories;
+say "UPDATE clients SET builtin_passwd = '$hashes{$branches{$categories{$_}}}' WHERE name = '" . lc($_) . "';" for grep { /^$serie/ } keys %categories;

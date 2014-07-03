@@ -4,7 +4,7 @@ set -ex
 
 . ./dbconfig
 
-TABLES='activities anomalies count_snapshots'
+TABLES='activities anomalies count_snapshots bandwidth'
 
 (
 	echo 'BEGIN;'
@@ -13,5 +13,7 @@ TABLES='activities anomalies count_snapshots'
 	done
 	echo "DELETE FROM router_loggedpacket WHERE created_at < DATE(NOW()) - $CLEAN_DAYS;"
 	echo "DELETE FROM router_registrationcode WHERE date < DATE(NOW()) - $CLEAN_DAYS;"
+	echo "DELETE FROM pings WHERE batch < DATE(NOW()) - $CLEAN_DAYS;"
+	echo "DELETE FROM certs WHERE batch < DATE(NOW()) - $CLEAN_DAYS;"
 	echo 'COMMIT;'
 ) | psql -U "$DBCLEANER" -d "$DB" $DBPARAMS

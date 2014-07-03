@@ -40,7 +40,7 @@ logger = logging.getLogger(name='buckets')
 def store_keys(groups):
 	logger.info("Storing buckets")
 	with database.transaction() as t:
-		t.execute('SELECT NOW()')
+		t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'")
 		(now,) = t.fetchone()
 		def aggregate(l1, l2):
 			l1.extend(l2)

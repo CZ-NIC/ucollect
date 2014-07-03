@@ -1,0 +1,14 @@
+LIBRARIES += src/plugins/sniff/libplugin_sniff
+SNIFF_TASKS := ping cert
+libplugin_sniff_MODULES := sniff task fork nop parse $(SNIFF_TASKS)
+
+define N
+
+
+endef
+
+$(O)/.objs/%.inc: $(S)/src/plugins/sniff/%
+	$(M) SED $@
+	$(Q)sed -e '/^#/d;s/\([\'\''"]\)/\\\1/g;s/^/"/;s/$$/\\n"/' $< >$@
+
+$(eval $(foreach NAME,$(SNIFF_TASKS),$(O)/.objs/src/plugins/sniff/$(NAME).o: $(O)/.objs/sniff-$(NAME).inc${N}))

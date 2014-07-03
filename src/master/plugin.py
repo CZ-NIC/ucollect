@@ -71,14 +71,14 @@ class Plugin:
 		clients.
 		"""
 		logger.trace('Broadcasting message to all clients: %s', repr(message))
-		self.__plugins.broadcast(self.__routed_message(message))
+		self.__plugins.broadcast(self.__routed_message(message), self.name())
 
 	def send(self, message, to):
 		"""
 		Send a message from this plugin to the client given by name.
 		"""
 		logger.trace('Sending message to %s: %s', to, repr(message))
-		self.__plugins.send(self.__routed_message(message), to)
+		return self.__plugins.send(self.__routed_message(message), to, self.name())
 
 	def __routed_message(self, message):
 		return 'R' + format_string(self.name()) + message
@@ -91,6 +91,12 @@ class Plugins:
 	def __init__(self):
 		self.__plugins = {}
 		self.__clients = {}
+
+	def get_clients(self):
+		"""
+		Get the currently connected client IDs.
+		"""
+		return self.__clients.keys()
 
 	def register_plugin(self, name, plugin):
 		"""
@@ -111,39 +117,48 @@ class Plugins:
 		When a client connects.
 		"""
 		if client.cid() in self.__clients:
-			logger.warn("Connecting second copy of %s, dropping the first", client.cid())
-			# Currently connected. Close the connection and unregister.
-			# Pass the client in the dict, not the new one.
-			old = self.__clients[client.cid()]
-			self.unregister_client(old)
-			old.transport.abortConnection()
+			logger.warn("%s already connected, dropping connection", client.cid())
+			return False
 		self.__clients[client.cid()] = client
 		for p in self.__plugins.values():
 			p.client_connected(client)
+		return True
 
 	def unregister_client(self, client):
 		"""
 		When a client disconnects.
 		"""
-		if not client.cid() in self.__clients and client == self.__clients[client.cid()]:
+		if client.cid() in self.__clients and client == self.__clients[client.cid()]:
 			# If the client is not there, or if the client is some newer version, don't remove it.
 			for p in self.__plugins.values():
 				p.client_disconnected(client)
 			del self.__clients[client.cid()]
+			logger.debug('Removed client ' + client.cid())
+		else:
+			logger.debug('Not removing client ' + client.cid())
 
-	def broadcast(self, message):
+	def broadcast(self, message, from_plugin):
 		"""
 		Send a message to all the connected clients.
 		"""
 		for c in self.__clients.values():
-			c.sendString(message)
+			if c.has_plugin(from_plugin):
+				c.sendString(message)
+			else:
+				logger.trace('Not broadcasting to %s, client does not have plugin %s', c.cid(), from_plugin)
 
-	def send(self, message, to):
+	def send(self, message, to, plugin=None):
 		"""
 		Send a message to the named client.
 		"""
 		# TODO: Client of that name might not exist
-		self.__clients[to].sendString(message)
+		client = self.__clients[to]
+		if plugin is not None and not client.has_plugin(plugin):
+			logger.debug('Plugin %s not available on client %s', plugin, to)
+			return False
+		else:
+			self.__clients[to].sendString(message)
+			return True
 
 	def route_to_plugin(self, name, message, client):
 		"""

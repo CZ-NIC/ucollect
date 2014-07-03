@@ -5,16 +5,24 @@
 psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
+DROP TABLE IF EXISTS flows;
 DROP TABLE IF EXISTS capture_stats;
 DROP TABLE IF EXISTS counts;
 DROP TABLE IF EXISTS count_types;
 DROP TABLE IF EXISTS count_snapshots;
+DROP TABLE IF EXISTS bandwidth;
 DROP TABLE IF EXISTS activities;
 DROP TABLE IF EXISTS activity_types;
 DROP TABLE IF EXISTS anomalies;
 DROP TABLE IF EXISTS anomaly_types;
 DROP TABLE IF EXISTS group_members;
 DROP TABLE IF EXISTS groups;
+DROP TABLE IF EXISTS pings;
+DROP TABLE IF EXISTS ping_requests;
+DROP TABLE IF EXISTS cert_chains;
+DROP TABLE IF EXISTS certs;
+DROP TABLE IF EXISTS cert_requests;
+DROP TABLE IF EXISTS starttls_protos;
 DROP TABLE IF EXISTS clients;
 
 CREATE TABLE clients (
@@ -25,7 +33,8 @@ CREATE TABLE clients (
 	builtin_passwd TEXT,
 	slot_id SMALLINT,
 	tag TEXT,
-	devel_note TEXT
+	devel_note TEXT,
+	asnum INT
 );
 CREATE SEQUENCE clients_id OWNED BY clients.id;
 ALTER TABLE clients ALTER COLUMN id SET DEFAULT NEXTVAL('clients_id');
@@ -36,6 +45,7 @@ CREATE TABLE activity_types (
 CREATE SEQUENCE activity_types_ids OWNED BY activity_types.id;
 ALTER TABLE activity_types ALTER COLUMN id SET DEFAULT NEXTVAL('activity_types_ids');
 CREATE TABLE activities (
+	id BIGINT NOT NULL PRIMARY KEY,
 	client INT NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
 	activity SMALLINT NOT NULL,
@@ -43,6 +53,8 @@ CREATE TABLE activities (
 	FOREIGN KEY (activity) REFERENCES activity_types(id)
 );
 CREATE INDEX ON activities (client, activity);
+CREATE SEQUENCE activities_id OWNED BY activities.id;
+ALTER TABLE activities ALTER COLUMN id SET DEFAULT NEXTVAL('activities_id');
 
 CREATE TABLE groups (
 	id INT PRIMARY KEY NOT NULL,
@@ -69,7 +81,7 @@ CREATE TABLE anomalies (
 	relevance_count SMALLINT NOT NULL,
 	relevance_of SMALLINT NOT NULL,
 	strength REAL DEFAULT 0,
-	FOREIGN KEY (from_group) REFERENCES groups(id),
+	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE,
 	FOREIGN KEY (type) REFERENCES anomaly_types(code),
 	CHECK(relevance_count <= relevance_of)
 );
@@ -96,13 +108,22 @@ ALTER TABLE count_snapshots ALTER COLUMN id SET DEFAULT NEXTVAL('count_snapshots
 CREATE TABLE counts (
 	snapshot BIGINT NOT NULL,
 	type SMALLINT NOT NULL,
-	count INT NOT NULL,
-	size INT NOT NULL,
+	count BIGINT NOT NULL,
+	size BIGINT NOT NULL,
 	FOREIGN KEY (snapshot) REFERENCES count_snapshots(id) ON DELETE CASCADE,
 	FOREIGN KEY (type) REFERENCES count_types(id),
 	CHECK(count >= 0),
 	CHECK(size >= 0),
 	UNIQUE (snapshot, type)
+);
+CREATE TABLE bandwidth (
+	timestamp TIMESTAMP NOT NULL,
+	client INT NOT NULL,
+	win_len INT NOT NULL,
+	in_max BIGINT NOT NULL,
+	out_max BIGINT NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
+	PRIMARY KEY (timestamp, client, win_len)
 );
 CREATE TABLE capture_stats (
 	snapshot BIGINT NOT NULL,
@@ -117,9 +138,99 @@ CREATE TABLE capture_stats (
 	CHECK(dropped_driver >= 0),
 	UNIQUE(snapshot, interface)
 );
+CREATE TABLE ping_requests (
+	id INT PRIMARY KEY NOT NULL,
+	host TEXT NOT NULL,
+	proto CHAR(1) NOT NULL,
+	amount SMALLINT NOT NULL,
+	size SMALLINT NOT NULL,
+	active BOOLEAN NOT NULL,
+	UNIQUE(host, proto, amount, size)
+);
+CREATE SEQUENCE ping_requests_id OWNED BY ping_requests.id;
+ALTER TABLE ping_requests ALTER COLUMN id SET DEFAULT NEXTVAL('ping_requests_id');
 
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts');
-INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port');
+CREATE TABLE pings (
+	request INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	client INT NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	ip TEXT,
+	received SMALLINT NOT NULL,
+	min INT,
+	max INT,
+	avg INT,
+	UNIQUE (request, batch, client),
+	FOREIGN KEY (request) REFERENCES ping_requests(id),
+	FOREIGN KEY (client) REFERENCES clients(id),
+	CHECK(min <= max),
+	CHECK(min <= avg),
+	CHECK(avg <= max)
+);
+
+CREATE TABLE flows (
+	client INT NOT NULL,
+	ip_from INET NOT NULL,
+	ip_to INET NOT NULL,
+	port_from INT NOT NULL,
+	port_to INT NOT NULL,
+	proto CHAR(1) NOT NULL,
+	start TIMESTAMP NOT NULL,
+	stop TIMESTAMP NOT NULL,
+	size BIGINT NOT NULL,
+	count INT NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id),
+	CHECK(proto = 'T' OR proto = 'U'),
+	CHECK(start <= stop)
+);
+
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flows');
+CREATE TABLE starttls_protos (
+	id SMALLINT NOT NULL PRIMARY KEY,
+	name TEXT NOT NULL,
+	UNIQUE(name)
+);
+CREATE TABLE cert_requests (
+	id INT NOT NULL PRIMARY KEY,
+	host TEXT NOT NULL,
+	port SMALLINT NOT NULL,
+	starttls SMALLINT NOT NULL DEFAULT 0,
+	active BOOL NOT NULL DEFAULT true,
+	want_cert BOOL NOT NULL DEFAULT false,
+	want_chain BOOL NOT NULL DEFAULT false,
+	want_details BOOL NOT NULL DEFAULT true,
+	want_params BOOL NOT NULL DEFAULT true,
+	FOREIGN KEY (starttls) REFERENCES starttls_protos(id),
+	UNIQUE(host, port)
+);
+CREATE SEQUENCE cert_requests_id OWNED BY cert_requests.id;
+ALTER TABLE cert_requests ALTER COLUMN id SET DEFAULT NEXTVAL('cert_requests_id');
+CREATE TABLE certs (
+	id INT NOT NULL PRIMARY KEY,
+	request INT NOT NULL,
+	client INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	proto TEXT,
+	cipher TEXT,
+	FOREIGN KEY (request) REFERENCES cert_requests(id),
+	FOREIGN KEY (client) REFERENCES clients(id),
+	UNIQUE(request, client, batch)
+);
+CREATE SEQUENCE certs_id OWNED BY certs.id;
+ALTER TABLE certs ALTER COLUMN id SET DEFAULT NEXTVAL('certs_id');
+CREATE TABLE cert_chains (
+	cert INT NOT NULL,
+	ord SMALLINT NOT NULL,
+	is_full BOOL NOT NULL,
+	value TEXT NOT NULL,
+	name TEXT,
+	expiry TIMESTAMP,
+	FOREIGN KEY (cert) REFERENCES certs(id),
+	UNIQUE(cert, ord)
+);
+
+INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port'), ('L', 'Remote IP address and local port'), ('i', 'Remote IP address of outbound packets'), ('p', 'Remote port of outbound packets'), ('b', 'Remote IP address and port of outbound packets'), ('l', 'Remote IP address and local port of outbound packets');
 INSERT INTO count_types (name, description, ord) VALUES
 	('All', 'Any packet is included in this category', 1),
 	('IPv4', 'Packets sent over the IPv4 protocol.', 2),
@@ -135,11 +246,15 @@ INSERT INTO count_types (name, description, ord) VALUES
 	('SYN+ACK', 'TCP packets with both SYN and ACK flags set. This may be a good heuristics for number of created TCP connections.', 12),
 	('ACK', 'TCP packets with ACK flag set.', 13),
 	('PUSH', 'TCP packets with the PUSH flag set.', 14),
-	('SERVER', 'Communication with the server', 15);
+	('SERVER', 'Communication with the server', 15),
+	('V6TUNNEL', 'Packets sent over IPv6-tunelled connectivity', 16);
+INSERT INTO starttls_protos (id, name) VALUES (0, ''), (1, 'smtp'), (2, 'pop3'), (3, 'imap'), (4, 'ftp'), (5, 'xmpp');
 
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
 GRANT INSERT ON activities TO $DBUPDATER;
+GRANT UPDATE ON SEQUENCE activities_id TO $DBUPDATER;
+GRANT SELECT ON SEQUENCE activities_id TO $DBUPDATER;
 GRANT SELECT ON groups TO $DBUPDATER;
 GRANT SELECT ON group_members TO $DBUPDATER;
 GRANT SELECT ON anomaly_types TO $DBUPDATER;
@@ -147,10 +262,19 @@ GRANT INSERT ON anomalies TO $DBUPDATER;
 GRANT SELECT ON count_types TO $DBUPDATER;
 GRANT INSERT ON count_snapshots TO $DBUPDATER;
 GRANT SELECT ON count_snapshots TO $DBUPDATER;
+GRANT INSERT ON bandwidth TO $DBUPDATER;
 GRANT SELECT ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT UPDATE ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT INSERT ON counts TO $DBUPDATER;
 GRANT INSERT ON capture_stats TO $DBUPDATER;
+GRANT INSERT ON pings TO $DBUPDATER;
+GRANT SELECT ON ping_requests TO $DBUPDATER;
+GRANT SELECT ON cert_requests TO $DBUPDATER;
+GRANT ALL ON certs_id TO $DBUPDATER;
+GRANT INSERT ON certs TO $DBUPDATER;
+GRANT INSERT ON cert_chains TO $DBUPDATER;
+GRANT SELECT ON certs TO $DBUPDATER;
+GRANT INSERT ON flows TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
@@ -160,24 +284,35 @@ GRANT UPDATE (builtin_passwd) ON clients TO $DBJENKINS;
 GRANT SELECT (timestamp) ON activities TO $DBCLEANER;
 GRANT SELECT (timestamp) ON anomalies TO $DBCLEANER;
 GRANT SELECT (timestamp) ON count_snapshots TO $DBCLEANER;
-GRANT SELECT (created_at) ON router_loggedpacket TO $DBCLEANER;
-GRANT SELECT (date) ON router_registrationcode TO $DBCLEANER;
+GRANT SELECT (timestamp) ON bandwidth to $DBCLEANER;
+GRANT SELECT (batch) ON pings TO $DBCLEANER;
+GRANT SELECT (batch, id) ON certs TO $DBCLEANER;
+GRANT SELECT (cert) ON cert_chains TO $DBCLEANER;
+GRANT SELECT (start) ON flows TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
 GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
-GRANT DELETE ON router_loggedpacket TO $DBCLEANER;
-GRANT DELETE ON router_registrationcode TO $DBCLEANER;
+GRANT DELETE ON bandwidth to $DBCLEANER;
+GRANT DELETE ON pings TO $DBCLEANER;
+GRANT DELETE ON certs TO $DBCLEANER;
+GRANT DELETE ON cert_chains TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
 GRANT SELECT ON anomaly_types TO $DBARCHIVIST;
+GRANT SELECT ON activity_types TO $DBARCHIVIST;
+GRANT SELECT ON activities TO $DBARCHIVIST;
+GRANT SELECT (id, name) ON clients TO $DBARCHIVIST;
 GRANT SELECT (from_group, type, timestamp, value, value, relevance_count, relevance_of, strength) ON anomalies TO $DBARCHIVIST;
 GRANT SELECT ON counts TO $DBARCHIVIST;
 GRANT SELECT ON count_snapshots TO $DBARCHIVIST;
 GRANT SELECT ON group_members TO $DBARCHIVIST;
-GRANT SELECT (id, router_id, time, remote_port, remote_address, local_port, direction, rule_id, protocol, count, archived) ON router_loggedpacket TO $DBARCHIVIST;
-GRANT UPDATE (archived) ON router_loggedpacket TO $DBARCHIVIST;
-GRANT SELECT (id, client_id) ON router_router TO $DBARCHIVIST;
+GRANT SELECT ON pings TO $DBARCHIVIST;
+GRANT SELECT ON ping_requests TO $DBARCHIVIST;
+GRANT SELECT ON cert_requests TO $DBARCHIVIST;
+GRANT SELECT ON certs TO $DBARCHIVIST;
+GRANT SELECT ON cert_chains TO $DBARCHIVIST;
+GRANT SELECT ON flows TO $DBARCHIVIST;
 
 COMMIT;
 ENDSQL
@@ -186,11 +321,25 @@ if [ "$1" = "debug" ] ; then
 	# Provide some debug data (clients for now)
 	psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<'ENDSQL'
 BEGIN;
-INSERT INTO clients (name, passwd, mechanism) VALUES ('ruth', '123456', 'S'), ('dragonfly', '78910', 'S'), ('spider', 'web', 'S');
+INSERT INTO clients (name, mechanism, passwd) VALUES ('ruth', 'Y', 'None'), ('0000000100000001', 'Y', 'None');
 
-INSERT INTO groups (name) VALUES ('all'), ('ruth'), ('dragonfly'), ('spider');
+INSERT INTO groups (name) VALUES ('all'), ('ruth');
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups ON groups.name = clients.name;
+INSERT INTO ping_requests (host, proto, amount, size, active) VALUES ('turris.cz', '6', 5, 100, TRUE), ('turris.cz', '4', 5, 100, TRUE), ('8.8.8.8', 'X', 3, 64, TRUE);
+COMMIT;
+ENDSQL
+else
+
+	psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
+BEGIN;
+GRANT SELECT (created_at) ON router_loggedpacket TO $DBCLEANER;
+GRANT SELECT (date) ON router_registrationcode TO $DBCLEANER;
+GRANT SELECT (id, router_id, time, remote_port, remote_address, local_port, direction, rule_id, protocol, count, archived) ON router_loggedpacket TO $DBARCHIVIST;
+GRANT DELETE ON router_loggedpacket TO $DBCLEANER;
+GRANT DELETE ON router_registrationcode TO $DBCLEANER;
+GRANT UPDATE (archived) ON router_loggedpacket TO $DBARCHIVIST;
+GRANT SELECT (id, client_id) ON router_router TO $DBARCHIVIST;
 COMMIT;
 ENDSQL
 fi

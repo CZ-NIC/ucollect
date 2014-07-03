@@ -56,7 +56,7 @@ def __keep_storing():
 							logger.error('Unknown global activity: %s', activity)
 					else:
 						logger.debug("Pushing %s of %s", activity, client)
-						t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, NOW(), activity_types.id FROM clients CROSS JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
+						t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', activity_types.id FROM clients CROSS JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
 		except Exception as e:
 			logger.error("Unexpected exception in activity thread, ignoring: %s", e)
 	logger.info('Activity thread terminated')

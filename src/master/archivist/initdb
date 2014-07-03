@@ -11,6 +11,9 @@ DROP TABLE IF EXISTS count_types;
 DROP TABLE IF EXISTS firewall_groups;
 DROP TABLE IF EXISTS firewall_packets;
 DROP TABLE IF EXISTS groups;
+DROP TABLE IF EXISTS ping_ips;
+DROP TABLE IF EXISTS ping_stats;
+DROP TABLE IF EXISTS ping_requests;
 
 CREATE TABLE groups (
 	id INT PRIMARY KEY NOT NULL,
@@ -61,13 +64,13 @@ CREATE TABLE counts (
 	count_sum BIGINT NOT NULL,
 	count_avg DOUBLE PRECISION NOT NULL,
 	count_dev DOUBLE PRECISION,
-	count_min INT NOT NULL,
-	count_max INT NOT NULL,
+	count_min BIGINT NOT NULL,
+	count_max BIGINT NOT NULL,
 	size_sum BIGINT NOT NULL,
 	size_avg DOUBLE PRECISION NOT NULL,
 	size_dev DOUBLE PRECISION,
-	size_min INT NOT NULL,
-	size_max INT NOT NULL,
+	size_min BIGINT NOT NULL,
+	size_max BIGINT NOT NULL,
 	FOREIGN KEY (snapshot) REFERENCES count_snapshots(id) ON DELETE CASCADE,
 	FOREIGN KEY (type) REFERENCES count_types(ord),
 	CHECK(client_count > 0),
@@ -107,6 +110,63 @@ CREATE TABLE firewall_groups (
 	UNIQUE (packet, for_group)
 );
 
+CREATE TABLE activity_types (
+	id SMALLINT PRIMARY KEY,
+	name TEXT NOT NULL
+);
+CREATE TABLE clients (
+	id INTEGER PRIMARY KEY,
+	name TEXT NOT NULL
+);
+CREATE TABLE activities (
+	date DATE NOT NULL,
+	activity SMALLINT NOT NULL,
+	client INTEGER NOT NULL,
+	count SMALLINT NOT NULL,
+	FOREIGN KEY (activity) REFERENCES activity_types(id) ON DELETE CASCADE,
+	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
+	CHECK(count >= 0)
+);
+
+CREATE TABLE ping_requests (
+	id INT PRIMARY KEY NOT NULL,
+	host TEXT NOT NULL,
+	proto CHAR(1) NOT NULL,
+	amount SMALLINT NOT NULL,
+	size SMALLINT NOT NULL,
+	UNIQUE(host, proto, amount, size)
+);
+CREATE TABLE ping_stats (
+	id BIGINT PRIMARY KEY NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	request INT NOT NULL,
+	from_group INT NOT NULL,
+	sent SMALLINT NOT NULL,
+	received SMALLINT NOT NULL,
+	asked SMALLINT NOT NULL,
+	resolved SMALLINT NOT NULL,
+	min INT,
+	max INT,
+	avg INT,
+	FOREIGN KEY (request) REFERENCES ping_requests(id) ON DELETE CASCADE,
+	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE,
+	UNIQUE(batch, request, from_group),
+	CHECK(received <= sent),
+	CHECK(resolved <= asked),
+	CHECK(min <= max),
+	CHECK(min <= avg),
+	CHECK(avg <= max)
+);
+CREATE SEQUENCE ping_stats_id OWNED BY ping_stats.id;
+ALTER TABLE ping_stats ALTER COLUMN id SET DEFAULT NEXTVAL('ping_stats_id');
+CREATE TABLE ping_ips (
+	ping_stat BIGINT NOT NULL,
+	ip TEXT,
+	count SMALLINT NOT NULL,
+	FOREIGN KEY (ping_stat) REFERENCES ping_stats(id) ON DELETE CASCADE,
+	UNIQUE(ping_stat, ip)
+);
+
 GRANT INSERT ON anomalies TO archivist;
 GRANT SELECT (timestamp) ON anomalies TO archivist;
 GRANT INSERT ON anomaly_types TO archivist;
@@ -122,5 +182,19 @@ GRANT ALL ON count_snapshots_id TO archivist;
 GRANT INSERT ON firewall_packets TO archivist;
 GRANT ALL ON firewall_packets_id TO archivist;
 GRANT INSERT ON firewall_groups TO archivist;
+GRANT INSERT ON activity_types TO archivist;
+GRANT SELECT ON activity_types TO archivist;
+GRANT INSERT ON clients TO archivist;
+GRANT SELECT ON clients TO archivist;
+GRANT SELECT (date) ON activities TO archivist;
+GRANT INSERT ON activities TO archivist;
+GRANT DELETE ON activities TO archivist;
+GRANT SELECT ON ping_requests TO archivist;
+GRANT INSERT ON ping_requests TO archivist;
+GRANT SELECT (batch, request, from_group, id) ON ping_stats TO archivist;
+GRANT DELETE ON ping_stats TO archivist;
+GRANT INSERT ON ping_stats TO archivist;
+GRANT ALL ON ping_stat_id TO archivist;
+GRANT INSERT ON ping_ips TO archivist;
 COMMIT;
 END_SQL

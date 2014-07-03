@@ -24,8 +24,13 @@
 #include "../../core/mem_pool.h"
 #include "../../core/util.h"
 
+#include <string.h>
+
 // Warn at most every 15 minutes
 #define WARN_TIMEOUT 15 * 60 * 1000
+
+// At least so many packets before actually warning
+#define WARN_COUNT 10
 
 enum warn_type {
 	W_PPPOE,
@@ -34,12 +39,24 @@ enum warn_type {
 	W_MAX
 };
 
-static uint64_t warn_times[W_MAX];
+struct user_data {
+	size_t count;
+	uint64_t start;
+};
+
+void initialize(struct context *context) {
+	context->user_data = mem_pool_alloc(context->permanent_pool, W_MAX * sizeof *context->user_data);
+	memset(context->user_data, 0, W_MAX * sizeof *context->user_data);
+}
 
 #define WARN(WTYPE, ...) do {\
 	uint64_t now = loop_now(context->loop); \
-	if (now - WARN_TIMEOUT > warn_times[WTYPE]) { \
-		warn_times[WTYPE] = now; \
+	if (now - WARN_TIMEOUT > context->user_data[WTYPE].start) { \
+		context->user_data[WTYPE] = (struct user_data) { \
+			.count = 1, \
+			.start = now \
+		}; \
+	} else if (++ context->user_data[WTYPE].count == WARN_COUNT) { \
 		const char *message = mem_pool_printf(context->temp_pool, __VA_ARGS__); \
 		ulog(LLOG_WARN, "Possible misconfiguration on interface %s: %s\n", info->interface, message); \
 	} \
@@ -63,7 +80,9 @@ struct plugin *plugin_info(void) {
 #endif
 	static struct plugin plugin = {
 		.name = "Badconf",
-		.packet_callback = packet_handle
+		.packet_callback = packet_handle,
+		.init_callback = initialize,
+		.version = 1
 	};
 	return &plugin;
 }

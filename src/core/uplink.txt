@@ -54,6 +54,11 @@ Ping::
 Pong::
   Response to ``Ping''. It should copy data from the ping command and
   send them back. Denoted by `p`.
+List of plugins::
+  Denoted by `V`, it sends list of plugins curretly loaded in the
+  client, together with their versions. It is followed by bunch of
+  pairs (plugin name, plugin protocol version). Plugin name is string
+  and the version is 2-byte number.
 
 Error codes from client
 -----------------------

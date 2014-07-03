@@ -66,6 +66,8 @@ struct packet_info {
 	 * This is 0 in case ip_protocol != 4 && 6 or app_protocol != 'T' && 'U'.
 	 */
 	size_t hdr_length;
+	// Packet timestamp in microseconds since epoch
+	uint64_t timestamp;
 	/*
 	 * Source and destination address. Raw data (addr_len bytes each).
 	 * Is set only with ip_protocol == 4 || 6, or with ethernet frames.
@@ -136,6 +138,22 @@ struct packet_info {
  * set, it fills the addresses, protocols, etc.
  */
 void uc_parse_packet(struct packet_info *packet, struct mem_pool *pool, int datalink) __attribute__((nonnull));
+
+/*
+ * Which endpoint is the local one for the given direction?
+ *
+ * This returns END_COUNT in case the direction is not DIR_IN or DIR_OUT.
+ */
+static inline enum endpoint local_endpoint(enum direction direction) {
+	switch (direction) {
+		case DIR_OUT:
+			return END_SRC;
+		case DIR_IN:
+			return END_DST;
+		default:
+			return END_COUNT;
+	}
+}
 
 /*
  * Which endpoint is the remote one for the given direction?
