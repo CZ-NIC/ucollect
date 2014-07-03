@@ -87,7 +87,9 @@ static size_t lcp(const uint8_t *_1, size_t s1, const uint8_t *_2, size_t s2) {
 	return s1 < s2 ? s1 : s2;
 }
 
-static struct trie_data **trie_new_node(struct trie *trie, struct trie_node *parent, const uint8_t *key, size_t key_size) {
+static struct trie_data **trie_new_node(struct trie *trie, struct trie_node *parent, const uint8_t *key, size_t key_size, bool insert_new) {
+	if (!insert_new)
+		return NULL;
 	ulog(LLOG_DEBUG_VERBOSE, "Creating new node with %zu key\n", key_size);
 	struct trie_node *new = trie_append_pool(parent, trie->pool);
 	new->active = true;
@@ -101,7 +103,7 @@ static struct trie_data **trie_new_node(struct trie *trie, struct trie_node *par
 	return &new->data;
 }
 
-static struct trie_data **trie_index_internal(struct trie *trie, struct trie_node *node, const uint8_t *key, size_t key_size) {
+static struct trie_data **trie_index_internal(struct trie *trie, struct trie_node *node, const uint8_t *key, size_t key_size, bool insert_new) {
 	size_t prefix = lcp(key, key_size, node->key, node->key_size);
 	if (prefix == node->key_size) { // We went the whole length of the node's path
 		// Eath the part of key we already used
@@ -126,11 +128,11 @@ static struct trie_data **trie_index_internal(struct trie *trie, struct trie_nod
 					// Move the child to the front. In practice, most of the traffic happens with similar packets (same addresses, etc), so have them to the front most of the time
 					trie_remove(node, child);
 					trie_insert_after(node, child, NULL);
-					return trie_index_internal(trie, child, key, key_size);
+					return trie_index_internal(trie, child, key, key_size, insert_new);
 				}
 			}
 			// Not found any matching child, create a new one
-			return trie_new_node(trie, node, key, key_size);
+			return trie_new_node(trie, node, key, key_size, insert_new);
 		}
 	} else {
 		ulog(LLOG_DEBUG_VERBOSE, "Splitting node with key of %zu bytes after %zu bytes\n", node->key_size, prefix);
@@ -155,7 +157,7 @@ static struct trie_data **trie_index_internal(struct trie *trie, struct trie_nod
 		// Add the new node as child
 		trie_insert_after(node, new, NULL);
 		// And now add the rest of the index at the split node
-		return trie_new_node(trie, node, key + prefix, key_size - prefix);
+		return trie_new_node(trie, node, key + prefix, key_size - prefix, insert_new);
 	}
 }
 
@@ -163,5 +165,14 @@ struct trie_data **trie_index(struct trie *trie, const uint8_t *key, size_t key_
 	ulog(LLOG_DEBUG_VERBOSE, "Indexing trie by %zu bytes of key\n", key_size);
 	if (key_size > trie->max_key_len)
 		trie->max_key_len = key_size;
-	return trie_index_internal(trie, &trie->root, key, key_size);
+	return trie_index_internal(trie, &trie->root, key, key_size, true);
+}
+
+struct trie_data *trie_lookup(struct trie *trie, const uint8_t *key, size_t key_size) {
+	ulog(LLOG_DEBUG_VERBOSE, "Looking up in trie with %zu bytes of key\n", key_size);
+	struct trie_data **data = trie_index_internal(trie, &trie->root, key, key_size, false);
+	if (data)
+		return *data;
+	else
+		return NULL;
 }

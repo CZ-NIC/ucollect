@@ -59,8 +59,17 @@ struct trie *trie_alloc(struct mem_pool *pool) __attribute__((nonnull));
  * it needs to be forgotten. If the key was accessed before and the value set, the same value (the internal
  * pointer) is returned. Otherwise, a new NULL pointer is allocated from the memory pool and it can
  * be changed.
+ *
+ * NULL key is allowed if key_size is 0 (eg. we allow empty string as key).
  */
 struct trie_data **trie_index(struct trie *trie, const uint8_t *key, size_t key_size) __attribute__((nonnull(1)));
+/*
+ * Similar to trie_index, but in case the key is not present there, NULL is returned.
+ *
+ * Returs the pointer directly, not pointer to pointer, so you can't use it to exchange the data.
+ * This is read-only function in some sense, however it does change internal representation.
+ */
+struct trie_data *trie_lookup(struct trie *trie, const uint8_t *key, size_t key_size) __attribute__((nonnull(1)));
 // Return count of different positions accessed by trie_index
 size_t trie_size(struct trie *trie) __attribute__((nonnull));
 /*
