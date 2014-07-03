@@ -21,7 +21,8 @@
 #define UCOLLECT_CORE_TRIE_H
 
 /*
- * This module holds a compressed trie (radix tree) with binary keys of arbitrary length.
+ * This module holds a compressed splay-trie (radix tree) with binary keys of
+ * arbitrary length.
  *
  * The trie can be used to access values indexed by the keys fast and new keys can
  * be added at any time. However, it doesn't support deletions and it can be only

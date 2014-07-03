@@ -29,16 +29,18 @@ struct trie_node {
 	struct trie_data *data;
 	const uint8_t *key;
 	size_t key_size;
-	struct trie_node *head, *tail, *next;
+	struct trie_node *head, *tail, *next, *prev;
 	bool active;
 };
 
 #define LIST_NODE struct trie_node
 #define LIST_BASE struct trie_node
+#define LIST_PREV prev
 #define LIST_NAME(X) trie_##X
 #define LIST_WANT_APPEND_POOL
 #define LIST_WANT_LFOR
 #define LIST_WANT_INSERT_AFTER
+#define LIST_WANT_REMOVE
 #include "link_list.h"
 
 struct trie {
@@ -121,6 +123,9 @@ static struct trie_data **trie_index_internal(struct trie *trie, struct trie_nod
 				assert(child->key_size);
 				if (*child->key == *key) {
 					ulog(LLOG_DEBUG_VERBOSE, "Descending into a child %hhu/'%c'\n", *key, *key);
+					// Move the child to the front. In practice, most of the traffic happens with similar packets (same addresses, etc), so have them to the front most of the time
+					trie_remove(node, child);
+					trie_insert_after(node, child, NULL);
 					return trie_index_internal(trie, child, key, key_size);
 				}
 			}
@@ -137,7 +142,7 @@ static struct trie_data **trie_index_internal(struct trie *trie, struct trie_nod
 		// Move the content to the new node
 		*new = *node;
 		// Rip out the new node from the list
-		new->next = NULL;
+		new->next = new->prev = NULL;
 		// Move the new key after the prefix
 		new->key += prefix;
 		new->key_size -= prefix;
