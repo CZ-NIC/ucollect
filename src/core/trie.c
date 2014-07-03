@@ -62,6 +62,7 @@ size_t trie_size(struct trie *trie) {
 }
 
 static void walk_node(struct trie_node *node, trie_walk_callback callback, void *userdata, uint8_t *keybuf, size_t keypos) {
+	ulog(LLOG_DEBUG_VERBOSE, "Walk: %zu + %zu\n", keypos, node->key_size);
 	memcpy(keybuf + keypos, node->key, node->key_size);
 	keypos += node->key_size;
 	if (node->active)
@@ -149,11 +150,13 @@ static struct trie_data **trie_index_internal(struct trie *trie, struct trie_nod
 		// Add the new node as child
 		trie_insert_after(node, new, NULL);
 		// And now add the rest of the index at the split node
-		return trie_new_node(trie, node, key, key_size);
+		return trie_new_node(trie, node, key + prefix, key_size - prefix);
 	}
 }
 
 struct trie_data **trie_index(struct trie *trie, const uint8_t *key, size_t key_size) {
 	ulog(LLOG_DEBUG_VERBOSE, "Indexing trie by %zu bytes of key\n", key_size);
+	if (key_size > trie->max_key_len)
+		trie->max_key_len = key_size;
 	return trie_index_internal(trie, &trie->root, key, key_size);
 }
