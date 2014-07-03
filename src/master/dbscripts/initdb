@@ -226,7 +226,7 @@ CREATE TABLE cert_chains (
 	value TEXT NOT NULL,
 	name TEXT,
 	expiry TIMESTAMP,
-	FOREIGN KEY (cert) REFERENCES certs(id),
+	FOREIGN KEY (cert) REFERENCES certs(id) ON DELETE CASCADE,
 	UNIQUE(cert, ord)
 );
 
