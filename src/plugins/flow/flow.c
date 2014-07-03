@@ -20,24 +20,11 @@
 #include "flow.h"
 
 #include "../../core/packet.h"
+#include "../../core/mem_pool.h"
 
 #include <string.h>
 #include <assert.h>
 #include <arpa/inet.h>
-
-bool flow_cmp(const struct flow *_1, const struct flow *_2) {
-	if (_1->ipv != _2->ipv)
-		return false;
-	if (_1->proto != _2->proto)
-		return false;
-	for (size_t i = 0; i < 2; i ++) {
-		if (_1->ports[i] != _2->ports[i])
-			return false;
-		if (memcmp(_1->addrs[i], _2->addrs[i], sizeof _2->addrs[i]) != 0)
-			return false;
-	}
-	return true;
-}
 
 void flow_parse(struct flow *target, const struct packet_info *packet) {
 	enum endpoint local = local_endpoint(packet->direction);
@@ -49,6 +36,28 @@ void flow_parse(struct flow *target, const struct packet_info *packet) {
 	};
 	memcpy(target->addrs[0], packet->addresses[local], packet->addr_len);
 	memcpy(target->addrs[1], packet->addresses[remote], packet->addr_len);
+}
+
+uint8_t *flow_key(const struct packet_info *packet, size_t *size, struct mem_pool *pool) {
+	size_t addr_s = packet->ip_protocol == 4 ? 4 : 16;
+	assert(addr_s == packet->addr_len);
+	size_t s = 2 + 2 * sizeof(uint16_t) + 2 * addr_s;
+	uint8_t *result = mem_pool_alloc(pool, s);
+	uint8_t *pos = result;
+	*pos ++ = (uint8_t)packet->ip_protocol;
+	*pos ++ = (uint8_t)packet->app_protocol;
+	enum endpoint local = local_endpoint(packet->direction);
+	enum endpoint remote = remote_endpoint(packet->direction);
+	memcpy(pos, packet->addresses[local], addr_s);
+	pos += addr_s;
+	memcpy(pos, packet->addresses[remote], addr_s);
+	pos += addr_s;
+	memcpy(pos, &packet->ports[local], sizeof(uint16_t));
+	pos += sizeof(uint16_t);
+	memcpy(pos, &packet->ports[remote], sizeof(uint16_t));
+	pos += sizeof(uint16_t);
+	*size = s;
+	return result;
 }
 
 // Encoding:

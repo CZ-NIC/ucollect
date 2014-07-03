@@ -25,6 +25,7 @@
 #include <stdlib.h>
 
 struct packet_info;
+struct mem_pool;
 
 enum flow_ipv {
 	FLOW_V4 = 0,
@@ -49,9 +50,9 @@ struct flow  {
 	enum flow_proto proto;
 };
 
-bool flow_cmp(const struct flow *_1, const struct flow *_2) __attribute__((nonnull));
 void flow_parse(struct flow *target, const struct packet_info *packet) __attribute__((nonnull));
 size_t flow_size(const struct flow *flow) __attribute__((nonnull));
 void flow_render(uint8_t *dst, size_t dst_size, const struct flow *flow) __attribute__((nonnull));
+uint8_t *flow_key(const struct packet_info *packet, size_t *size, struct mem_pool *pool) __attribute__((nonnull, malloc));
 
 #endif

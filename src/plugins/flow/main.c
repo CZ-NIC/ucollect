@@ -27,46 +27,85 @@
 #include "../../core/packet.h"
 #include "../../core/uplink.h"
 #include "../../core/util.h"
+#include "../../core/trie.h"
 
 #include <assert.h>
 #include <arpa/inet.h>
 #include <string.h>
 
+struct trie_data {
+	struct flow flow;
+};
+
 struct user_data {
-	struct mem_pool *conf_pool;
-	struct flow *flows; // TODO: Some kind of hashing here?
+	struct mem_pool *conf_pool, *flow_pool;
+	struct trie *trie;
 	struct filter *filter;
 	uint32_t conf_id;
 	uint32_t max_flows;
-	uint32_t flow_count;
 	uint32_t timeout;
 	size_t timeout_id;
 	bool configured;
 	bool timeout_scheduled;
 };
 
+struct flush_data {
+	size_t size;
+	size_t i;
+	size_t *sizes;
+	size_t pos;
+	uint8_t *output;
+};
+
+static void get_size(const uint8_t *key, size_t key_size, struct trie_data *flow, void *userdata) {
+	struct flush_data *data = userdata;
+	(void)key;
+	(void)key_size;
+	if (flow) {
+		data->size += data->sizes[data->i ++] = flow_size(&flow->flow);
+	} else {
+		// Empty flow, created when the limit is reached.
+		data->sizes[data->i ++] = 0;
+	}
+}
+
+static void format_flow(const uint8_t *key, size_t key_size, struct trie_data *flow, void *userdata) {
+	struct flush_data *data = userdata;
+	(void)key;
+	(void)key_size;
+	if (flow) {
+		flow_render(data->output + data->pos, data->sizes[data->i], &flow->flow);
+		data->pos += data->sizes[data->i ++];
+	} else {
+		// Empty flow, skip
+		data->i ++;
+	}
+}
+
 static void flush(struct context *context) {
 	struct user_data *u = context->user_data;
-	size_t size = 0;
-	size_t *sizes = mem_pool_alloc(context->temp_pool, u->flow_count * sizeof *sizes);
-	ulog(LLOG_INFO, "Sending %zu flows\n", (size_t)u->flow_count);
-	for (size_t i = 0; i < u->flow_count; i ++)
-		size += sizes[i] = flow_size(&u->flows[i]);
 	size_t header = sizeof(char) + sizeof(uint32_t) + sizeof(uint64_t);
-	size_t total_size = size + header;
-	uint8_t *message = mem_pool_alloc(context->temp_pool, total_size);
-	*message = 'D';
+	struct flush_data d = {
+		.sizes = mem_pool_alloc(context->temp_pool, trie_size(u->trie) * sizeof *d.sizes),
+		.pos = header
+	};
+	ulog(LLOG_INFO, "Sending %zu flows\n", trie_size(u->trie));
+	trie_walk(u->trie, get_size, &d, context->temp_pool);
+	assert(d.i == trie_size(u->trie));
+	size_t total_size = header + d.size;
+	d.output = mem_pool_alloc(context->temp_pool, total_size);
+	*d.output = 'D';
 	uint32_t conf_id = htonl(u->conf_id);
-	memcpy(message + sizeof(char), &conf_id, sizeof conf_id);
+	memcpy(d.output + sizeof(char), &conf_id, sizeof conf_id);
 	uint64_t now = htobe64(loop_now(context->loop));
-	memcpy(message + sizeof(char) + sizeof conf_id, &now, sizeof now);
-	size_t pos = 0;
-	for (size_t i = 0; i < u->flow_count; i ++) {
-		flow_render(message + pos + header, sizes[i], &u->flows[i]);
-		pos += sizes[i];
-	}
-	uplink_plugin_send_message(context, message, total_size);
-	u->flow_count = 0;
+	memcpy(d.output + sizeof(char) + sizeof conf_id, &now, sizeof now);
+	d.i = 0;
+	trie_walk(u->trie, format_flow, &d, context->temp_pool);
+	assert(d.i == trie_size(u->trie));
+	assert(d.pos == total_size);
+	uplink_plugin_send_message(context, d.output, total_size);
+	mem_pool_reset(u->flow_pool);
+	u->trie = trie_alloc(u->flow_pool);
 }
 
 static void schedule_timeout(struct context *context);
@@ -99,7 +138,6 @@ static void configure(struct context *context, uint32_t conf_id, uint32_t max_fl
 		mem_pool_reset(u->conf_pool);
 	}
 	u->conf_id = conf_id;
-	u->flows = mem_pool_alloc(u->conf_pool, max_flows * sizeof *u->flows);
 	u->max_flows = max_flows;
 	u->timeout = timeout;
 	schedule_timeout(context);
@@ -119,40 +157,42 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 		return; // Broken packet, we don't want that
 	if (info->layer != 'I' || (info->ip_protocol != 4 && info->ip_protocol != 6) || (info->app_protocol != 'T' && info->app_protocol != 'U'))
 		return; // Something we don't track
-	size_t idx = u->max_flows;
-	struct flow tmp_flow;
-	flow_parse(&tmp_flow, info);
-	for (size_t i = 0; i < u->flow_count; i ++)
-		if (flow_cmp(&u->flows[i], &tmp_flow)) {
-			idx = i;
-			break;
-		}
-	if (idx == u->max_flows) {
-		// The flow is not there, create a new one
-		if (u->flow_count == u->max_flows) {
-			// The table is full, flush it.
+	size_t key_size;
+	uint8_t *key = flow_key(info, &key_size, context->temp_pool);
+	struct trie_data **data = trie_index(u->trie, key, key_size);
+	assert(data);
+	if (!*data) {
+		// We don't have this flow yet
+		if (trie_size(u->trie) == u->max_flows) {
+			// We are full, no space for another flow
 			flush(context);
 			assert(u->timeout_scheduled);
 			loop_timeout_cancel(context->loop, u->timeout_id);
 			u->timeout_scheduled = false;
 			schedule_timeout(context);
+			// We destroyed the previous trie, index the new one
+			data = trie_index(u->trie, key, key_size);
 		}
-		// Put the flow into the table
-		idx = u->flow_count ++;
-		flow_parse(&u->flows[idx], info);
+		ulog(LLOG_DEBUG_VERBOSE, "Creating new flow\n");
+		*data = mem_pool_alloc(u->flow_pool, sizeof **data);
+		flow_parse(&(*data)->flow, info);
 	}
 	// Add to statisticts
-	u->flows[idx].count[info->direction] ++;
-	u->flows[idx].size[info->direction] += info->length;
-	u->flows[idx].last_time[info->direction] = loop_now(context->loop);
-	if (!u->flows[idx].first_time[info->direction])
-		u->flows[idx].first_time[info->direction] = loop_now(context->loop);
+	struct flow *f = &(*data)->flow;
+	f->count[info->direction] ++;
+	f->size[info->direction] += info->length;
+	f->last_time[info->direction] = loop_now(context->loop);
+	if (!f->first_time[info->direction])
+		f->first_time[info->direction] = loop_now(context->loop);
 }
 
 static void initialize(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
+	struct mem_pool *flow_pool = loop_pool_create(context->loop, context, "Flow pool");
 	*context->user_data = (struct user_data) {
-		.conf_pool = loop_pool_create(context->loop, context, "Flow conf pool")
+		.conf_pool = loop_pool_create(context->loop, context, "Flow conf pool"),
+		.flow_pool = flow_pool,
+		.trie = trie_alloc(flow_pool)
 	};
 }
 
