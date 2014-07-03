@@ -90,6 +90,7 @@ static struct trie_data **trie_new_node(struct trie *trie, struct trie_node *par
 	new->active = true;
 	trie->active_count ++;
 	new->head = new->tail = NULL; // No children yet
+	new->data = NULL;
 	uint8_t *new_key = mem_pool_alloc(trie->pool, key_size);
 	new->key = new_key;
 	memcpy(new_key, key, key_size);
@@ -118,7 +119,7 @@ static struct trie_data **trie_index_internal(struct trie *trie, struct trie_nod
 			LFOR(trie, child, node) {
 				assert(child->key_size);
 				if (*child->key == *key) {
-					ulog(LLOG_DEBUG_VERBOSE, "Descending into a child %hhu/'%c\n", *key, *key);
+					ulog(LLOG_DEBUG_VERBOSE, "Descending into a child %hhu/'%c'\n", *key, *key);
 					return trie_index_internal(trie, child, key, key_size);
 				}
 			}
