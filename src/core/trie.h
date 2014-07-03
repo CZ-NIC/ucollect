@@ -27,6 +27,13 @@
  * The trie can be used to access values indexed by the keys fast and new keys can
  * be added at any time. However, it doesn't support deletions and it can be only
  * destroyed as a whole.
+ *
+ * Each node holds linked list of subnodes. Each subnode keeps part of the key
+ * from the node to the subnode. The subnodes' parts of keys always differ in
+ * the first byte.
+ *
+ * On each access, the currently accessed subnode is moved to the front of the
+ * linked list, to keep the most often used ones somewhere to the front.
  */
 
 #include <stdint.h>
@@ -56,7 +63,15 @@ struct trie *trie_alloc(struct mem_pool *pool) __attribute__((nonnull));
 struct trie_data **trie_index(struct trie *trie, const uint8_t *key, size_t key_size) __attribute__((nonnull(1)));
 // Return count of different positions accessed by trie_index
 size_t trie_size(struct trie *trie) __attribute__((nonnull));
-// Walk the whole trie and call the callback for each key previously accessed by trie_index. The value in key pointer will change (it is not valid after end of the callback).
+/*
+ * Walk the whole trie and call the callback for each key previously accessed
+ * by trie_index. The value in key pointer will change (it is not valid after
+ * end of the callback).
+ *
+ * The order is stable as long as the trie is not modified. The functions
+ * trie_index and trie_lookup do modify it, even in case the set of keys
+ * present does not.
+ */
 typedef void (*trie_walk_callback)(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata);
 void trie_walk(struct trie *trie, trie_walk_callback callback, void *userdata, struct mem_pool *temp_pool) __attribute__((nonnull(1,2,4)));
 
