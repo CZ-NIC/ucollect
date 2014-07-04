@@ -657,7 +657,15 @@ void uplink_destroy(struct uplink *uplink) {
 	inflateEnd(&(uplink->zstrm_recv));
 }
 
+// This constant is for debug purposes only
+// In production will be output buffer double size of data
+#define BUFFSIZE 4096
+
 static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
+	struct mem_pool *temp_pool = loop_temp_pool(uplink->loop);
+	unsigned char *output_buffer = mem_pool_alloc(temp_pool, BUFFSIZE);
+	uplink->zstrm_send.avail_in = size;
+	uplink->zstrm_send.next_in = buffer;
 	while (size > 0) {
 		ssize_t amount = send(uplink->fd, buffer, size, MSG_NOSIGNAL | flags);
 		if (amount == -1) {
