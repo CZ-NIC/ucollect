@@ -37,6 +37,7 @@
 #include <atsha204.h>
 #include <time.h>
 #include <stdio.h>
+#include <zlib.h>
 
 static void atsha_log_callback(const char *msg) {
 	ulog(LLOG_ERROR, "ATSHA: %s\n", msg);
@@ -87,6 +88,8 @@ struct uplink {
 	uint8_t address[IPV6_LEN];
 	enum auth_status auth_status;
 	size_t login_failure_count;
+	z_stream zstrm_send;
+	z_stream zstrm_recv;
 };
 
 static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect);
@@ -589,11 +592,25 @@ struct uplink *uplink_create(struct loop *loop) {
 	ulog(LLOG_INFO, "Creating uplink\n");
 	struct mem_pool *permanent_pool = loop_permanent_pool(loop);
 	struct uplink *result = mem_pool_alloc(permanent_pool, sizeof *result);
+	z_stream strm_compress;
+	strm_compress.zalloc = Z_NULL;
+	strm_compress.zfree = Z_NULL;
+	strm_compress.opaque = Z_NULL;
+	if (deflateInit(&strm_compress, COMPRESSION_LEVEL) != Z_OK)
+		die("Could not initialize zlib (compression stream)\n");
+	z_stream strm_decompress;
+	strm_decompress.zalloc = Z_NULL;
+	strm_decompress.zfree = Z_NULL;
+	strm_decompress.opaque = Z_NULL;
+	if (inflateInit(&strm_decompress) != Z_OK)
+		die("Could not initialize zlib (decompression stream)\n");
 	*result = (struct uplink) {
 		.uplink_read = uplink_read,
 		.loop = loop,
 		.buffer_pool = loop_pool_create(loop, NULL, mem_pool_printf(loop_temp_pool(loop), "Buffer pool for uplink")),
-		.fd = -1
+		.fd = -1,
+		.zstrm_send = strm_compress,
+		.zstrm_recv = strm_decompress
 	};
 	loop_uplink_set(loop, result);
 	return result;
@@ -635,6 +652,9 @@ void uplink_destroy(struct uplink *uplink) {
 	ulog(LLOG_INFO, "Destroying uplink to %s:%s\n", uplink->remote_name, uplink->service);
 	// The memory pools get destroyed by the loop, we just close the socket, if any.
 	uplink_disconnect(uplink, true);
+	// And destroy library handlers
+	deflateEnd(&(uplink->zstrm_send));
+	inflateEnd(&(uplink->zstrm_recv));
 }
 
 static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {

@@ -43,6 +43,9 @@
 // For the memory pool
 #define PAGE_CACHE_SIZE 20
 
+// Uplink compression level
+#define COMPRESSION_LEVEL (-1)
+
 // Uplink reconnect times
 // First attempt after 2 seconds
 #define RECONNECT_BASE 2000
