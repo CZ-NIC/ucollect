@@ -25,18 +25,11 @@
 
 #include <assert.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 typedef bool (*filter_fun)(const struct filter *filter, const struct packet_info *packet);
-
-struct filter {
-	filter_fun function;
-	struct trie *trie;
-	struct filter *subfilters;
-};
-
 struct filter_type;
-
-typedef void (*filter_parser)(struct mem_pool *pool, const struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size);
+typedef void (*filter_parser)(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size);
 
 struct filter_type {
 	filter_fun function;
@@ -44,16 +37,82 @@ struct filter_type {
 	uint8_t code;
 };
 
+struct filter {
+	filter_fun function;
+	size_t sub_count;
+	const struct filter *subfilters;
+	struct trie *trie;
+	const struct filter_type *type;
+};
+
 static bool filter_true(const struct filter *filter, const struct packet_info *packet) {
-	(void) filter;
-	(void) packet;
+	(void)filter;
+	(void)packet;
 	return true;
+}
+
+static bool filter_not(const struct filter *filter, const struct packet_info *packet) {
+	const struct filter *sub = filter->subfilters;
+	return !sub->function(sub, packet);
+}
+
+static bool filter_and(const struct filter *filter, const struct packet_info *packet) {
+	for (size_t i = 0; i < filter->sub_count; i ++)
+		if (!filter->subfilters[i].function(&filter->subfilters[i], packet))
+			return false;
+	return true;
+}
+
+static bool filter_or(const struct filter *filter, const struct packet_info *packet) {
+	for (size_t i = 0; i < filter->sub_count; i ++)
+		if (filter->subfilters[i].function(&filter->subfilters[i], packet))
+			return true;
+	return false;
+}
+
+static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size);
+
+static void parse_sub(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
+	(void)type;
+	struct filter *sub = mem_pool_alloc(pool, sizeof *sub);
+	dest->subfilters = sub;
+	parse_one(pool, sub, desc, size);
+}
+
+static void parse_many_subs(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
+	uint32_t sub_count;
+	if (*size < sizeof sub_count)
+		die("Short data for number of subfilters for %c\n", type->code);
+	memcpy(&sub_count, *desc, sizeof sub_count);
+	(*desc) += sizeof sub_count;
+	(*size) -= sizeof sub_count;
+	sub_count = ntohl(sub_count);
+	dest->sub_count = sub_count;
+	struct filter *subs = mem_pool_alloc(pool, sub_count * sizeof *subs);
+	dest->subfilters = subs;
+	for (size_t i = 0; i < sub_count; i ++)
+		parse_one(pool, &subs[i], desc, size);
 }
 
 static const struct filter_type types[] = {
 	{ // "const true"
 		.function = filter_true,
 		.code = 'T'
+	},
+	{
+		.function = filter_not,
+		.code = '!',
+		.parser = parse_sub
+	},
+	{
+		.function = filter_and,
+		.code = '&',
+		.parser = parse_many_subs
+	},
+	{
+		.function = filter_or,
+		.code = '|',
+		.parser = parse_many_subs
 	}
 };
 
@@ -61,7 +120,7 @@ bool filter_apply(const struct filter *filter, const struct packet_info *packet)
 	return filter->function(filter, packet);
 }
 
-void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size) {
+static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size) {
 	if (!*size)
 		die("Short data reading filter code\n");
 	uint8_t code = **desc;
@@ -83,7 +142,11 @@ struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t s
 	if (size) {
 		parse_one(pool, result, &desc, &size);
 	} else {
-		*result = (struct filter) { .function = filter_true };
+		uint8_t data[1];
+		*data = 'T';
+		const uint8_t *d = data;
+		size_t size = 1;
+		parse_one(pool, result, &d, &size);
 	}
 	return NULL;
 }
