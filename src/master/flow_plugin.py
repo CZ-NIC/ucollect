@@ -71,11 +71,12 @@ class FlowPlugin(plugin.Plugin):
 		self.__conf_id = int(config['version'])
 		self.__max_flows = int(config['max_flows'])
 		self.__timeout = int(config['timeout']) * 1000
+		self.__min_packets = int(config['minpackets'])
 
 	def message_from_client(self, message, client):
 		if message[0] == 'C':
 			logger.debug('Sending config to %s', client)
-			self.send('C' + struct.pack('!III', self.__conf_id, self.__max_flows, self.__timeout), client)
+			self.send('C' + struct.pack('!IIII', self.__conf_id, self.__max_flows, self.__timeout, self.__min_packets), client)
 		elif message[0] == 'D':
 			logger.debug('Flows from %s', client)
 			activity.log_activity(client, 'flow')
