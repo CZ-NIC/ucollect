@@ -22,6 +22,7 @@
 #include "../../core/trie.h"
 #include "../../core/mem_pool.h"
 #include "../../core/util.h"
+#include "../../core/packet.h"
 
 #include <assert.h>
 #include <string.h>
@@ -70,6 +71,37 @@ static bool filter_or(const struct filter *filter, const struct packet_info *pac
 	return false;
 }
 
+static bool filter_value_match(const struct filter *filter, const struct packet_info *packet) {
+	const uint8_t *data;
+	size_t size;
+	assert(packet->layer == 'I'); // Checked by the caller
+	enum endpoint local = local_endpoint(packet->direction), remote = remote_endpoint(packet->direction);
+	// Decide which part of packet we match
+	switch (filter->type->code) {
+		case 'p':
+			data = (const uint8_t *)&packet->ports[local];
+			size = 2;
+			break;
+		case 'P':
+			data = (const uint8_t *)&packet->ports[remote];
+			size = 2;
+			break;
+		case 'i':
+			data = packet->addresses[local];
+			size = packet->addr_len;
+			break;
+		case 'I':
+			data = packet->addresses[remote];
+			size = packet->addr_len;
+			break;
+		default:
+			assert(0);
+			return false;
+	}
+	// Look if this one is one of the matched
+	return trie_lookup(filter->trie, data, size);
+}
+
 static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size);
 
 static void parse_sub(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
@@ -94,6 +126,55 @@ static void parse_many_subs(struct mem_pool *pool, struct filter *dest, const st
 		parse_one(pool, &subs[i], desc, size);
 }
 
+struct trie_data {
+	int dummy; // Just to prevent warning about empty struct
+};
+
+static struct trie_data mark; // To have a valid pointer to something, not used by itself
+
+static void parse_ip_match(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
+	uint32_t ip_count;
+	if (*size < sizeof ip_count)
+		die("Short data for number of IP addresses in %c filter, only %zu available\n", type->code, *size);
+	memcpy(&ip_count, *desc, sizeof ip_count);
+	(*desc) += sizeof ip_count;
+	(*size) -= sizeof ip_count;
+	ip_count = ntohl(ip_count);
+	dest->trie = trie_alloc(pool);
+	for (size_t i = 0; i < ip_count; i ++) {
+		if (!*size)
+			die("Short data for IP address size in %c filter at IP #%zu\n", type->code, i);
+		(*desc) ++;
+		(*size) --;
+		uint8_t ip_size = **desc;
+		if (*size < ip_size)
+			die("Short data for IP address in %c filter at IP %zu (available %zu, need %hhu)\n", type->code, i, *size, ip_size);
+		*trie_index(dest->trie, *desc, ip_size) = &mark;
+		(*desc) += ip_size;
+		(*size) -= ip_size;
+	}
+}
+
+static void parse_port_match(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
+	uint16_t port_count; // Only 16 bit, there can't be more than that much different ports anyway O:-)
+	if (*size < sizeof port_count)
+		die("Short data for number of ports in %c filter, only %zu available\n", type->code, *size);
+	memcpy(&port_count, *desc, sizeof port_count);
+	(*desc) += sizeof port_count;
+	(*size) -= sizeof port_count;
+	port_count = ntohs(port_count);
+	dest->trie = trie_alloc(pool);
+	for (size_t i = 0; i < port_count; i ++) {
+		uint16_t port;
+		if (*size < sizeof port)
+			die("Short data for port in %c filter at port #%zu, only %zu available\n", type->code, i, *size);
+		memcpy(&port, *desc, sizeof port);
+		(*desc) += sizeof port;
+		(*size) -= sizeof port;
+		*trie_index(dest->trie, (const uint8_t *)&port, sizeof port) = &mark;
+	}
+}
+
 static const struct filter_type types[] = {
 	{ // "const true"
 		.function = filter_true,
@@ -113,6 +194,26 @@ static const struct filter_type types[] = {
 		.function = filter_or,
 		.code = '|',
 		.parser = parse_many_subs
+	},
+	{ // Local IP
+		.function = filter_value_match,
+		.code = 'i',
+		.parser = parse_ip_match
+	},
+	{ // Remote IP
+		.function = filter_value_match,
+		.code = 'I',
+		.parser = parse_ip_match
+	},
+	{ // Local port
+		.function = filter_value_match,
+		.code = 'p',
+		.parser = parse_port_match
+	},
+	{ // Remote port
+		.function = filter_value_match,
+		.code = 'P',
+		.parser = parse_port_match
 	}
 };
 
@@ -147,6 +248,8 @@ struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t s
 		const uint8_t *d = data;
 		size_t size = 1;
 		parse_one(pool, result, &d, &size);
+		if (size != 0)
+			die("Extra data in filter: %zu left\n", size);
 	}
 	return NULL;
 }

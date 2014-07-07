@@ -155,12 +155,12 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 		return; // We are just starting up and waiting for server to send us what to collect
 	while (info->next)
 		info = info->next;
-	if (!filter_apply(u->filter, info))
-		return; // This packet is not interesting
 	if (info->direction >= DIR_UNKNOWN)
 		return; // Broken packet, we don't want that
 	if (info->layer != 'I' || (info->ip_protocol != 4 && info->ip_protocol != 6) || (info->app_protocol != 'T' && info->app_protocol != 'U'))
 		return; // Something we don't track
+	if (!filter_apply(u->filter, info))
+		return; // This packet is not interesting
 	size_t key_size;
 	uint8_t *key = flow_key(info, &key_size, context->temp_pool);
 	struct trie_data **data = trie_index(u->trie, key, key_size);
