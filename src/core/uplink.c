@@ -657,15 +657,7 @@ void uplink_destroy(struct uplink *uplink) {
 	inflateEnd(&(uplink->zstrm_recv));
 }
 
-// This constant is for debug purposes only
-// In production will be output buffer double size of data
-#define BUFFSIZE 4096
-
-static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
-	struct mem_pool *temp_pool = loop_temp_pool(uplink->loop);
-	unsigned char *output_buffer = mem_pool_alloc(temp_pool, BUFFSIZE);
-	uplink->zstrm_send.avail_in = size;
-	uplink->zstrm_send.next_in = buffer;
+static bool send_raw_data(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
 	while (size > 0) {
 		ssize_t amount = send(uplink->fd, buffer, size, MSG_NOSIGNAL | flags);
 		if (amount == -1) {
@@ -690,6 +682,41 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 			buffer += amount;
 			size -= amount;
 		}
+	}
+	return true;
+}
+
+// This constant is for debug purposes only
+// In production will be output buffer double size of data
+#define INITIAL_BUFFSIZE 4096
+
+static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
+	size_t buffsize = INITIAL_BUFFSIZE;
+	struct mem_pool *temp_pool = loop_temp_pool(uplink->loop);
+	uint8_t *output_buffer = mem_pool_alloc(temp_pool, buffsize);
+	uplink->zstrm_send.avail_in = size;
+	uplink->zstrm_send.next_in = buffer;
+
+	unsigned int available_output = 0;
+	while (uplink->zstrm_send.avail_in > 0) {
+		uplink->zstrm_send.avail_out = buffsize;
+		uplink->zstrm_send.next_out = output_buffer;
+		deflate(&(uplink->zstrm_send), Z_NO_FLUSH);
+		available_output = buffsize - uplink->zstrm_send.avail_out;
+		if (!send_raw_data(uplink, output_buffer, available_output, MSG_MORE)) {
+			return false;
+		}
+	}
+	if (flags == 0) { // No more data, flush the rest of compressed message and sent it.
+		do {
+			uplink->zstrm_send.avail_out = buffsize;
+			uplink->zstrm_send.next_out = output_buffer;
+			deflate(&(uplink->zstrm_send), Z_SYNC_FLUSH);
+			int finish_flag = (uplink->zstrm_send.avail_out == 0) ? MSG_MORE : 0;
+			if (!send_raw_data(uplink, output_buffer, available_output, finish_flag)) {
+				return false;
+			}
+		} while (uplink->zstrm_send.avail_out == 0);
 	}
 	return true;
 }
