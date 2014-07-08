@@ -700,6 +700,9 @@ static bool send_raw_data(struct uplink *uplink, const uint8_t *buffer, size_t s
 // This constant is for debug purposes only
 // In production will be output buffer double size of data
 #define INITIAL_BUFFSIZE 4096
+// WARNING: Code was tested with small buffers and limiting is size for output
+// buffer of deflate(). There must be free space to store complete block header
+// (from 4 to 6 bytes) and some output. Do not use small buffers than 10 bytes.
 
 static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
 	size_t buffsize = INITIAL_BUFFSIZE;
