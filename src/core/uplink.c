@@ -735,6 +735,7 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 			uplink->zstrm_send.avail_out = buffsize;
 			uplink->zstrm_send.next_out = output_buffer;
 			deflate(&(uplink->zstrm_send), Z_SYNC_FLUSH);
+			available_output = buffsize - uplink->zstrm_send.avail_out;
 			if (available_output == 0) {
 				ulog(LLOG_DEBUG_VERBOSE, "compression: no output data prepared after deflate call (SYNC)\n");
 			}
