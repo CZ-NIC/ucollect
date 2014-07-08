@@ -706,7 +706,7 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 	struct mem_pool *temp_pool = loop_temp_pool(uplink->loop);
 	uint8_t *output_buffer = mem_pool_alloc(temp_pool, buffsize);
 	uplink->zstrm_send.avail_in = size;
-	uplink->zstrm_send.next_in = buffer;
+	uplink->zstrm_send.next_in = (unsigned char *)buffer;
 
 	if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
 		char *dbg_raw_data = mem_pool_alloc(temp_pool, size*4);
