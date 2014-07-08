@@ -257,6 +257,7 @@ CREATE TABLE config (
 	version INT NOT NULL,
 	value TEXT NOT NULL
 );
+INSERT INTO config (plugin, name, version, value) VALUES ('flow', 'max_flows', 1, '5000'), ('flow', 'timeout', 1, '1800000'), ('flow', 'minpackets', 1, '5');
 
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
