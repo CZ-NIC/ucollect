@@ -56,6 +56,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			'Count': 1,
 			'Sniff': 1
 		}
+		self.MAX_LENGTH = 1024 * 1024 * 1024 # A gigabyte should be enough
 
 	def has_plugin(self, plugin_name):
 		return plugin_name in self.__available_plugins
