@@ -251,5 +251,5 @@ struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t s
 		if (size != 0)
 			die("Extra data in filter: %zu left\n", size);
 	}
-	return NULL;
+	return result;
 }
