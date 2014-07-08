@@ -662,6 +662,13 @@ static bool send_raw_data(struct uplink *uplink, const uint8_t *buffer, size_t s
 	// Do not try to send empty data, this case is not rare .
 	if (size == 0)
 		return true;
+	if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
+		char *dbg_raw_data = mem_pool_alloc(loop_temp_pool(uplink->loop), size*4);
+		for (size_t i = 0; i < size; i++) {
+			sprintf(dbg_raw_data+i*3, "%02X ", buffer[i]);
+		}
+		ulog(LLOG_DEBUG_VERBOSE, "compression: compressed data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", dbg_raw_data);
+	}
 	while (size > 0) {
 		ssize_t amount = send(uplink->fd, buffer, size, MSG_NOSIGNAL | flags);
 		if (amount == -1) {
@@ -701,27 +708,43 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 	uplink->zstrm_send.avail_in = size;
 	uplink->zstrm_send.next_in = buffer;
 
+	if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
+		char *dbg_raw_data = mem_pool_alloc(temp_pool, size*4);
+		dbg_raw_data[0] = '\0'; // Eliminate size == 0 bug
+		for (size_t i = 0; i < size; i++) {
+			sprintf(dbg_raw_data+i*3, "%02X ", buffer[i]);
+		}
+		ulog(LLOG_DEBUG_VERBOSE, "compression: original data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", dbg_raw_data);
+	}
 	unsigned int available_output = 0;
 	while (uplink->zstrm_send.avail_in > 0) {
 		uplink->zstrm_send.avail_out = buffsize;
 		uplink->zstrm_send.next_out = output_buffer;
 		deflate(&(uplink->zstrm_send), Z_NO_FLUSH);
 		available_output = buffsize - uplink->zstrm_send.avail_out;
+		if (available_output == 0) {
+			ulog(LLOG_DEBUG_VERBOSE, "compression: no output data prepared after deflate call\n");
+		}
 		if (!send_raw_data(uplink, output_buffer, available_output, MSG_MORE)) {
 			return false;
 		}
 	}
 	if (flags == 0) { // No more data, flush the rest of compressed message and sent it.
+		ulog(LLOG_DEBUG_VERBOSE, "compression: start sync flushing\n");
 		do {
 			uplink->zstrm_send.avail_out = buffsize;
 			uplink->zstrm_send.next_out = output_buffer;
 			deflate(&(uplink->zstrm_send), Z_SYNC_FLUSH);
+			if (available_output == 0) {
+				ulog(LLOG_DEBUG_VERBOSE, "compression: no output data prepared after deflate call (SYNC)\n");
+			}
 			int finish_flag = (uplink->zstrm_send.avail_out == 0) ? MSG_MORE : 0;
 			if (!send_raw_data(uplink, output_buffer, available_output, finish_flag)) {
 				return false;
 			}
 		} while (uplink->zstrm_send.avail_out == 0);
 	}
+	ulog(LLOG_DEBUG_VERBOSE, "compression: return\n");
 	return true;
 }
 
