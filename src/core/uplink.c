@@ -658,6 +658,10 @@ void uplink_destroy(struct uplink *uplink) {
 }
 
 static bool send_raw_data(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
+	// Compression don't produce output every time.
+	// Do not try to send empty data, this case is not rare .
+	if (size == 0)
+		return true;
 	while (size > 0) {
 		ssize_t amount = send(uplink->fd, buffer, size, MSG_NOSIGNAL | flags);
 		if (amount == -1) {
