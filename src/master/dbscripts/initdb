@@ -284,6 +284,7 @@ GRANT INSERT ON cert_chains TO $DBUPDATER;
 GRANT SELECT ON certs TO $DBUPDATER;
 GRANT INSERT ON flows TO $DBUPDATER;
 GRANT SELECT ON config TO $DBUPDATER;
+GRANT UPDATE ON config TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
