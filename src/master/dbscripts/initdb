@@ -24,6 +24,7 @@ DROP TABLE IF EXISTS certs;
 DROP TABLE IF EXISTS cert_requests;
 DROP TABLE IF EXISTS starttls_protos;
 DROP TABLE IF EXISTS clients;
+DROP TABLE IF EXISTS config;
 
 CREATE TABLE clients (
 	id INT PRIMARY KEY NOT NULL,
@@ -250,6 +251,13 @@ INSERT INTO count_types (name, description, ord) VALUES
 	('V6TUNNEL', 'Packets sent over IPv6-tunelled connectivity', 16);
 INSERT INTO starttls_protos (id, name) VALUES (0, ''), (1, 'smtp'), (2, 'pop3'), (3, 'imap'), (4, 'ftp'), (5, 'xmpp');
 
+CREATE TABLE config (
+	plugin TEXT NOT NULL,
+	name TEXT NOT NULL,
+	version INT NOT NULL,
+	value TEXT NOT NULL
+);
+
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
 GRANT INSERT ON activities TO $DBUPDATER;
@@ -275,6 +283,7 @@ GRANT INSERT ON certs TO $DBUPDATER;
 GRANT INSERT ON cert_chains TO $DBUPDATER;
 GRANT SELECT ON certs TO $DBUPDATER;
 GRANT INSERT ON flows TO $DBUPDATER;
+GRANT SELECT ON config TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
