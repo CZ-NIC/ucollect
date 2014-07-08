@@ -78,7 +78,7 @@ class Socat(protocol.ProcessProtocol):
 	def errReceived(self, data):
 		logging.warn('Proxy complained: %s', data)
 
-args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), str(master_config.getint('port')), os.getcwd() + '/collect-master.sock']
+args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), str(master_config.getint('port')), os.getcwd() + '/collect-master.sock', master_config.get('compression')]
 logging.debug('Starting proxy with: %s', args)
 reactor.spawnProcess(Socat(), './soxy/soxy', args=args, env=os.environ)
 endpoint.listen(ClientFactory(plugins, frozenset(master_config.get('fastpings').split())))
