@@ -35,6 +35,8 @@
 #include "handler.h"
 #include "conn.h"
 
+bool Connection::enableCompression = false;
+
 Receiver::Receiver() {
 	QFile certFile(QCoreApplication::arguments()[1]);
 	certFile.open(QIODevice::ReadOnly);
@@ -74,6 +76,20 @@ Connection::Connection(int sock, QSslConfiguration &config) :
 	inReady(false),
 	outReady(false)
 {
+	if (Connection::enableCompression) {
+		zStreamCompress.zalloc = Z_NULL;
+		zStreamCompress.zfree = Z_NULL;
+		zStreamCompress.opaque = Z_NULL;
+		zStreamDecompress.zalloc = Z_NULL;
+		zStreamDecompress.zfree = Z_NULL;
+		zStreamDecompress.opaque = Z_NULL;
+		if (deflateInit(&zStreamCompress, COMPRESSION_LEVEL) != Z_OK) {
+			error("Could not initialize zlib (compression stream)");
+		}
+		if (inflateInit(&zStreamDecompress) != Z_OK) {
+			error("Could not initialize zlib (decompression stream)");
+		}
+	}
 	connect(&timer, SIGNAL(timeout()), SLOT(deleteLater()));
 	remote.setSocketDescriptor(sock);
 	remote.setSslConfiguration(config);
@@ -94,11 +110,38 @@ Connection::Connection(int sock, QSslConfiguration &config) :
 	touch();
 }
 
+Connection::~Connection() {
+	if (Connection::enableCompression) {
+		deflateEnd(&zStreamCompress);
+		inflateEnd(&zStreamDecompress);
+	}
+}
+
 void Connection::incoming() {
-	QByteArray ar = remote.read(1024 * 1024);
+	QByteArray ar = remote.read(COMPRESSION_BUFFSIZE);
 	if (ar.isEmpty())
 		return;
-	inBuf += ar;
+	if (Connection::enableCompression) {
+		unsigned int available_output;
+		unsigned char *input_data = (unsigned char *)ar.data();
+		zStreamDecompress.next_in = input_data;
+		zStreamDecompress.avail_in = ar.size();
+
+		while (zStreamDecompress.avail_in > 0) {
+			zStreamDecompress.next_out = decompressOutBuffer;
+			zStreamDecompress.avail_out = COMPRESSION_BUFFSIZE;
+			int ret = inflate(&zStreamDecompress, Z_SYNC_FLUSH);
+			if (ret == Z_DATA_ERROR) {
+				inflateSync(&zStreamDecompress);
+			}
+			available_output = COMPRESSION_BUFFSIZE - zStreamDecompress.avail_out;
+			if (available_output == 0)
+				return;
+			inBuf.append((char *)decompressOutBuffer, available_output);
+		}
+	} else {
+		inBuf += ar;
+	}
 	tryWriteLocal();
 	incoming(); // In case there's more data.
 	touch();
@@ -118,6 +161,11 @@ void Connection::error(const QList<QSslError> &errors) {
 	foreach(const QSslError &err, errors) {
 		fprintf(stderr, "SSL error: %s\n", err.errorString().toLocal8Bit().data());
 	}
+	deleteLater();
+}
+
+void Connection::error(const char * errstr) {
+	fprintf(stderr, "%s\n", errstr);
 	deleteLater();
 }
 
@@ -257,6 +305,9 @@ int main(int argc, char *argv[]) {
 	addr.sin6_port = htons(QCoreApplication::arguments()[3].toInt());
 	c(bind(sock, static_cast<sockaddr *>(static_cast<void *>(&addr)), sizeof addr), "bind");
 	c(listen(sock, 50), "listen");
+	if (QCoreApplication::arguments().count() == 6 && QCoreApplication::arguments().at(5) == "compress") {
+		Connection::enableCompression = true;
+	}
 	for (int *sig = sigs; *sig; sig ++) {
 		struct sigaction action;
 		memset(&action, 0, sizeof action);
