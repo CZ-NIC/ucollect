@@ -44,7 +44,7 @@
 #define PAGE_CACHE_SIZE 20
 
 // Uplink compression level
-#define COMPRESSION_LEVEL (-1)
+#define COMPRESSION_LEVEL 9
 
 // Uplink reconnect times
 // First attempt after 2 seconds
