@@ -90,6 +90,8 @@ struct uplink {
 	size_t login_failure_count;
 	z_stream zstrm_send;
 	z_stream zstrm_recv;
+	uint8_t *inc_buffer;
+	size_t inc_buffer_size;
 };
 
 static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect);
@@ -527,23 +529,15 @@ static void handle_buffer(struct uplink *uplink) {
 	}
 }
 
-static void uplink_read(struct uplink *uplink, uint32_t unused) {
-	(void) unused;
-	ulog(LLOG_DEBUG, "Read on uplink %s:%s (%d)\n", uplink->remote_name, uplink->service, uplink->fd);
-	if (uplink->fd == -1) {
-		ulog(LLOG_WARN, "Spurious read on uplink\n");
-		return;
-	}
-	size_t limit = 50; // Max of 50 messages, so we don't block forever. Arbitrary smallish number.
-	while (limit) {
-		limit --;
-		if (!uplink->buffer) {
-			// No buffer - prepare one for the size
-			uplink->buffer_size = uplink->size_rest = sizeof(uint32_t);
-			uplink->buffer = uplink->buffer_pos = mem_pool_alloc(uplink->buffer_pool, uplink->buffer_size);
-		}
-		// Read once.
-		ssize_t amount = recv(uplink->fd, uplink->buffer_pos, uplink->size_rest, MSG_DONTWAIT);
+#define RDD_END_LOOP 1
+#define RDD_REPEAT 2
+#define RDD_DATA 3
+
+static int read_decompressed_data(struct uplink *uplink, ssize_t *available_output) {
+	// Read is requested and there are no more received data
+	// So, try to read something
+	if (uplink->zstrm_recv.avail_in == 0) {
+		ssize_t amount = recv(uplink->fd, uplink->inc_buffer, uplink->inc_buffer_size, MSG_DONTWAIT);
 		if (amount == -1) {
 			switch (errno) {
 				/*
@@ -556,10 +550,10 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 #if EAGAIN != EWOULDBLOCK
 				case EWOULDBLOCK:
 #endif
-					return;
+					return RDD_END_LOOP;
 				case EINTR:
 					ulog(LLOG_WARN, "Non-fatal error reading from %s:%s (%d): %s\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
-					continue; // We'll just retry next time
+					return RDD_REPEAT; // We'll just retry next time
 				case ECONNRESET:
 					// This is similar to close
 					ulog(LLOG_WARN, "Connection to %s:%s reset, reconnecting\n", uplink->remote_name, uplink->service);
@@ -574,8 +568,75 @@ CLOSED:
 			uplink->reconnect_id = loop_timeout_add(uplink->loop, uplink->reconnect_timeout / 1000, NULL, uplink, reconnect_now);
 			uplink->reconnect_scheduled = true;
 			uplink_disconnect(uplink, false);
-			return; // We are done with this socket.
+			return RDD_END_LOOP; // We are done with this socket.
 		} else {
+			// Some data was read, so update input buffer for stream
+			uplink->zstrm_recv.avail_in = (unsigned int)amount;
+			uplink->zstrm_recv.next_in = (unsigned char *)uplink->inc_buffer;
+
+			if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
+				char *dbg_raw_data = mem_pool_alloc(loop_temp_pool(uplink->loop), amount*4);
+				for (ssize_t i = 0; i < amount; i++) {
+					sprintf(dbg_raw_data+i*3, "%02X ", uplink->inc_buffer[i]);
+				}
+				ulog(LLOG_DEBUG_VERBOSE, "compression: recv: compressed data (size %zu): %s\n", amount, dbg_raw_data);
+			}
+		}
+	}
+
+	// Stream's input buffer was modified only when it was empty.  So, at this
+	// point was last update made by stream itself or buffer was empty and has
+	// been reset
+
+	// Update stream's output buffer according to uplink "request"
+	uplink->zstrm_recv.avail_out = (unsigned int)uplink->size_rest;
+	uplink->zstrm_recv.next_out = (unsigned char *)uplink->buffer_pos;
+
+	int ret = inflate(&(uplink->zstrm_recv), Z_SYNC_FLUSH);
+	if (ret == Z_DATA_ERROR) {
+		// Try to make synchronization
+		inflateSync(&(uplink->zstrm_recv));
+		return RDD_REPEAT;
+	}
+	*available_output = uplink->size_rest - uplink->zstrm_recv.avail_out;
+	return RDD_DATA;
+}
+
+static void uplink_read(struct uplink *uplink, uint32_t unused) {
+	(void) unused;
+	ulog(LLOG_DEBUG, "Read on uplink %s:%s (%d)\n", uplink->remote_name, uplink->service, uplink->fd);
+	if (uplink->fd == -1) {
+		ulog(LLOG_WARN, "Spurious read on uplink\n");
+		return;
+	}
+	size_t limit = 50; // Max of 50 messages, so we don't block forever. Arbitrary smallish number.
+	while (limit) {
+		limit --;
+		if (!uplink->buffer) {
+			// No buffer - prepare one for the size
+			// Do not use this buffer for incoming message, but for output of decompression
+			// Usage in the rest of code could stay unchanged
+			uplink->buffer_size = uplink->size_rest = sizeof(uint32_t);
+			uplink->buffer = uplink->buffer_pos = mem_pool_alloc(uplink->buffer_pool, uplink->buffer_size);
+		}
+
+		ssize_t amount = 0;
+		int ret = read_decompressed_data(uplink, &amount);
+		if (ret == RDD_END_LOOP) {
+			return;
+
+		} else if (ret == RDD_REPEAT) {
+			continue;
+
+		} else {
+			if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
+				char *dbg_raw_data = mem_pool_alloc(loop_temp_pool(uplink->loop), amount*4);
+				dbg_raw_data[0] = '\0'; // Eliminate size == 0 bug
+				for (ssize_t i = 0; i < amount; i++) {
+					sprintf(dbg_raw_data+i*3, "%02X ", uplink->buffer_pos[i]);
+				}
+				ulog(LLOG_DEBUG_VERBOSE, "compression: recv: original data (size %zu): %s\n", amount, dbg_raw_data);
+			}
 			uplink->seen_data = true;
 			uplink->buffer_pos += amount;
 			uplink->size_rest -= amount;
@@ -604,13 +665,17 @@ struct uplink *uplink_create(struct loop *loop) {
 	strm_decompress.opaque = Z_NULL;
 	if (inflateInit(&strm_decompress) != Z_OK)
 		die("Could not initialize zlib (decompression stream)\n");
+	unsigned char *incoming_buffer = mem_pool_alloc(permanent_pool, COMPRESSION_BUFFSIZE);
 	*result = (struct uplink) {
 		.uplink_read = uplink_read,
 		.loop = loop,
 		.buffer_pool = loop_pool_create(loop, NULL, mem_pool_printf(loop_temp_pool(loop), "Buffer pool for uplink")),
 		.fd = -1,
 		.zstrm_send = strm_compress,
-		.zstrm_recv = strm_decompress
+		.zstrm_recv = strm_decompress,
+		.inc_buffer = incoming_buffer,
+		.inc_buffer_size = COMPRESSION_BUFFSIZE
+
 	};
 	loop_uplink_set(loop, result);
 	return result;
