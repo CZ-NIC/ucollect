@@ -187,10 +187,28 @@ void Connection::tryWriteRemote() {
 }
 
 void Connection::outgoing() {
-	QByteArray ar = local.read(1024 * 1024);
+	QByteArray ar = local.read(COMPRESSION_BUFFSIZE);
 	if (ar.isEmpty())
 		return;
-	outBuf += ar;
+	if (Connection::enableCompression) {
+		unsigned int available_output;
+		unsigned char *input_data = (unsigned char *)ar.data();
+		zStreamCompress.next_in = input_data;
+		zStreamCompress.avail_in = ar.size();
+
+		while (zStreamCompress.avail_in > 0) {
+			zStreamCompress.next_out = compressOutBuffer;
+			zStreamCompress.avail_out = COMPRESSION_BUFFSIZE;
+			//TODO: Comment Z_SYNC_FLUSH flag
+			deflate(&zStreamCompress, Z_SYNC_FLUSH);
+			available_output = COMPRESSION_BUFFSIZE - zStreamCompress.avail_out;
+			if (available_output == 0)
+				return;
+			outBuf.append((char *)compressOutBuffer, available_output);
+		}
+	} else {
+		outBuf += ar;
+	}
 	tryWriteRemote();
 	outgoing(); // In case of more data
 	touch();
