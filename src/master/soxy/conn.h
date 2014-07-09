@@ -41,7 +41,6 @@ private:
 	QLocalSocket local;
 	QTimer timer;
 	QByteArray inBuf, outBuf;
-	unsigned char compressInBuffer[COMPRESSION_BUFFSIZE];
 	unsigned char compressOutBuffer[COMPRESSION_BUFFSIZE];
 	unsigned char decompressOutBuffer[COMPRESSION_BUFFSIZE];
 	z_stream zStreamCompress;
