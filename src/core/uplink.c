@@ -732,7 +732,7 @@ static bool send_raw_data(struct uplink *uplink, const uint8_t *buffer, size_t s
 		for (size_t i = 0; i < size; i++) {
 			sprintf(dbg_raw_data+i*3, "%02X ", buffer[i]);
 		}
-		ulog(LLOG_DEBUG_VERBOSE, "compression: compressed data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", dbg_raw_data);
+		ulog(LLOG_DEBUG_VERBOSE, "compression: send: compressed data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", dbg_raw_data);
 	}
 	while (size > 0) {
 		ssize_t amount = send(uplink->fd, buffer, size, MSG_NOSIGNAL | flags);
@@ -775,7 +775,7 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 		for (size_t i = 0; i < size; i++) {
 			sprintf(dbg_raw_data+i*3, "%02X ", buffer[i]);
 		}
-		ulog(LLOG_DEBUG_VERBOSE, "compression: original data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", dbg_raw_data);
+		ulog(LLOG_DEBUG_VERBOSE, "compression: send: original data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", dbg_raw_data);
 	}
 	unsigned int available_output = 0;
 	while (uplink->zstrm_send.avail_in > 0) {
