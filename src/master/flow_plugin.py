@@ -25,8 +25,118 @@ import logging
 import activity
 import database
 import socket
+import re
 
 logger = logging.getLogger(name='flow')
+token_re = re.compile('\(?\s*(.*?)\s*([,\(\)])(.*)')
+
+filter_index = {}
+
+class Filter:
+	def parse(self, code, param):
+		self._code = code
+		return param
+
+	def serialize(self):
+		return self._code
+
+	def token(self, param):
+		match = token_re.match(param)
+		if match:
+			result = (match.group(1), match.group(2), match.group(3))
+		else:
+			result = (None, None, None)
+		logger.trace("Token@%s: %s: %s", self._code, param, repr(result))
+		return result
+
+	def get_subs(self, param):
+		self._subs = []
+		(tok, sep, rest) = self.token(param)
+		while tok is not None:
+			if tok != '':
+				sub = filter_index[tok]()
+				param = sub.parse(tok, rest)
+				self._subs.append(sub)
+			else:
+				param = rest
+			if sep != ')':
+				(tok, sep, rest) = self.token(param)
+			else:
+				tok = None
+		return param
+
+	def get_values(self, param):
+		values = []
+		(tok, sep, rest) = self.token(param)
+		while tok is not None:
+			if tok != '':
+				values.append(tok)
+			param = rest
+			if sep != ')':
+				(tok, sep, rest) = self.token(param)
+			else:
+				tok = None
+		return values, param
+
+	def __str__(self):
+		return self._code
+
+class FilterSubs(Filter):
+	def serialize(self):
+		return self._code + struct.pack('!I', len(self._subs)) + ''.join(map(lambda f: f.serialize(), self._subs))
+
+	def parse(self, code, param):
+		self._code = code
+		return self.get_subs(param)
+
+	def __str__(self):
+		return self._code + '(' + ','.join(map(str, self._subs)) + ')'
+
+class Filter1Sub(FilterSubs):
+	def serialize(self):
+		return self._code + self._subs[0].serialize()
+
+class FilterPort(Filter):
+	def serialize(self):
+		return self._code + struct.pack('!' + str(len(self._ports) + 1) + 'H', len(self._ports), *self._ports)
+
+	def parse(self, code, param):
+		self._code = code
+		(ports, param) = self.get_values(param)
+		self._ports = map(int, ports)
+		return param
+
+	def __str__(self):
+		return self._code + '(' + ','.join(map(str, self._ports)) + ')'
+
+class FilterIP(Filter):
+	def serialize(self):
+		return self._code + struct.pack('!I', len(self._ips)) + ''.join(map(lambda ip: self.__encode_ip(ip), self._ips))
+
+	def __encode_ip(self, ip):
+		try:
+			return struct.pack('!B', 4) + socket.inet_pton(socket.AF_INET, ip)
+		except Exception:
+			return struct.pack('!B', 16) + socket.inet_pton(socket.AF_INET6, ip)
+
+	def parse(self, code, param):
+		self._code = code
+		(self._ips, param) = self.get_values(param)
+		return param
+
+	def __str__(self):
+		return self._code + '(' + ','.join(self._ips) + ')'
+
+filter_index = {
+	'T': Filter,
+	'!': Filter1Sub,
+	'&': FilterSubs,
+	'|': FilterSubs,
+	'i': FilterIP,
+	'I': FilterIP,
+	'p': FilterPort,
+	'P': FilterPort
+}
 
 def store_flows(client, message, expect_conf_id):
 	(header, message) = (message[:12], message[12:])
@@ -83,7 +193,14 @@ class FlowPlugin(plugin.Plugin):
 			self.broadcast(self.__build_config())
 
 	def __build_config(self):
-		return 'C' + struct.pack('!IIII', int(self.__config['version']), int(self.__config['max_flows']), int(self.__config['timeout']), int(self.__config['minpackets']))
+		filter_data = ''
+		fil = self.__config['filter']
+		if fil:
+			f = filter_index[fil[0]]()
+			f.parse(fil[0], fil[1:])
+			logger.debug('Filter: %s', f)
+			filter_data = f.serialize()
+		return 'C' + struct.pack('!IIII', int(self.__config['version']), int(self.__config['max_flows']), int(self.__config['timeout']), int(self.__config['minpackets'])) + filter_data
 
 	def message_from_client(self, message, client):
 		if message[0] == 'C':
