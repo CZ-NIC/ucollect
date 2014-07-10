@@ -287,6 +287,8 @@ static void uplink_connect(struct uplink *uplink) {
 	uplink->ping_scheduled = true;
 	loop_register_fd(uplink->loop, uplink->fd, (struct epoll_handler *) uplink);
 	update_addrinfo(uplink);
+	deflateReset(&(uplink->zstrm_send));
+	inflateReset(&(uplink->zstrm_recv));
 }
 
 static void reconnect_now(struct context *unused, void *data, size_t id_unused) {
