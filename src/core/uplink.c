@@ -353,11 +353,8 @@ static void send_ping(struct context *context_unused, void *data, size_t id_unus
 	if (uplink->pings_unanswered >= PING_COUNT) {
 		ulog(LLOG_ERROR, "Too many pings not answered on %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
 		// Let the connect be called from the loop, so it works even if uplink_disconnect makes a plugin crash
-		assert(!uplink->reconnect_scheduled);
-		uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
-		uplink->reconnect_scheduled = true;
+		uplink_reconnect(uplink);
 		uplink->pings_unanswered = 0;
-		uplink_disconnect(uplink, false);
 		return;
 	}
 	ulog(LLOG_DEBUG, "Sending ping to %s:%s\n", uplink->remote_name, uplink->service);
@@ -597,10 +594,7 @@ CLOSED:
 	int ret = inflate(&(uplink->zstrm_recv), Z_SYNC_FLUSH);
 	if (ret == Z_DATA_ERROR) {
 		// Data corrupted. Reconnect.
-		assert(!uplink->reconnect_scheduled);
-		uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
-		uplink->reconnect_scheduled = true;
-		uplink_disconnect(uplink, false);
+		uplink_reconnect(uplink);
 		return RDD_END_LOOP;
 	}
 	*available_output = uplink->size_rest - uplink->zstrm_recv.avail_out;
@@ -750,10 +744,7 @@ static bool send_raw_data(struct uplink *uplink, const uint8_t *buffer, size_t s
 				case ECONNRESET:
 				case EPIPE:
 					// Lost connection. Reconnect.
-					assert(!uplink->reconnect_scheduled);
-					uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
-					uplink->reconnect_scheduled = true;
-					uplink_disconnect(uplink, false);
+					uplink_reconnect(uplink);
 					return false;
 				default:
 					// Fatal errors
