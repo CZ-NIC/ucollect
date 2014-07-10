@@ -50,6 +50,12 @@ enum auth_status {
 	FAILED
 };
 
+enum rdd_status {
+	RDD_END_LOOP,
+	RDD_REPEAT,
+	RDD_DATA
+};
+
 #define IPV6_LEN 16
 
 struct uplink;
@@ -529,11 +535,7 @@ static void handle_buffer(struct uplink *uplink) {
 	}
 }
 
-#define RDD_END_LOOP 1
-#define RDD_REPEAT 2
-#define RDD_DATA 3
-
-static int read_decompressed_data(struct uplink *uplink, ssize_t *available_output) {
+static enum rdd_status read_decompressed_data(struct uplink *uplink, ssize_t *available_output) {
 	// Read is requested and there are no more received data
 	// So, try to read something
 	if (uplink->zstrm_recv.avail_in == 0) {
@@ -624,7 +626,7 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 		}
 
 		ssize_t amount = 0;
-		int ret = read_decompressed_data(uplink, &amount);
+		enum rdd_status ret = read_decompressed_data(uplink, &amount);
 		if (ret == RDD_END_LOOP) {
 			return;
 
