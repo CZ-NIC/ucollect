@@ -146,9 +146,9 @@ static void parse_ip_match(struct mem_pool *pool, struct filter *dest, const str
 	for (size_t i = 0; i < ip_count; i ++) {
 		if (!*size)
 			D("Short data for IP address size in %c filter at IP #%zu\n", type->code, i);
+		uint8_t ip_size = **desc;
 		(*desc) ++;
 		(*size) --;
-		uint8_t ip_size = **desc;
 		if (*size < ip_size)
 			D("Short data for IP address in %c filter at IP %zu (available %zu, need %hhu)\n", type->code, i, *size, ip_size);
 		*trie_index(dest->trie, *desc, ip_size) = &mark;
