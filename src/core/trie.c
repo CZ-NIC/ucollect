@@ -90,7 +90,7 @@ static size_t lcp(const uint8_t *_1, size_t s1, const uint8_t *_2, size_t s2) {
 static struct trie_data **trie_new_node(struct trie *trie, struct trie_node *parent, const uint8_t *key, size_t key_size, bool insert_new) {
 	if (!insert_new)
 		return NULL;
-	ulog(LLOG_DEBUG_VERBOSE, "Creating new node with %zu key\n", key_size);
+	ulog(LLOG_DEBUG_VERBOSE, "Creating new node with %zu bytes of key\n", key_size);
 	struct trie_node *new = trie_append_pool(parent, trie->pool);
 	new->active = true;
 	trie->active_count ++;

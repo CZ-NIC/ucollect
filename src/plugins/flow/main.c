@@ -44,6 +44,7 @@ struct user_data {
 	uint32_t conf_id;
 	uint32_t max_flows;
 	uint32_t timeout;
+	uint32_t min_packets;
 	size_t timeout_id;
 	bool configured;
 	bool timeout_scheduled;
@@ -54,6 +55,7 @@ struct flush_data {
 	size_t i;
 	size_t *sizes;
 	size_t pos;
+	uint32_t min_packets;
 	uint8_t *output;
 };
 
@@ -61,7 +63,7 @@ static void get_size(const uint8_t *key, size_t key_size, struct trie_data *flow
 	struct flush_data *data = userdata;
 	(void)key;
 	(void)key_size;
-	if (flow) {
+	if (flow && flow->flow.count[0] + flow->flow.count[1] >= data->min_packets) {
 		data->size += data->sizes[data->i ++] = flow_size(&flow->flow);
 	} else {
 		// Empty flow, created when the limit is reached.
@@ -73,7 +75,7 @@ static void format_flow(const uint8_t *key, size_t key_size, struct trie_data *f
 	struct flush_data *data = userdata;
 	(void)key;
 	(void)key_size;
-	if (flow) {
+	if (flow && flow->flow.count[0] + flow->flow.count[1] >= data->min_packets) {
 		flow_render(data->output + data->pos, data->sizes[data->i], &flow->flow);
 		data->pos += data->sizes[data->i ++];
 	} else {
@@ -87,7 +89,8 @@ static void flush(struct context *context) {
 	size_t header = sizeof(char) + sizeof(uint32_t) + sizeof(uint64_t);
 	struct flush_data d = {
 		.sizes = mem_pool_alloc(context->temp_pool, trie_size(u->trie) * sizeof *d.sizes),
-		.pos = header
+		.pos = header,
+		.min_packets = u->min_packets
 	};
 	ulog(LLOG_INFO, "Sending %zu flows\n", trie_size(u->trie));
 	trie_walk(u->trie, get_size, &d, context->temp_pool);
@@ -127,7 +130,7 @@ static void schedule_timeout(struct context *context) {
 	u->timeout_scheduled = true;
 }
 
-static void configure(struct context *context, uint32_t conf_id, uint32_t max_flows, uint32_t timeout, const uint8_t *filter_desc, size_t filter_size) {
+static void configure(struct context *context, uint32_t conf_id, uint32_t max_flows, uint32_t timeout, uint32_t min_packets, const uint8_t *filter_desc, size_t filter_size) {
 	ulog(LLOG_INFO, "Received configuration %u (max. %u flows, %u ms timeout)\n", (unsigned)conf_id, (unsigned)max_flows, (unsigned)timeout);
 	struct user_data *u = context->user_data;
 	if (u->configured) {
@@ -142,6 +145,7 @@ static void configure(struct context *context, uint32_t conf_id, uint32_t max_fl
 	u->timeout = timeout;
 	schedule_timeout(context);
 	u->filter = filter_parse(u->conf_pool, filter_desc, filter_size);
+	u->min_packets = min_packets;
 	u->configured = true;
 }
 
@@ -151,12 +155,12 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 		return; // We are just starting up and waiting for server to send us what to collect
 	while (info->next)
 		info = info->next;
-	if (!filter_apply(u->filter, info))
-		return; // This packet is not interesting
 	if (info->direction >= DIR_UNKNOWN)
 		return; // Broken packet, we don't want that
 	if (info->layer != 'I' || (info->ip_protocol != 4 && info->ip_protocol != 6) || (info->app_protocol != 'T' && info->app_protocol != 'U'))
 		return; // Something we don't track
+	if (!filter_apply(u->filter, info))
+		return; // This packet is not interesting
 	size_t key_size;
 	uint8_t *key = flow_key(info, &key_size, context->temp_pool);
 	struct trie_data **data = trie_index(u->trie, key, key_size);
@@ -205,13 +209,14 @@ struct config {
 	uint32_t conf_id;
 	uint32_t max_flows;
 	uint32_t timeout;
+	uint32_t min_packets;
 };
 
 static void config_parse(struct context *context, const uint8_t *data, size_t length) {
 	struct config config;
 	assert(length >= sizeof config);
 	memcpy(&config, data, sizeof config); // Copy out, because of alignment
-	configure(context, ntohl(config.conf_id), ntohl(config.max_flows), ntohl(config.timeout), data + sizeof config, length - sizeof config);
+	configure(context, ntohl(config.conf_id), ntohl(config.max_flows), ntohl(config.timeout), ntohl(config.min_packets), data + sizeof config, length - sizeof config);
 }
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
