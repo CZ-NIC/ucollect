@@ -132,7 +132,8 @@ void Connection::incoming() {
 			zStreamDecompress.avail_out = COMPRESSION_BUFFSIZE;
 			int ret = inflate(&zStreamDecompress, Z_SYNC_FLUSH);
 			if (ret == Z_DATA_ERROR) {
-				inflateSync(&zStreamDecompress);
+				deleteLater();
+				return;
 			}
 			available_output = COMPRESSION_BUFFSIZE - zStreamDecompress.avail_out;
 			if (available_output == 0)

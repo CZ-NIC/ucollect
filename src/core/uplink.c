@@ -594,9 +594,12 @@ CLOSED:
 
 	int ret = inflate(&(uplink->zstrm_recv), Z_SYNC_FLUSH);
 	if (ret == Z_DATA_ERROR) {
-		// Try to make synchronization
-		inflateSync(&(uplink->zstrm_recv));
-		return RDD_REPEAT;
+		// Data corrupted. Reconnect.
+		assert(!uplink->reconnect_scheduled);
+		uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
+		uplink->reconnect_scheduled = true;
+		uplink_disconnect(uplink, false);
+		return RDD_END_LOOP;
 	}
 	*available_output = uplink->size_rest - uplink->zstrm_recv.avail_out;
 	return RDD_DATA;
