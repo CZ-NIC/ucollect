@@ -28,6 +28,8 @@
 #include <string.h>
 #include <arpa/inet.h>
 
+#define D(MSG, ...) do { ulog(LLOG_ERROR, MSG, __VA_ARGS__); abort(); } while (0)
+
 typedef bool (*filter_fun)(const struct filter *filter, const struct packet_info *packet);
 struct filter_type;
 typedef void (*filter_parser)(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size);
@@ -114,7 +116,7 @@ static void parse_sub(struct mem_pool *pool, struct filter *dest, const struct f
 static void parse_many_subs(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
 	uint32_t sub_count;
 	if (*size < sizeof sub_count)
-		die("Short data for number of subfilters for %c\n", type->code);
+		D("Short data for number of subfilters for %c\n", type->code);
 	memcpy(&sub_count, *desc, sizeof sub_count);
 	(*desc) += sizeof sub_count;
 	(*size) -= sizeof sub_count;
@@ -135,7 +137,7 @@ static struct trie_data mark; // To have a valid pointer to something, not used 
 static void parse_ip_match(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
 	uint32_t ip_count;
 	if (*size < sizeof ip_count)
-		die("Short data for number of IP addresses in %c filter, only %zu available\n", type->code, *size);
+		D("Short data for number of IP addresses in %c filter, only %zu available\n", type->code, *size);
 	memcpy(&ip_count, *desc, sizeof ip_count);
 	(*desc) += sizeof ip_count;
 	(*size) -= sizeof ip_count;
@@ -143,12 +145,12 @@ static void parse_ip_match(struct mem_pool *pool, struct filter *dest, const str
 	dest->trie = trie_alloc(pool);
 	for (size_t i = 0; i < ip_count; i ++) {
 		if (!*size)
-			die("Short data for IP address size in %c filter at IP #%zu\n", type->code, i);
+			D("Short data for IP address size in %c filter at IP #%zu\n", type->code, i);
 		(*desc) ++;
 		(*size) --;
 		uint8_t ip_size = **desc;
 		if (*size < ip_size)
-			die("Short data for IP address in %c filter at IP %zu (available %zu, need %hhu)\n", type->code, i, *size, ip_size);
+			D("Short data for IP address in %c filter at IP %zu (available %zu, need %hhu)\n", type->code, i, *size, ip_size);
 		*trie_index(dest->trie, *desc, ip_size) = &mark;
 		(*desc) += ip_size;
 		(*size) -= ip_size;
@@ -158,7 +160,7 @@ static void parse_ip_match(struct mem_pool *pool, struct filter *dest, const str
 static void parse_port_match(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
 	uint16_t port_count; // Only 16 bit, there can't be more than that much different ports anyway O:-)
 	if (*size < sizeof port_count)
-		die("Short data for number of ports in %c filter, only %zu available\n", type->code, *size);
+		D("Short data for number of ports in %c filter, only %zu available\n", type->code, *size);
 	memcpy(&port_count, *desc, sizeof port_count);
 	(*desc) += sizeof port_count;
 	(*size) -= sizeof port_count;
@@ -167,7 +169,7 @@ static void parse_port_match(struct mem_pool *pool, struct filter *dest, const s
 	for (size_t i = 0; i < port_count; i ++) {
 		uint16_t port;
 		if (*size < sizeof port)
-			die("Short data for port in %c filter at port #%zu, only %zu available\n", type->code, i, *size);
+			D("Short data for port in %c filter at port #%zu, only %zu available\n", type->code, i, *size);
 		memcpy(&port, *desc, sizeof port);
 		(*desc) += sizeof port;
 		(*size) -= sizeof port;
@@ -222,8 +224,10 @@ bool filter_apply(const struct filter *filter, const struct packet_info *packet)
 }
 
 static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size) {
-	if (!*size)
-		die("Short data reading filter code\n");
+	if (!*size) {
+		ulog(LLOG_ERROR, "Short data reading filter code\n");
+		abort();
+	}
 	uint8_t code = **desc;
 	(*desc) ++;
 	(*size) --;
@@ -235,7 +239,7 @@ static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t 
 				types[i].parser(pool, dest, &types[i], desc, size);
 			return;
 		}
-	die("Unknown filter code %c\n", code);
+	D("Unknown filter code %c\n", code);
 }
 
 struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t size) {
@@ -249,7 +253,7 @@ struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t s
 		size_t size = 1;
 		parse_one(pool, result, &d, &size);
 		if (size != 0)
-			die("Extra data in filter: %zu left\n", size);
+			D("Extra data in filter: %zu left\n", size);
 	}
 	return result;
 }
