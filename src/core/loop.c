@@ -1026,7 +1026,7 @@ size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *conte
 		.data = data,
 		.id = id ++
 	};
-	ulog(LLOG_DEBUG, "Adding timeout for %lu seconds, expected to fire at %llu, now %llu as ID %zu\n", (unsigned long) after,  (unsigned long long) when, (unsigned long long) loop->now, loop->timeouts[pos].id);
+	ulog(LLOG_DEBUG, "Adding timeout for %lu milliseconds, expected to fire at %llu, now %llu as ID %zu\n", (unsigned long) after,  (unsigned long long) when, (unsigned long long) loop->now, loop->timeouts[pos].id);
 	assert(loop->now < when);
 	loop->timeout_count ++;
 	return loop->timeouts[pos].id;

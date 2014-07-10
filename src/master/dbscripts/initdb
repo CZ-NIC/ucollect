@@ -254,10 +254,10 @@ INSERT INTO starttls_protos (id, name) VALUES (0, ''), (1, 'smtp'), (2, 'pop3'),
 CREATE TABLE config (
 	plugin TEXT NOT NULL,
 	name TEXT NOT NULL,
-	version INT NOT NULL,
-	value TEXT NOT NULL
+	value TEXT NOT NULL,
+	UNIQUE(plugin, name)
 );
-INSERT INTO config (plugin, name, version, value) VALUES ('flow', 'max_flows', 1, '5000'), ('flow', 'timeout', 1, '1800000'), ('flow', 'minpackets', 1, '5');
+INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1');
 
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;

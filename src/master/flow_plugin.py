@@ -18,6 +18,7 @@
 #
 
 from twisted.internet import reactor
+from twisted.internet.task import LoopingCall
 import plugin
 import struct
 import logging
@@ -68,19 +69,30 @@ class FlowPlugin(plugin.Plugin):
 	"""
 	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
-		self.__conf_id = int(config['version'])
-		self.__max_flows = int(config['max_flows'])
-		self.__timeout = int(config['timeout']) * 1000
-		self.__min_packets = int(config['minpackets'])
+		self.__config = {}
+		self.__conf_checker = LoopingCall(self.__check_conf)
+		self.__conf_checker.start(60, True)
+
+	def __check_conf(self):
+		with database.transaction() as t:
+			t.execute("SELECT name, value FROM config WHERE plugin = 'flow'")
+			config = dict(t.fetchall())
+		if self.__config != config:
+			logger.info('Config changed, broadcasting')
+			self.__config = config
+			self.broadcast(self.__build_config())
+
+	def __build_config(self):
+		return 'C' + struct.pack('!IIII', int(self.__config['version']), int(self.__config['max_flows']), int(self.__config['timeout']), int(self.__config['minpackets']))
 
 	def message_from_client(self, message, client):
 		if message[0] == 'C':
 			logger.debug('Sending config to %s', client)
-			self.send('C' + struct.pack('!IIII', self.__conf_id, self.__max_flows, self.__timeout, self.__min_packets), client)
+			self.send(self.__build_config(), client)
 		elif message[0] == 'D':
 			logger.debug('Flows from %s', client)
 			activity.log_activity(client, 'flow')
-			reactor.callInThread(store_flows, client, message[1:], self.__conf_id)
+			reactor.callInThread(store_flows, client, message[1:], int(self.__config['version']))
 
 	def name(self):
 		return 'Flow'
