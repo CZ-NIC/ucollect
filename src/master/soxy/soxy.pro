@@ -2,7 +2,7 @@ TEMPLATE = app
 TARGET = soxy
 DEPENDPATH += .
 INCLUDEPATH += .
-LIBS = -lz
+LIBS += -lz
 
 # Input
 SOURCES += main.cpp
