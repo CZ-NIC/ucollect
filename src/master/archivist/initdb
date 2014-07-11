@@ -183,7 +183,7 @@ CREATE TABLE cert_histograms (
 	from_group INT NOT NULL,
 	cert TEXT NOT NULL,
 	count SMALLINT NOT NULL,
-	UNIQUE(batch, request, from_group),
+	UNIQUE(batch, request, from_group, cert),
 	FOREIGN KEY (request) REFERENCES cert_requests(id) ON DELETE CASCADE,
 	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
 );

@@ -24,6 +24,7 @@ my %config_tables = (
 	activity_types => [qw(id name)],
 	clients => [qw(id name)],
 	ping_requests => [qw(id host proto amount size)],
+	cert_requests => [qw(id host port starttls want_cert want_chain want_detais want_params)],
 );
 
 while (my($table, $columns) = each %config_tables) {
@@ -228,4 +229,26 @@ if (fork == 0) {
 	exit;
 }
 
-wait for (1..5);
+if (fork == 0) {
+	my $source = connect_db 'source';
+	my $destination = connect_db 'destination';
+	my (%max_batch) = $destination->selectrow_array('SELECT COALESCE(MAX(cert_histograms.batch), TO_TIMESTAMP(0)) FROM cert_histograms');
+	print "Dropping certificates from batch $max_batch\n";
+	$destination->do('DELETE FROM cert_histograms WHERE cert_histograms.batch = ?', undef, $max_batch);
+	print "Getting certificates not older than $max_batch\n";
+	my $store_hist = $destination->prepare('INSERT INTO cert_histograms (batch, request, from_group, cert, count) VALUES (?, ?, ?, ?, ?)');
+	my $get_hist = $source->prepare('SELECT batch, request, in_group, value, count(certs.client) FROM certs JOIN cert_chains ON cert_chains.cert = certs.id JOIN group_members ON group_members.client = certs.client WHERE cert_chains.ord = 0 AND batch >= ? GROUP BY group_members.in_group, certs.request, cert_chains.value, batch');
+	my $hist_count = 0;
+	$get_hist->execute($max_batch);
+	$store_hist->execute_for_fetch(sub {
+		my $data = $get_hist->fetchrow_arrayref;
+		$hist_count ++ if $data;
+		return $data;
+	});
+	print "Stored $hist_count certificate histograms\n";
+	$destination->commit;
+	$source->commit;
+	exit;
+}
+
+wait for (1..6);
