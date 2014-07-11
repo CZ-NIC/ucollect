@@ -129,6 +129,7 @@ class FilterIP(Filter):
 
 filter_index = {
 	'T': Filter,
+	'F': Filter,
 	'!': Filter1Sub,
 	'&': FilterSubs,
 	'|': FilterSubs,
