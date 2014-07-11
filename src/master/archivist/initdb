@@ -167,6 +167,27 @@ CREATE TABLE ping_ips (
 	UNIQUE(ping_stat, ip)
 );
 
+CREATE TABLE cert_requests (
+	id INT PRIMARY KEY NOT NULL,
+	host TEXT NOT NULL,
+	port INT NOT NULL,
+	starttls SMALLINT NOT NULL,
+	want_cert BOOL NOT NULL,
+	want_chain BOOL NOT NULL,
+	want_details BOOL NOT NULL,
+	want_params BOOL NOT NULL
+);
+CREATE TABLE cert_histograms (
+	batch TIMESTAMP NOT NULL,
+	request INT NOT NULL,
+	from_group INT NOT NULL,
+	cert TEXT NOT NULL,
+	count SMALLINT NOT NULL,
+	UNIQUE(batch, request, from_group),
+	FOREIGN KEY (request) REFERENCES cert_requests(id) ON DELETE CASCADE,
+	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
+);
+
 GRANT INSERT ON anomalies TO archivist;
 GRANT SELECT (timestamp) ON anomalies TO archivist;
 GRANT INSERT ON anomaly_types TO archivist;
@@ -196,5 +217,10 @@ GRANT DELETE ON ping_stats TO archivist;
 GRANT INSERT ON ping_stats TO archivist;
 GRANT ALL ON ping_stat_id TO archivist;
 GRANT INSERT ON ping_ips TO archivist;
+GRANT INSERT ON cert_requests TO archivist;
+GRANT SELECT ON cert_requests TO archivist;
+GRANT INSERT ON cert_histograms TO archivist;
+GRANT DELETE ON cert_histograms TO archivist;
+GRANT SELECT (batch, id) ON cert_histograms TO archivist;
 COMMIT;
 END_SQL
