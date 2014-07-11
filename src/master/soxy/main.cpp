@@ -204,7 +204,6 @@ void Connection::outgoing() {
 		while (zStreamCompress.avail_in > 0) {
 			zStreamCompress.next_out = compressOutBuffer;
 			zStreamCompress.avail_out = COMPRESSION_BUFFSIZE;
-			//TODO: Comment Z_SYNC_FLUSH flag
 			deflate(&zStreamCompress, Z_SYNC_FLUSH);
 			available_output = COMPRESSION_BUFFSIZE - zStreamCompress.avail_out;
 			if (available_output == 0)

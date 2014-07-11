@@ -632,8 +632,6 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 		limit --;
 		if (!uplink->buffer) {
 			// No buffer - prepare one for the size
-			// Do not use this buffer for incoming message, but for output of decompression
-			// Usage in the rest of code could stay unchanged
 			uplink->buffer_size = uplink->size_rest = sizeof(uint32_t);
 			uplink->buffer = uplink->buffer_pos = mem_pool_alloc(uplink->buffer_pool, uplink->buffer_size);
 		}
