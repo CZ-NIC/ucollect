@@ -3,6 +3,7 @@
 psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
 BEGIN;
 
+DROP TABLE IF EXISTS bandwidth;
 DROP TABLE IF EXISTS cert_histograms;
 DROP TABLE IF EXISTS cert_requests;
 DROP TABLE IF EXISTS anomalies;
@@ -190,6 +191,22 @@ CREATE TABLE cert_histograms (
 	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
 );
 
+CREATE TABLE bandwidth (
+	timestamp TIMESTAMP NOT NULL,
+	from_group INT NOT NULL,
+	win_len INT NOT NULL,
+	in_min DOUBLE NOT NULL,
+	out_min DOUBLE NOT NULL,
+	in_max DOUBLE NOT NULL,
+	out_max DOUBLE NOT NULL,
+	in_avg DOUBLE NOT NULL,
+	out_avg DOUBLE NOT NULL,
+	in_var DOUBLE NOT NULL,
+	out_var DOUBLE NOT NULL,
+	UNIQUE(timestamp, from_group, win_len),
+	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
+);
+
 GRANT INSERT ON anomalies TO archivist;
 GRANT SELECT (timestamp) ON anomalies TO archivist;
 GRANT INSERT ON anomaly_types TO archivist;
@@ -224,5 +241,7 @@ GRANT SELECT ON cert_requests TO archivist;
 GRANT INSERT ON cert_histograms TO archivist;
 GRANT DELETE ON cert_histograms TO archivist;
 GRANT SELECT (batch, id) ON cert_histograms TO archivist;
+GRANT SELECT (timestamp) ON bandwidth TO archivist;
+GRANT INSERT ON bandwidth TO archivist;
 COMMIT;
 END_SQL
