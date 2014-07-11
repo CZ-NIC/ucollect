@@ -3,6 +3,8 @@
 psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
 BEGIN;
 
+DROP TABLE IF EXISTS cert_histograms;
+DROP TABLE IF EXISTS cert_requests;
 DROP TABLE IF EXISTS anomalies;
 DROP TABLE IF EXISTS anomaly_types;
 DROP TABLE IF EXISTS counts;
