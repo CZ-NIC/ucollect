@@ -54,6 +54,12 @@ static bool filter_true(const struct filter *filter, const struct packet_info *p
 	return true;
 }
 
+static bool filter_false(const struct filter *filter, const struct packet_info *packet) {
+	(void)filter;
+	(void)packet;
+	return false;
+}
+
 static bool filter_not(const struct filter *filter, const struct packet_info *packet) {
 	const struct filter *sub = filter->subfilters;
 	return !sub->function(sub, packet);
@@ -181,6 +187,10 @@ static const struct filter_type types[] = {
 	{ // "const true"
 		.function = filter_true,
 		.code = 'T'
+	},
+	{ // "const false"
+		.function = filter_false,
+		.code = 'F'
 	},
 	{
 		.function = filter_not,
