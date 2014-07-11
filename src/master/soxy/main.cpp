@@ -85,9 +85,13 @@ Connection::Connection(int sock, QSslConfiguration &config) :
 		zStreamDecompress.opaque = Z_NULL;
 		if (deflateInit(&zStreamCompress, COMPRESSION_LEVEL) != Z_OK) {
 			error("Could not initialize zlib (compression stream)");
+			deleteLater();
+			return;
 		}
 		if (inflateInit(&zStreamDecompress) != Z_OK) {
 			error("Could not initialize zlib (decompression stream)");
+			deleteLater();
+			return;
 		}
 	}
 	connect(&timer, SIGNAL(timeout()), SLOT(deleteLater()));
