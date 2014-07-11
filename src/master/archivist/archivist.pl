@@ -251,4 +251,24 @@ if (fork == 0) {
 	exit;
 }
 
-wait for (1..6);
+if (fork == 0) {
+	my $source = connect_db 'source';
+	my $destination = connect_db 'destination';
+	my ($max_time) = $destination->selectrow_array('SELECT COALESCE(MAX(bandwidth.timestamp), TO_TIMESTAMP(0)) FROM bandwidth');
+	print "Getting bandwith records newer than $max_time\n";
+	my $store_band = $destination->prepare('INSERT INTO bandwith (timestamp, from_group, win_len, in_min, out_min, in_max, out_max, in_avg, out_avg, in_var, out_var) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+	my $get_band = $source->prepare('SELECT timestamp, in_group, win_len, MIN(input), MIN(output), MAX(input), MAX(output), AVG(input), AVG(output), STDDEV_POP(input), STDDEV_POP(output) FROM (SELECT timestamp, client, win_len, 1000000.0 * in_max / win_len AS input, 1000000.0 * out_max / win_len AS output FROM bandwidth) AS b JOIN group_members ON group_members.client = b.client GROUP BY timestamp, in_group, win_len');
+	my $band_count = 0;
+	$get_band->execute($max_time);
+	$store_band->execute_for_fetch(sub {
+		my $data = $get_band->fetchrow_arrayref;
+		$band_count ++ if $data;
+		return $data;
+	});
+	print "Stored $band_count bandwidth records\n";
+	$destination->commit;
+	$source->commit;
+	exit;
+}
+
+wait for (1..7);
