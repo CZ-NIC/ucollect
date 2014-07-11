@@ -535,6 +535,24 @@ static void handle_buffer(struct uplink *uplink) {
 }
 
 static enum rdd_status read_decompressed_data(struct uplink *uplink, ssize_t *available_output) {
+	// Update stream's output buffer according to uplink "request"
+	uplink->zstrm_recv.avail_out = (unsigned int)uplink->size_rest;
+	uplink->zstrm_recv.next_out = (unsigned char *)uplink->buffer_pos;
+
+	// Try to read from buffers, they can have some data
+	int ret = inflate(&(uplink->zstrm_recv), Z_SYNC_FLUSH);
+	if (ret == Z_DATA_ERROR) {
+		// Data corrupted. Reconnect.
+		uplink_reconnect(uplink);
+		return RDD_END_LOOP;
+	}
+	*available_output = uplink->size_rest - uplink->zstrm_recv.avail_out;
+
+	// There was some data in deflate or receive buffer
+	if (*available_output != 0) {
+		return RDD_DATA;
+	}
+
 	// Read is requested and there are no more received data
 	// So, try to read something
 	if (uplink->zstrm_recv.avail_in == 0) {
@@ -585,21 +603,20 @@ CLOSED:
 		}
 	}
 
-	// Stream's input buffer was modified only when it was empty.  So, at this
-	// point was last update made by stream itself or buffer was empty and has
-	// been reset
-
-	// Update stream's output buffer according to uplink "request"
-	uplink->zstrm_recv.avail_out = (unsigned int)uplink->size_rest;
-	uplink->zstrm_recv.next_out = (unsigned char *)uplink->buffer_pos;
-
-	int ret = inflate(&(uplink->zstrm_recv), Z_SYNC_FLUSH);
+	// First time had inflate empty buffer - try it again after read
+	ret = inflate(&(uplink->zstrm_recv), Z_SYNC_FLUSH);
 	if (ret == Z_DATA_ERROR) {
 		// Data corrupted. Reconnect.
 		uplink_reconnect(uplink);
 		return RDD_END_LOOP;
 	}
 	*available_output = uplink->size_rest - uplink->zstrm_recv.avail_out;
+
+	if (*available_output == 0) {
+		// The same case as EAGAIN;
+		return RDD_END_LOOP;
+	}
+
 	return RDD_DATA;
 }
 
