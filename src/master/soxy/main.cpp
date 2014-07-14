@@ -85,12 +85,10 @@ Connection::Connection(int sock, QSslConfiguration &config) :
 		zStreamDecompress.opaque = Z_NULL;
 		if (deflateInit(&zStreamCompress, COMPRESSION_LEVEL) != Z_OK) {
 			error("Could not initialize zlib (compression stream)");
-			deleteLater();
 			return;
 		}
 		if (inflateInit(&zStreamDecompress) != Z_OK) {
 			error("Could not initialize zlib (decompression stream)");
-			deleteLater();
 			return;
 		}
 	}
@@ -169,7 +167,7 @@ void Connection::error(const QList<QSslError> &errors) {
 	deleteLater();
 }
 
-void Connection::error(const char * errstr) {
+void Connection::error(const char *errstr) {
 	fprintf(stderr, "%s\n", errstr);
 	deleteLater();
 }
