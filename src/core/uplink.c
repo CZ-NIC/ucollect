@@ -679,6 +679,7 @@ struct uplink *uplink_create(struct loop *loop) {
 	strm_decompress.zalloc = Z_NULL;
 	strm_decompress.zfree = Z_NULL;
 	strm_decompress.opaque = Z_NULL;
+	strm_decompress.avail_in = 0;
 	if (inflateInit(&strm_decompress) != Z_OK)
 		die("Could not initialize zlib (decompression stream)\n");
 	unsigned char *incoming_buffer = mem_pool_alloc(permanent_pool, COMPRESSION_BUFFSIZE);
