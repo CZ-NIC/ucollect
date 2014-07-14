@@ -168,11 +168,11 @@ def store_flows(client, message, expect_conf_id):
 			proto = 'T'
 		logger.trace("Flow times: %s, %s, %s, %s, %s (%s/%s packets)", calib_time, tbin, tbout, tein, teout, cin, cout);
 		if cin:
-			values.append((arem, aloc, prem, ploc, proto, calib_time - tbin, calib_time - tein, sin, cin, client))
+			values.append((arem, aloc, prem, ploc, proto, calib_time - tbin, calib_time - tein, calib_time - tbout if cout else None, sin, cin, True, client))
 		if cout:
-			values.append((aloc, arem, ploc, prem, proto, calib_time - tbout, calib_time - teout, sout, cout, client))
+			values.append((aloc, arem, ploc, prem, proto, calib_time - tbout, calib_time - teout, calib_time - tbin if cin else None, sout, cout, False, client))
 	with database.transaction() as t:
-		t.executemany("INSERT INTO flows (client, ip_from, ip_to, port_from, port_to, proto, start, stop, size, count) SELECT clients.id, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', %s, %s FROM clients WHERE clients.name = %s", values)
+		t.executemany("INSERT INTO flows (client, ip_from, ip_to, port_from, port_to, proto, start, stop, opposite_start, size, count, inbound) SELECT clients.id, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', %s, %s, %s FROM clients WHERE clients.name = %s", values)
 
 class FlowPlugin(plugin.Plugin):
 	"""

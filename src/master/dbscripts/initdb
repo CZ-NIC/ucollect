@@ -178,8 +178,10 @@ CREATE TABLE flows (
 	proto CHAR(1) NOT NULL,
 	start TIMESTAMP NOT NULL,
 	stop TIMESTAMP NOT NULL,
+	opposite_start TIMESTAMP,
 	size BIGINT NOT NULL,
 	count INT NOT NULL,
+	inbound BOOL NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start <= stop)
