@@ -245,6 +245,7 @@ static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t 
 		if (types[i].code == code) {
 			memset(dest, 0, sizeof *dest);
 			dest->function = types[i].function;
+			dest->type = &types[i];
 			if (types[i].parser)
 				types[i].parser(pool, dest, &types[i], desc, size);
 			return;
