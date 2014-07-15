@@ -132,11 +132,11 @@ class SniffPlugin(plugin.Plugin):
 		for tasker in self.__taskers:
 			try:
 				tasks = tasker.check_schedule()
+				for task in tasks:
+					task.code = tasker.code()
+					self.__start_task(task)
 			except Exception as e:
 				logger.error("Failed to check schedule of %s: %s", tasker.code(), e)
-			for task in tasks:
-				task.code = tasker.code()
-				self.__start_task(task)
 
 	def name(self):
 		return "Sniff"
