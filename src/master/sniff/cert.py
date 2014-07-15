@@ -81,6 +81,7 @@ class Cert:
 	def __init__(self, config):
 		self.__last_task = 0
 		self.__task_interval = int(config['cert_interval'])
+		self.__batchsize = int(config['cert_batchsize'])
 
 	def code(self):
 		return 'C'
@@ -92,15 +93,20 @@ class Cert:
 			host_count = 0
 			hosts = []
 			with database.transaction() as t:
-				t.execute('SELECT id, host, port, starttls, want_cert, want_chain, want_details, want_params FROM cert_requests WHERE active')
+				t.execute("SELECT id, host, port, starttls, want_cert, want_chain, want_details, want_params FROM cert_requests WHERE active AND lastrun + interval < CURRENT_TIMESTAMP AT TIME ZONE 'UTC' ORDER BY lastrun + interval LIMIT %s", (self.__batchsize,))
 				requests = t.fetchall()
 			for request in requests:
 				(rid, host, port, starttls, want_cert, want_chain, want_details, want_params) = request
 				host_count += 1
 				encoded += encode_host(host, port, starttls, want_cert, want_chain, want_details, want_params)
 				hosts.append((rid, want_details, want_params))
+				t.execute("UPDATE cert_requests SET lastrun = CURRENT_TIMESTAMP AT TIME ZONE 'UTC' WHERE id = %s", (rid,))
 			self.__last_task = now
-			return [CertTask(struct.pack('!H', host_count) + encoded, hosts)]
+			if hosts:
+				return [CertTask(struct.pack('!H', host_count) + encoded, hosts)]
+			else:
+				logger.debug('No hosts to ask for certificates yet')
+				return []
 		else:
 			logger.debug('Not asking for certs yet')
 			return []
