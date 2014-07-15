@@ -130,7 +130,10 @@ class SniffPlugin(plugin.Plugin):
 		Let the taskers check if anything should be started.
 		"""
 		for tasker in self.__taskers:
-			tasks = tasker.check_schedule()
+			try:
+				tasks = tasker.check_schedule()
+			except Exception as e:
+				logger.error("Failed to check schedule of %s: %s", tasker.code(), e)
 			for task in tasks:
 				task.code = tasker.code()
 				self.__start_task(task)
