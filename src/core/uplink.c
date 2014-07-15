@@ -542,6 +542,7 @@ static enum rdd_status read_decompressed_data(struct uplink *uplink, ssize_t *av
 	// Try to read from buffers, they can have some data
 	int ret = inflate(&(uplink->zstrm_recv), Z_SYNC_FLUSH);
 	if (ret == Z_DATA_ERROR) {
+		ulog(LLOG_ERROR, "Data for decompression are corrupted. Reconnecting.");
 		// Data corrupted. Reconnect.
 		uplink_reconnect(uplink);
 		return RDD_END_LOOP;
