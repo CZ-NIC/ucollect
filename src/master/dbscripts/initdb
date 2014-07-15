@@ -146,6 +146,8 @@ CREATE TABLE ping_requests (
 	amount SMALLINT NOT NULL,
 	size SMALLINT NOT NULL,
 	active BOOLEAN NOT NULL,
+	lastrun TIMESTAMP NOT NULL DEFAULT TO_TIMESTAMP(0),
+	interval INTERVAL NOT NULL DEFAULT '6 hours',
 	UNIQUE(host, proto, amount, size)
 );
 CREATE SEQUENCE ping_requests_id OWNED BY ping_requests.id;
@@ -203,6 +205,8 @@ CREATE TABLE cert_requests (
 	want_chain BOOL NOT NULL DEFAULT false,
 	want_details BOOL NOT NULL DEFAULT true,
 	want_params BOOL NOT NULL DEFAULT true,
+	lastrun TIMESTAMP NOT NULL DEFAULT TO_TIMESTAMP(0),
+	interval INTERVAL NOT NULL DEFAULT '1 day',
 	FOREIGN KEY (starttls) REFERENCES starttls_protos(id),
 	UNIQUE(host, port)
 );
@@ -280,7 +284,9 @@ GRANT INSERT ON counts TO $DBUPDATER;
 GRANT INSERT ON capture_stats TO $DBUPDATER;
 GRANT INSERT ON pings TO $DBUPDATER;
 GRANT SELECT ON ping_requests TO $DBUPDATER;
+GRANT UPDATE (lastrun) ON ping_requests TO $DBUPDATER;
 GRANT SELECT ON cert_requests TO $DBUPDATER;
+GRANT UPDATE (lastrun) ON cert_requests TO $DBUPDATER;
 GRANT ALL ON certs_id TO $DBUPDATER;
 GRANT INSERT ON certs TO $DBUPDATER;
 GRANT INSERT ON cert_chains TO $DBUPDATER;
