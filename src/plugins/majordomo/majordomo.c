@@ -306,7 +306,7 @@ static void dump(struct context *context) {
 	}
 
 	//Cleanup
-	//Reiniti lists
+	//Reinit lists
 	d->communication->head = NULL;
 	d->communication->tail = NULL;
 	d->communication->count = 0;
@@ -344,10 +344,10 @@ void init(struct context *context) {
 }
 
 void destroy(struct context *context) {
-	//Cancel scheduled dump and do it manualy
+	//Cancel scheduled dump and do it manually
 	loop_timeout_cancel(context->loop, context->user_data->timeout);
 	dump(context);
-	//This command shoul'd be the last
+	//This command should be the last
 	mem_pool_destroy(context->user_data->list_pool);
 }
 
