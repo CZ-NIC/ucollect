@@ -27,6 +27,7 @@
 #include "../../core/util.h"
 #include "../../core/loop.h"
 #include "../../core/packet.h"
+#include "../../core/trie.h"
 
 #include <stdbool.h>
 #include <assert.h>
@@ -34,27 +35,10 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 
-// A list to store the keys in one generation
-struct key {
-	struct key *next;
-	uint8_t data[];
-};
-
-struct keys {
-	struct key *head, *tail;
-};
-
-#define LIST_NODE struct key
-#define LIST_BASE struct keys
-#define LIST_NAME(X) keys_##X
-#define LIST_WANT_LFOR
-#define LIST_WANT_INSERT_AFTER
-#include "../../core/link_list.h"
-
 // A double-linked list to store the keys we work with atm.
 struct key_candidate {
 	struct key_candidate *next, *prev;
-	struct key *key;
+	const uint8_t *key;
 };
 
 struct key_candidates {
@@ -73,7 +57,7 @@ struct key_candidates {
 #include "../../core/link_list.h"
 
 struct criterion {
-	struct keys *hashed_keys; // Line corresponding to the first hash, storing the keys
+	struct trie **trie; // One trie for each bucket
 	uint32_t *counts; // hash_count lines of bucket_count sizes
 	uint32_t key_count; // Total number of different keys
 	uint32_t packet_count; // Total number of keys. For consistency check.
@@ -150,15 +134,16 @@ struct config_header {
 
 static void generation_activate(struct user_data *u, size_t generation, uint64_t timestamp, uint64_t loop_now) {
 	struct generation *g = &u->generations[generation];
+	mem_pool_reset(g->pool);
 	for (size_t i = 0; i < u->criteria_count; i ++) {
 		// Reset the lists and the counts
 		g->criteria[i].key_count = 0;
 		g->criteria[i].packet_count = 0;
 		g->criteria[i].overflow = false;
-		memset(g->criteria[i].hashed_keys, 0, u->bucket_count * sizeof *g->criteria[i].hashed_keys);
 		memset(g->criteria[i].counts, 0, u->bucket_count * u->hash_count * u->max_timeslots * sizeof *g->criteria[i].counts);
+		for (size_t j = 0; j < u->bucket_count; j ++)
+			g->criteria[i].trie[j] = trie_alloc(g->pool);
 	}
-	mem_pool_reset(g->pool);
 	g->timestamp = timestamp;
 	g->active = true;
 	u->current_generation = generation;
@@ -215,7 +200,7 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 		for (size_t j = 0; j < u->criteria_count; j ++)
 			g->criteria[j] = (struct criterion) {
 				// Single line for the keys
-				.hashed_keys = mem_pool_alloc(context->permanent_pool, u->bucket_count * sizeof *g->criteria[j].hashed_keys),
+				.trie = mem_pool_alloc(context->permanent_pool, u->bucket_count * sizeof *g->criteria[j].trie),
 				// hash_count lines for the hashed counts
 				.counts = mem_pool_alloc(context->permanent_pool, u->bucket_count * u->hash_count * u->max_timeslots * sizeof *g->criteria[j].counts)
 			};
@@ -300,6 +285,20 @@ struct key_answer {
 	uint8_t data[]; // The keys to be sent
 } __attribute__((packed));
 
+struct extract_data {
+	struct key_candidates *candidates;
+	struct mem_pool *pool;
+};
+
+static void get_key(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
+	(void)data;
+	struct extract_data *d = userdata;
+	struct key_candidate *new = key_candidates_append_pool(d->candidates, d->pool);
+	uint8_t *key_data = mem_pool_alloc(d->pool, key_size);
+	new->key = key_data;
+	memcpy(key_data, key, key_size);
+}
+
 static struct key_candidates *scan_keys(uint32_t *indices, uint32_t length, size_t criterion, struct user_data *u, struct generation *g, struct mem_pool *pool) {
 	assert(length);
 	uint32_t index_count = indices[0];
@@ -310,8 +309,7 @@ static struct key_candidates *scan_keys(uint32_t *indices, uint32_t length, size
 	*candidates = (struct key_candidates) { .count = 0 };
 	size_t key_size = u->criteria[criterion]->key_size;
 	for (size_t i = 0; i < index_count; i ++)
-		LFOR(keys, key, &g->criteria[criterion].hashed_keys[indices[i]])
-			key_candidates_append_pool(candidates, pool)->key = key;
+		trie_walk(g->criteria[criterion].trie[indices[i]], get_key, &(struct extract_data) { .candidates = candidates, .pool = pool }, pool);
 	// Iterate the other levels and remove keys not passing the filter of indices
 	for (size_t i = 1; i < u->hash_count; i ++) {
 		// Move to the next group of indices
@@ -325,7 +323,7 @@ static struct key_candidates *scan_keys(uint32_t *indices, uint32_t length, size
 		// Not using LFOR here, we need to manipulate the variable in the process
 		struct key_candidate *candidate = candidates->head;
 		while (candidate) {
-			uint32_t h = hash(candidate->key->data, key_size, u->hash_data + i * u->hash_line_size);
+			uint32_t h = hash(candidate->key, key_size, u->hash_data + i * u->hash_line_size);
 			h %= u->bucket_count;
 			struct key_candidate *to_del = candidate;
 			for (size_t j = 0; j < index_count; j ++)
@@ -392,7 +390,7 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 					key_candidates_remove(partial, can);
 					bool found = false;
 					LFOR(key_candidates, candidate, candidates)
-						if (memcmp(candidate->key->data, can->key->data, key_size) == 0) {
+						if (memcmp(candidate->key, can->key, key_size) == 0) {
 							found = true;
 							break;
 						}
@@ -409,7 +407,7 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 	memcpy(&answer->req_id, &request->req_id, sizeof answer->req_id);
 	size_t index = 0;
 	LFOR(key_candidates, candidate, candidates)
-		memcpy(answer->data + index ++ * key_size, candidate->key->data, key_size);
+		memcpy(answer->data + index ++ * key_size, candidate->key, key_size);
 	uplink_plugin_send_message(context, answer, answer_length);
 }
 
@@ -485,25 +483,10 @@ static void packet(struct context *context, const struct packet_info *packet) {
 		// Store the key, if it is not there already
 		if (g->criteria[i].overflow)
 			continue; // Don't store more keys, so the memory doesn't overflow
-		struct keys *keys = &g->criteria[i].hashed_keys[key_index];
-		struct key *previous = NULL;
-		bool found = false;
-		LFOR(keys, stored, keys) {
-			int cmp = memcmp(key, stored->data, length);
-			if (cmp == 0)
-				found = true; // No need to insert anything, already there
-			else if (cmp < 0)
-				break; // We found element larger than us. Insert before that one (after 'previous').
-			// Else continue scanning the list, since we are still too large
-			previous = stored; // Keep the previous, for possible insert.
-		}
-		if (!found) {
-			g->criteria[i].overflow = (++ g->criteria[i].key_count == u->max_key_count);
-			// Not stored there, store it.
-			struct key *new = mem_pool_alloc(g->pool, sizeof *new + length);
-			memcpy(new->data, key, length);
-			keys_insert_after(keys, new, previous);
-		}
+		struct trie *t = g->criteria[i].trie[key_index];
+		// We store the key in the key of trie, just by indexing it. No need to store more.
+		trie_index(t, key, length);
+		g->criteria[i].overflow = (trie_size(t) == u->max_key_count);
 	}
 }
 

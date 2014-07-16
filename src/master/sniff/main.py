@@ -56,7 +56,8 @@ class SniffPlugin(plugin.Plugin):
 		"""
 		Check if the task is complete, eg. there are no clients active now.
 		"""
-		if not task.active_clients: # Everything terminated and we didn't just start a new one
+		if not task.active_clients and task.running: # Everything terminated and we didn't just start a new one
+			task.running = False
 			logger.info("Task %s/%s finished", task.name(), task.task_id)
 			task.starter.stop()
 			del self.__active_tasks[task.task_id]
@@ -113,6 +114,7 @@ class SniffPlugin(plugin.Plugin):
 		"""
 		Start a task - send it to some set of routers and queue the others.
 		"""
+		task.running = True
 		self.__last_id += 1
 		self.__last_id %= 2**32
 		task_id = self.__last_id
@@ -128,10 +130,13 @@ class SniffPlugin(plugin.Plugin):
 		Let the taskers check if anything should be started.
 		"""
 		for tasker in self.__taskers:
-			tasks = tasker.check_schedule()
-			for task in tasks:
-				task.code = tasker.code()
-				self.__start_task(task)
+			try:
+				tasks = tasker.check_schedule()
+				for task in tasks:
+					task.code = tasker.code()
+					self.__start_task(task)
+			except Exception as e:
+				logger.error("Failed to check schedule of %s: %s", tasker.code(), e)
 
 	def name(self):
 		return "Sniff"

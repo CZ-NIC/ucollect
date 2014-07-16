@@ -32,6 +32,7 @@ import activity
 import importlib
 import os
 
+reactor.suggestThreadPoolSize(1) # Too much seems to have trouble with locking :-(
 severity = master_config.get('log_severity')
 if severity == 'TRACE':
 	severity = log_extra.TRACE_LEVEL
@@ -80,6 +81,10 @@ class Socat(protocol.ProcessProtocol):
 args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), str(master_config.getint('port')), os.getcwd() + '/collect-master.sock']
 logging.debug('Starting proxy with: %s', args)
 reactor.spawnProcess(Socat(), './soxy/soxy', args=args, env=os.environ)
+args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), str(master_config.getint('port_compression')), os.getcwd() + '/collect-master.sock', 'compress']
+logging.debug('Starting proxy with: %s', args)
+reactor.spawnProcess(Socat(), './soxy/soxy', args=args, env=os.environ)
+
 endpoint.listen(ClientFactory(plugins, frozenset(master_config.get('fastpings').split())))
 logging.info('Init done')
 

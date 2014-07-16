@@ -37,6 +37,7 @@
 #include <atsha204.h>
 #include <time.h>
 #include <stdio.h>
+#include <zlib.h>
 
 static void atsha_log_callback(const char *msg) {
 	ulog(LLOG_ERROR, "ATSHA: %s\n", msg);
@@ -47,6 +48,12 @@ enum auth_status {
 	SENT,
 	NOT_STARTED,
 	FAILED
+};
+
+enum rdd_status {
+	RDD_END_LOOP,
+	RDD_REPEAT,
+	RDD_DATA
 };
 
 #define IPV6_LEN 16
@@ -87,6 +94,10 @@ struct uplink {
 	uint8_t address[IPV6_LEN];
 	enum auth_status auth_status;
 	size_t login_failure_count;
+	z_stream zstrm_send;
+	z_stream zstrm_recv;
+	uint8_t *inc_buffer;
+	size_t inc_buffer_size;
 };
 
 static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect);
@@ -276,6 +287,8 @@ static void uplink_connect(struct uplink *uplink) {
 	uplink->ping_scheduled = true;
 	loop_register_fd(uplink->loop, uplink->fd, (struct epoll_handler *) uplink);
 	update_addrinfo(uplink);
+	deflateReset(&(uplink->zstrm_send));
+	inflateReset(&(uplink->zstrm_recv));
 }
 
 static void reconnect_now(struct context *unused, void *data, size_t id_unused) {
@@ -342,11 +355,8 @@ static void send_ping(struct context *context_unused, void *data, size_t id_unus
 	if (uplink->pings_unanswered >= PING_COUNT) {
 		ulog(LLOG_ERROR, "Too many pings not answered on %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
 		// Let the connect be called from the loop, so it works even if uplink_disconnect makes a plugin crash
-		assert(!uplink->reconnect_scheduled);
-		uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
-		uplink->reconnect_scheduled = true;
+		uplink_reconnect(uplink);
 		uplink->pings_unanswered = 0;
-		uplink_disconnect(uplink, false);
 		return;
 	}
 	ulog(LLOG_DEBUG, "Sending ping to %s:%s\n", uplink->remote_name, uplink->service);
@@ -524,6 +534,94 @@ static void handle_buffer(struct uplink *uplink) {
 	}
 }
 
+static enum rdd_status read_decompressed_data(struct uplink *uplink, ssize_t *available_output) {
+	// Update stream's output buffer according to uplink "request"
+	uplink->zstrm_recv.avail_out = (unsigned int)uplink->size_rest;
+	uplink->zstrm_recv.next_out = (unsigned char *)uplink->buffer_pos;
+
+	// Try to read from buffers, they can have some data
+	int ret = inflate(&(uplink->zstrm_recv), Z_SYNC_FLUSH);
+	if (ret == Z_DATA_ERROR) {
+		ulog(LLOG_ERROR, "Data for decompression are corrupted. Reconnecting.");
+		// Data corrupted. Reconnect.
+		uplink_reconnect(uplink);
+		return RDD_END_LOOP;
+	}
+	*available_output = uplink->size_rest - uplink->zstrm_recv.avail_out;
+
+	// There was some data in deflate or receive buffer
+	if (*available_output != 0) {
+		return RDD_DATA;
+	}
+
+	// Read is requested and there are no more received data
+	// So, try to read something
+	if (uplink->zstrm_recv.avail_in == 0) {
+		ssize_t amount = recv(uplink->fd, uplink->inc_buffer, uplink->inc_buffer_size, MSG_DONTWAIT);
+		if (amount == -1) {
+			switch (errno) {
+				/*
+				 * Non-fatal errors. EINTR can happen without problems.
+				 *
+				 * EAGAIN/EWOULDBLOCK should not, but it is said linux can create spurious
+				 * events on sockets sometime.
+				 */
+				case EAGAIN:
+#if EAGAIN != EWOULDBLOCK
+				case EWOULDBLOCK:
+#endif
+					return RDD_END_LOOP;
+				case EINTR:
+					ulog(LLOG_WARN, "Non-fatal error reading from %s:%s (%d): %s\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
+					return RDD_REPEAT; // We'll just retry next time
+				case ECONNRESET:
+					// This is similar to close
+					ulog(LLOG_WARN, "Connection to %s:%s reset, reconnecting\n", uplink->remote_name, uplink->service);
+					goto CLOSED;
+				default: // Other errors are fatal, as we don't know the cause
+					die("Error reading from uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, strerror(errno));
+			}
+		} else if (amount == 0) { // 0 means socket closed
+			ulog(LLOG_WARN, "Remote closed the uplink %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
+CLOSED:
+			assert(!uplink->reconnect_scheduled);
+			uplink->reconnect_id = loop_timeout_add(uplink->loop, uplink->reconnect_timeout / 1000, NULL, uplink, reconnect_now);
+			uplink->reconnect_scheduled = true;
+			uplink_disconnect(uplink, false);
+			return RDD_END_LOOP; // We are done with this socket.
+		} else {
+			// Some data was read, so update input buffer for stream
+			uplink->zstrm_recv.avail_in = (unsigned int)amount;
+			uplink->zstrm_recv.next_in = (unsigned char *)uplink->inc_buffer;
+
+			if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
+				char *dbg_raw_data = mem_pool_alloc(loop_temp_pool(uplink->loop), amount*4);
+				for (ssize_t i = 0; i < amount; i++) {
+					sprintf(dbg_raw_data+i*3, "%02X ", uplink->inc_buffer[i]);
+				}
+				ulog(LLOG_DEBUG_VERBOSE, "compression: recv: compressed data (size %zu): %s\n", amount, dbg_raw_data);
+			}
+		}
+	}
+
+	// First time had inflate empty buffer - try it again after read
+	ret = inflate(&(uplink->zstrm_recv), Z_SYNC_FLUSH);
+	if (ret == Z_DATA_ERROR) {
+		ulog(LLOG_ERROR, "Data for decompression are corrupted. Reconnecting.");
+		// Data corrupted. Reconnect.
+		uplink_reconnect(uplink);
+		return RDD_END_LOOP;
+	}
+	*available_output = uplink->size_rest - uplink->zstrm_recv.avail_out;
+
+	if (*available_output == 0) {
+		// The same case as EAGAIN;
+		return RDD_END_LOOP;
+	}
+
+	return RDD_DATA;
+}
+
 static void uplink_read(struct uplink *uplink, uint32_t unused) {
 	(void) unused;
 	ulog(LLOG_DEBUG, "Read on uplink %s:%s (%d)\n", uplink->remote_name, uplink->service, uplink->fd);
@@ -539,40 +637,24 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 			uplink->buffer_size = uplink->size_rest = sizeof(uint32_t);
 			uplink->buffer = uplink->buffer_pos = mem_pool_alloc(uplink->buffer_pool, uplink->buffer_size);
 		}
-		// Read once.
-		ssize_t amount = recv(uplink->fd, uplink->buffer_pos, uplink->size_rest, MSG_DONTWAIT);
-		if (amount == -1) {
-			switch (errno) {
-				/*
-				 * Non-fatal errors. EINTR can happen without problems.
-				 *
-				 * EAGAIN/EWOULDBLOCK should not, but it is said linux can create spurious
-				 * events on sockets sometime.
-				 */
-				case EAGAIN:
-#if EAGAIN != EWOULDBLOCK
-				case EWOULDBLOCK:
-#endif
-					return;
-				case EINTR:
-					ulog(LLOG_WARN, "Non-fatal error reading from %s:%s (%d): %s\n", uplink->remote_name, uplink->service, uplink->fd, strerror(errno));
-					continue; // We'll just retry next time
-				case ECONNRESET:
-					// This is similar to close
-					ulog(LLOG_WARN, "Connection to %s:%s reset, reconnecting\n", uplink->remote_name, uplink->service);
-					goto CLOSED;
-				default: // Other errors are fatal, as we don't know the cause
-					die("Error reading from uplink %s:%s (%s)\n", uplink->remote_name, uplink->service, strerror(errno));
-			}
-		} else if (amount == 0) { // 0 means socket closed
-			ulog(LLOG_WARN, "Remote closed the uplink %s:%s, reconnecting\n", uplink->remote_name, uplink->service);
-CLOSED:
-			assert(!uplink->reconnect_scheduled);
-			uplink->reconnect_id = loop_timeout_add(uplink->loop, uplink->reconnect_timeout / 1000, NULL, uplink, reconnect_now);
-			uplink->reconnect_scheduled = true;
-			uplink_disconnect(uplink, false);
-			return; // We are done with this socket.
+
+		ssize_t amount = 0;
+		enum rdd_status ret = read_decompressed_data(uplink, &amount);
+		if (ret == RDD_END_LOOP) {
+			return;
+
+		} else if (ret == RDD_REPEAT) {
+			continue;
+
 		} else {
+			if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
+				char *dbg_raw_data = mem_pool_alloc(loop_temp_pool(uplink->loop), amount*4);
+				dbg_raw_data[0] = '\0'; // Eliminate size == 0 bug
+				for (ssize_t i = 0; i < amount; i++) {
+					sprintf(dbg_raw_data+i*3, "%02X ", uplink->buffer_pos[i]);
+				}
+				ulog(LLOG_DEBUG_VERBOSE, "compression: recv: original data (size %zu): %s\n", amount, dbg_raw_data);
+			}
 			uplink->seen_data = true;
 			uplink->buffer_pos += amount;
 			uplink->size_rest -= amount;
@@ -589,11 +671,30 @@ struct uplink *uplink_create(struct loop *loop) {
 	ulog(LLOG_INFO, "Creating uplink\n");
 	struct mem_pool *permanent_pool = loop_permanent_pool(loop);
 	struct uplink *result = mem_pool_alloc(permanent_pool, sizeof *result);
+	z_stream strm_compress;
+	strm_compress.zalloc = Z_NULL;
+	strm_compress.zfree = Z_NULL;
+	strm_compress.opaque = Z_NULL;
+	if (deflateInit(&strm_compress, COMPRESSION_LEVEL) != Z_OK)
+		die("Could not initialize zlib (compression stream)\n");
+	z_stream strm_decompress;
+	strm_decompress.zalloc = Z_NULL;
+	strm_decompress.zfree = Z_NULL;
+	strm_decompress.opaque = Z_NULL;
+	strm_decompress.avail_in = 0;
+	if (inflateInit(&strm_decompress) != Z_OK)
+		die("Could not initialize zlib (decompression stream)\n");
+	unsigned char *incoming_buffer = mem_pool_alloc(permanent_pool, COMPRESSION_BUFFSIZE);
 	*result = (struct uplink) {
 		.uplink_read = uplink_read,
 		.loop = loop,
 		.buffer_pool = loop_pool_create(loop, NULL, mem_pool_printf(loop_temp_pool(loop), "Buffer pool for uplink")),
-		.fd = -1
+		.fd = -1,
+		.zstrm_send = strm_compress,
+		.zstrm_recv = strm_decompress,
+		.inc_buffer = incoming_buffer,
+		.inc_buffer_size = COMPRESSION_BUFFSIZE
+
 	};
 	loop_uplink_set(loop, result);
 	return result;
@@ -635,9 +736,23 @@ void uplink_destroy(struct uplink *uplink) {
 	ulog(LLOG_INFO, "Destroying uplink to %s:%s\n", uplink->remote_name, uplink->service);
 	// The memory pools get destroyed by the loop, we just close the socket, if any.
 	uplink_disconnect(uplink, true);
+	// And destroy library handlers
+	deflateEnd(&(uplink->zstrm_send));
+	inflateEnd(&(uplink->zstrm_recv));
 }
 
-static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
+static bool send_raw_data(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
+	// Compression don't produce output every time.
+	// Do not try to send empty data, this case is not rare .
+	if (size == 0)
+		return true;
+	if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
+		char *dbg_raw_data = mem_pool_alloc(loop_temp_pool(uplink->loop), size*4);
+		for (size_t i = 0; i < size; i++) {
+			sprintf(dbg_raw_data+i*3, "%02X ", buffer[i]);
+		}
+		ulog(LLOG_DEBUG_VERBOSE, "compression: send: compressed data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", dbg_raw_data);
+	}
 	while (size > 0) {
 		ssize_t amount = send(uplink->fd, buffer, size, MSG_NOSIGNAL | flags);
 		if (amount == -1) {
@@ -649,10 +764,7 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 				case ECONNRESET:
 				case EPIPE:
 					// Lost connection. Reconnect.
-					assert(!uplink->reconnect_scheduled);
-					uplink->reconnect_id = loop_timeout_add(uplink->loop, 0, NULL, uplink, reconnect_now);
-					uplink->reconnect_scheduled = true;
-					uplink_disconnect(uplink, false);
+					uplink_reconnect(uplink);
 					return false;
 				default:
 					// Fatal errors
@@ -663,6 +775,54 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 			size -= amount;
 		}
 	}
+	return true;
+}
+
+static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {
+	size_t buffsize = COMPRESSION_BUFFSIZE;
+	struct mem_pool *temp_pool = loop_temp_pool(uplink->loop);
+	uint8_t *output_buffer = mem_pool_alloc(temp_pool, buffsize);
+	uplink->zstrm_send.avail_in = size;
+	uplink->zstrm_send.next_in = (unsigned char *)buffer;
+
+	if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
+		char *dbg_raw_data = mem_pool_alloc(temp_pool, size*4);
+		dbg_raw_data[0] = '\0'; // Eliminate size == 0 bug
+		for (size_t i = 0; i < size; i++) {
+			sprintf(dbg_raw_data+i*3, "%02X ", buffer[i]);
+		}
+		ulog(LLOG_DEBUG_VERBOSE, "compression: send: original data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", dbg_raw_data);
+	}
+	unsigned int available_output = 0;
+	while (uplink->zstrm_send.avail_in > 0) {
+		uplink->zstrm_send.avail_out = buffsize;
+		uplink->zstrm_send.next_out = output_buffer;
+		deflate(&(uplink->zstrm_send), Z_NO_FLUSH);
+		available_output = buffsize - uplink->zstrm_send.avail_out;
+		if (available_output == 0) {
+			ulog(LLOG_DEBUG_VERBOSE, "compression: no output data prepared after deflate call\n");
+		}
+		if (!send_raw_data(uplink, output_buffer, available_output, MSG_MORE)) {
+			return false;
+		}
+	}
+	if (flags == 0) { // No more data, flush the rest of compressed message and sent it.
+		ulog(LLOG_DEBUG_VERBOSE, "compression: start sync flushing\n");
+		do {
+			uplink->zstrm_send.avail_out = buffsize;
+			uplink->zstrm_send.next_out = output_buffer;
+			deflate(&(uplink->zstrm_send), Z_SYNC_FLUSH);
+			available_output = buffsize - uplink->zstrm_send.avail_out;
+			if (available_output == 0) {
+				ulog(LLOG_DEBUG_VERBOSE, "compression: no output data prepared after deflate call (SYNC)\n");
+			}
+			int finish_flag = (uplink->zstrm_send.avail_out == 0) ? MSG_MORE : 0;
+			if (!send_raw_data(uplink, output_buffer, available_output, finish_flag)) {
+				return false;
+			}
+		} while (uplink->zstrm_send.avail_out == 0);
+	}
+	ulog(LLOG_DEBUG_VERBOSE, "compression: return\n");
 	return true;
 }
 

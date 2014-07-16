@@ -24,6 +24,7 @@ DROP TABLE IF EXISTS certs;
 DROP TABLE IF EXISTS cert_requests;
 DROP TABLE IF EXISTS starttls_protos;
 DROP TABLE IF EXISTS clients;
+DROP TABLE IF EXISTS config;
 
 CREATE TABLE clients (
 	id INT PRIMARY KEY NOT NULL,
@@ -145,6 +146,8 @@ CREATE TABLE ping_requests (
 	amount SMALLINT NOT NULL,
 	size SMALLINT NOT NULL,
 	active BOOLEAN NOT NULL,
+	lastrun TIMESTAMP NOT NULL DEFAULT TO_TIMESTAMP(0),
+	interval INTERVAL NOT NULL DEFAULT '6 hours',
 	UNIQUE(host, proto, amount, size)
 );
 CREATE SEQUENCE ping_requests_id OWNED BY ping_requests.id;
@@ -177,14 +180,16 @@ CREATE TABLE flows (
 	proto CHAR(1) NOT NULL,
 	start TIMESTAMP NOT NULL,
 	stop TIMESTAMP NOT NULL,
+	opposite_start TIMESTAMP,
 	size BIGINT NOT NULL,
 	count INT NOT NULL,
+	inbound BOOL NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start <= stop)
 );
 
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flows');
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow');
 CREATE TABLE starttls_protos (
 	id SMALLINT NOT NULL PRIMARY KEY,
 	name TEXT NOT NULL,
@@ -200,6 +205,8 @@ CREATE TABLE cert_requests (
 	want_chain BOOL NOT NULL DEFAULT false,
 	want_details BOOL NOT NULL DEFAULT true,
 	want_params BOOL NOT NULL DEFAULT true,
+	lastrun TIMESTAMP NOT NULL DEFAULT TO_TIMESTAMP(0),
+	interval INTERVAL NOT NULL DEFAULT '1 day',
 	FOREIGN KEY (starttls) REFERENCES starttls_protos(id),
 	UNIQUE(host, port)
 );
@@ -226,7 +233,7 @@ CREATE TABLE cert_chains (
 	value TEXT NOT NULL,
 	name TEXT,
 	expiry TIMESTAMP,
-	FOREIGN KEY (cert) REFERENCES certs(id),
+	FOREIGN KEY (cert) REFERENCES certs(id) ON DELETE CASCADE,
 	UNIQUE(cert, ord)
 );
 
@@ -250,6 +257,14 @@ INSERT INTO count_types (name, description, ord) VALUES
 	('V6TUNNEL', 'Packets sent over IPv6-tunelled connectivity', 16);
 INSERT INTO starttls_protos (id, name) VALUES (0, ''), (1, 'smtp'), (2, 'pop3'), (3, 'imap'), (4, 'ftp'), (5, 'xmpp');
 
+CREATE TABLE config (
+	plugin TEXT NOT NULL,
+	name TEXT NOT NULL,
+	value TEXT NOT NULL,
+	UNIQUE(plugin, name)
+);
+INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))');
+
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
 GRANT INSERT ON activities TO $DBUPDATER;
@@ -269,12 +284,15 @@ GRANT INSERT ON counts TO $DBUPDATER;
 GRANT INSERT ON capture_stats TO $DBUPDATER;
 GRANT INSERT ON pings TO $DBUPDATER;
 GRANT SELECT ON ping_requests TO $DBUPDATER;
+GRANT UPDATE (lastrun) ON ping_requests TO $DBUPDATER;
 GRANT SELECT ON cert_requests TO $DBUPDATER;
+GRANT UPDATE (lastrun) ON cert_requests TO $DBUPDATER;
 GRANT ALL ON certs_id TO $DBUPDATER;
 GRANT INSERT ON certs TO $DBUPDATER;
 GRANT INSERT ON cert_chains TO $DBUPDATER;
 GRANT SELECT ON certs TO $DBUPDATER;
 GRANT INSERT ON flows TO $DBUPDATER;
+GRANT SELECT ON config TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
@@ -296,6 +314,7 @@ GRANT DELETE ON bandwidth to $DBCLEANER;
 GRANT DELETE ON pings TO $DBCLEANER;
 GRANT DELETE ON certs TO $DBCLEANER;
 GRANT DELETE ON cert_chains TO $DBCLEANER;
+GRANT DELETE ON flows TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
@@ -313,6 +332,7 @@ GRANT SELECT ON cert_requests TO $DBARCHIVIST;
 GRANT SELECT ON certs TO $DBARCHIVIST;
 GRANT SELECT ON cert_chains TO $DBARCHIVIST;
 GRANT SELECT ON flows TO $DBARCHIVIST;
+GRANT SELECT ON bandwidth TO $DBARCHIVIST;
 
 COMMIT;
 ENDSQL

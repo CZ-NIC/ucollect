@@ -1,4 +1,5 @@
 LIBRARIES += src/core/libucollect_core
 DOCS += $(addprefix src/core/,core uplink)
 
-libucollect_core_MODULES := mem_pool util loop context packet uplink loader configure
+libucollect_core_MODULES := mem_pool util loop context packet uplink loader configure trie
+libucollect_core_PKG_CONFIGS := zlib

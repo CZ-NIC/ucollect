@@ -81,6 +81,7 @@ class Pinger:
 	def __init__(self, config):
 		self.__last_ping = 0
 		self.__ping_interval = int(config['ping_interval'])
+		self.__batchsize = int(config['ping_batchsize'])
 
 	def code(self):
 		return 'P'
@@ -92,15 +93,20 @@ class Pinger:
 			host_count = 0
 			hosts = []
 			with database.transaction() as t:
-				t.execute('SELECT id, host, proto, amount, size FROM ping_requests WHERE active')
+				t.execute("SELECT id, host, proto, amount, size FROM ping_requests WHERE active AND lastrun + interval < CURRENT_TIMESTAMP AT TIME ZONE 'UTC' ORDER BY lastrun + interval LIMIT %s", (self.__batchsize,))
 				requests = t.fetchall()
-			for request in requests:
-				(rid, host, proto, count, size) = request
-				host_count += 1
-				encoded += encode_host(host, proto, count, size)
-				hosts.append((rid, count))
+				for request in requests:
+					(rid, host, proto, count, size) = request
+					host_count += 1
+					encoded += encode_host(host, proto, count, size)
+					hosts.append((rid, count))
+					t.execute("UPDATE ping_requests SET lastrun = CURRENT_TIMESTAMP AT TIME ZONE 'UTC' WHERE id = %s", (rid,))
 			self.__last_ping = now
-			return [PingTask(struct.pack('!H', host_count) + encoded, hosts)]
+			if hosts:
+				return [PingTask(struct.pack('!H', host_count) + encoded, hosts)]
+			else:
+				logger.debug('No hosts to ping now')
+				return []
 		else:
 			logger.debug('Not pinging yet')
 			return []

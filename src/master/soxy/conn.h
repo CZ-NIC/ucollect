@@ -25,16 +25,26 @@
 #include <QByteArray>
 #include <QSslConfiguration>
 #include <QTimer>
+#include <zlib.h>
+
+static const int COMPRESSION_LEVEL = 9;
+static const unsigned int COMPRESSION_BUFFSIZE = 4096;
 
 class Connection : public QObject {
 	Q_OBJECT
 public:
+	static bool enableCompression;
 	Connection(int socket, QSslConfiguration &config);
+	~Connection();
 private:
 	QSslSocket remote;
 	QLocalSocket local;
 	QTimer timer;
 	QByteArray inBuf, outBuf;
+	unsigned char compressOutBuffer[COMPRESSION_BUFFSIZE];
+	unsigned char decompressOutBuffer[COMPRESSION_BUFFSIZE];
+	z_stream zStreamCompress;
+	z_stream zStreamDecompress;
 	bool inReady, outReady;
 	void touch();
 private slots:
@@ -42,6 +52,7 @@ private slots:
 	void error(QAbstractSocket::SocketError);
 	void error(QLocalSocket::LocalSocketError);
 	void error(const QList<QSslError> &);
+	void error(const char *);
 	void connectedRemote();
 	void tryWriteRemote();
 	void outgoing();
