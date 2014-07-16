@@ -607,6 +607,7 @@ CLOSED:
 	// First time had inflate empty buffer - try it again after read
 	ret = inflate(&(uplink->zstrm_recv), Z_SYNC_FLUSH);
 	if (ret == Z_DATA_ERROR) {
+		ulog(LLOG_ERROR, "Data for decompression are corrupted. Reconnecting.");
 		// Data corrupted. Reconnect.
 		uplink_reconnect(uplink);
 		return RDD_END_LOOP;
