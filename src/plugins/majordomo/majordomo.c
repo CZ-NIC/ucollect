@@ -67,9 +67,9 @@ struct src_key {
 };
 
 struct value {
-	unsigned long long int packets_count;
-	unsigned long long int packets_size;
-	unsigned long long int data_size;
+	uint64_t packets_count;
+	uint64_t packets_size;
+	uint64_t data_size;
 };
 
 struct comm_item {
@@ -88,7 +88,7 @@ struct comm_items {
 struct src_item {
 	struct src_key from;
 	struct value other;
-	unsigned long long int items_in_comm_list;
+	uint64_t items_in_comm_list;
 	struct src_item *next;
 	struct src_item *prev;
 };
@@ -313,13 +313,13 @@ static void dump(struct context *context) {
 			app_protocol = "UDP";
 		}
 
-		fprintf(dump_file, "%s,%s,%s,%" PRIu16 ",%llu,%llu,%llu\n", app_protocol, src_str, dst_str, it->key.port, it->value.packets_count, it->value.packets_size, it->value.data_size);
+		fprintf(dump_file, "%s,%s,%s,%" PRIu16 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", app_protocol, src_str, dst_str, it->key.port, it->value.packets_count, it->value.packets_size, it->value.data_size);
 	}
 
 	for (struct src_item *it = d->sources->head; it; it = it->next) {
 		char src_str[INET6_ADDRSTRLEN];
 		get_string_from_raw_bytes(it->from.addr, it->from.addr_len, src_str);
-		fprintf(dump_file, "%s,%s,%s,%s,%llu,%llu,%llu\n", "both", src_str, "all", "all", it->other.packets_count, it->other.packets_size, it->other.data_size);
+		fprintf(dump_file, "%s,%s,%s,%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", "both", src_str, "all", "all", it->other.packets_count, it->other.packets_size, it->other.data_size);
 	}
 
 	//Cleanup
