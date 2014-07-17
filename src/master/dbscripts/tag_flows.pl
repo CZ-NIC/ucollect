@@ -24,7 +24,6 @@ my $read = $dbh->prepare('SELECT id, ip_from, ip_to, port_from, port_to, inbound
 $read->execute;
 my $update = $dbh->prepare('UPDATE flows SET tag = ?, tagged_on = ? WHERE id = ?');
 
-my $cnt = 0;
 while (my ($id, $ip_from, $ip_to, $port_from, $port_to, $inbound) = $read->fetchrow_array) {
 	my ($ip, $port);
 	if ($inbound) {
@@ -34,9 +33,6 @@ while (my ($id, $ip_from, $ip_to, $port_from, $port_to, $inbound) = $read->fetch
 	}
 	my $tag = $tags{$ip}->{ports}->{$port} // $tags{$ip}->{values} // '?';
 	$update->execute($tag, $tstamp, $id);
-	$cnt ++;
 }
-
-print "Tagged $cnt flows\n";
 
 $dbh->commit;
