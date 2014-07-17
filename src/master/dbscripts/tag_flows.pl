@@ -18,7 +18,7 @@ while (<>) {
 	}
 }
 
-my $dbh = DBI->connect("dbi:Pg:dbname=ucollect", "tagger", "", { RaiseError => 1, AutoCommit => 0 });
+my $dbh = DBI->connect("dbi:Pg:dbname=turris", "tagger", "", { RaiseError => 1, AutoCommit => 0 });
 my $tstamp = $dbh->selectrow_array("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
 my $read = $dbh->prepare('SELECT id, ip_from, ip_to, port_from, port_to, inbound FROM flows WHERE tag IS NULL');
 $read->execute;
