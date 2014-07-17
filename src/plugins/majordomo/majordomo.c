@@ -55,7 +55,8 @@ enterprise edition ;-)
 struct key {
 	unsigned char from[KEYS_ADDR_LEN];
 	unsigned char to[KEYS_ADDR_LEN];
-	unsigned char addr_len;
+	unsigned char from_addr_len;
+	unsigned char to_addr_len;
 	char protocol;
 	uint16_t port;
 };
@@ -152,20 +153,28 @@ static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_l
 			strcpy(output, "FAILED");
 			ulog(LLOG_ERROR, "MAJORDOMO: conversion failed\n");
 		}
+	} else if (addr_len == 6) {
+		sprintf(output, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x", bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
 	}
 }
 
-static bool key_equals(struct comm_item *item, unsigned char *from, unsigned char *to, char protocol, uint16_t port, unsigned char addr_len) {
-	if (item->key.addr_len == addr_len && item->key.protocol == protocol && item->key.port == port && memcmp(item->key.from, from, addr_len) == 0 && memcmp(item->key.to, to, addr_len) == 0 ) {
+static bool key_equals(struct comm_item *item, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, char protocol, uint16_t port) {
+	if (
+			item->key.from_addr_len == from_addr_len &&
+			item->key.to_addr_len == to_addr_len &&
+			item->key.protocol == protocol &&
+			item->key.port == port &&
+			memcmp(item->key.from, from, from_addr_len) == 0 &&
+			memcmp(item->key.to, to, to_addr_len) == 0 ) {
 		return true;
 	}
 
 	return false;
 }
 
-static struct comm_item *find_item(struct comm_items *comm, unsigned char *from, unsigned char *to, unsigned char protocol, uint16_t port, unsigned char addr_len) {
+static struct comm_item *find_item(struct comm_items *comm, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, unsigned char protocol, uint16_t port) {
 	for (struct comm_item *it = comm->head; it; it = it->next) {
-		if (key_equals(it, from, to, protocol, port, addr_len)) {
+		if (key_equals(it, from, from_addr_len, to, to_addr_len, protocol, port)) {
 			return it;
 		}
 	}
@@ -173,7 +182,7 @@ static struct comm_item *find_item(struct comm_items *comm, unsigned char *from,
 	return NULL;
 }
 
-static struct src_item *find_src(struct src_items *sources, unsigned char *from, unsigned char addr_len) {
+static struct src_item *find_src(struct src_items *sources, const unsigned char *from, unsigned char addr_len) {
 	for (struct src_item *it = sources->head; it; it = it->next) {
 		if (it->from.addr_len == addr_len && memcmp(it->from.addr, from, addr_len) == 0) {
 			return it;
@@ -183,7 +192,7 @@ static struct src_item *find_src(struct src_items *sources, unsigned char *from,
 	return NULL;
 }
 
-static struct comm_item *create_comm_item(struct comm_items *communication, struct mem_pool *list_pool, const struct packet_info *info) {
+static struct comm_item *create_comm_item(struct comm_items *communication, struct mem_pool *list_pool, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, const struct packet_info *info) {
 	struct comm_item *item;
 	//Create item
 	item = items_append_pool(communication, list_pool);
@@ -191,11 +200,12 @@ static struct comm_item *create_comm_item(struct comm_items *communication, stru
 	items_remove(communication, item);
 	items_insert_after(communication, item, NULL); //NULL == insert after head
 	//Fill item's data
-	memcpy(item->key.from, info->addresses[END_SRC], info->addr_len);
-	memcpy(item->key.to, info->addresses[END_DST], info->addr_len);
+	memcpy(item->key.from, from, from_addr_len);
+	memcpy(item->key.to, to, to_addr_len);
 	item->key.protocol = info->app_protocol;
 	item->key.port = info->ports[END_DST];
-	item->key.addr_len = info->addr_len;
+	item->key.from_addr_len = from_addr_len;
+	item->key.to_addr_len = to_addr_len;
 	item->value.packets_count = 1;
 	item->value.packets_size = info->length;
 	item->value.data_size = info->length - info->hdr_length;
@@ -205,28 +215,35 @@ static struct comm_item *create_comm_item(struct comm_items *communication, stru
 
 void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
-	//Filter some useless packets
-	if (info->next) {
-		// It's wrapper around some other real packet. We're not interested in the envelope.
-		packet_handle(context, info->next);
-		return;
-	}
 
+	// We are interested in outgoing packets only.
 	if (info->direction != DIR_OUT) {
 		//Only outgoing packets
 		return;
 	}
 
+	if (info->layer != 'E') {
+		ulog(LLOG_DEBUG_VERBOSE, "majordomo: first layers wasn't Ethernet.\n");
+		return;
+	}
+
+	const unsigned char *src_mac = info->addresses[END_SRC];
+	unsigned char src_addr_len = 6;
+
+	// Go to IP packet if any
+	if (info->next == NULL) {
+		return;
+	}
+	info = info->next;
+
+	//Interested only in UDP and TCP packets
 	if (info->app_protocol != 'T' && info->app_protocol != 'U') {
-		//Interested only in UDP and TCP packets
 		return;
 	}
 
 	//Check situation about this packet
-	struct comm_item *item = find_item(d->communication, (unsigned char *) info->addresses[END_SRC], (unsigned char *) info->addresses[END_DST], info->app_protocol, info->ports[END_DST], info->addr_len);
-	struct src_item *src = find_src(d->sources, (unsigned char *) info->addresses[END_SRC], (unsigned char) info->addr_len);
-
-	//And make decisions
+	struct comm_item *item = find_item(d->communication, src_mac, src_addr_len, (unsigned char *) info->addresses[END_DST], info->addr_len, info->app_protocol, info->ports[END_DST]);
+	struct src_item *src = find_src(d->sources, src_mac, src_addr_len);
 
 	//This item exists
 	if (item != NULL) {
@@ -242,12 +259,12 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	} else {
 		//This is first communication from this source
 		if (src == NULL) {
-			item = create_comm_item(d->communication, d->list_pool, info);
+			item = create_comm_item(d->communication, d->list_pool, src_mac, src_addr_len, info->addresses[END_DST], info->addr_len, info);
 			//Create source record
 			src = src_items_append_pool(d->sources, d->list_pool);
 			//Fill source data
-			memcpy(src->from.addr, info->addresses[END_SRC], info->addr_len);
-			src->from.addr_len = info->addr_len;
+			memcpy(src->from.addr, src_mac, src_addr_len);
+			src->from.addr_len = src_addr_len;
 			src->other.packets_count = 0;
 			src->other.packets_size = 0;
 			src->other.data_size = 0;
@@ -258,7 +275,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		} else {
 			//Source has some records; check its limit
 			if (src->items_in_comm_list < SOURCE_SIZE_LIMIT) {
-				item = create_comm_item(d->communication, d->list_pool, info);
+				item = create_comm_item(d->communication, d->list_pool, src_mac, src_addr_len, info->addresses[END_DST], info->addr_len, info);
 				//Link item with its parent
 				item->src_parent = src;
 				item->src_parent->items_in_comm_list++;
@@ -287,8 +304,8 @@ static void dump(struct context *context) {
 	char *app_protocol;
 
 	for (struct comm_item *it = d->communication->head; it; it = it->next) {
-		get_string_from_raw_bytes(it->key.from, it->key.addr_len, src_str);
-		get_string_from_raw_bytes(it->key.to, it->key.addr_len, dst_str);
+		get_string_from_raw_bytes(it->key.from, it->key.from_addr_len, src_str);
+		get_string_from_raw_bytes(it->key.to, it->key.to_addr_len, dst_str);
 
 		if (it->key.protocol == 'T') {
 			app_protocol = "TCP";
