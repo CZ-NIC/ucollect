@@ -13,6 +13,8 @@ DBJENKINS=jenkins
 DBAUTHENTICATOR=authenticator
 # Something that aggregates the data to archives
 DBARCHIVIST=archivist
+# Taggel of flows according to firewall rules
+DBFLOWTAGGER=ucollect
 
 # Name of the database
 DB=ucollect

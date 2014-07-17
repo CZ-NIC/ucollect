@@ -172,6 +172,7 @@ CREATE TABLE pings (
 );
 
 CREATE TABLE flows (
+	id BIGINT PRIMARY KEY NOT NULL,
 	client INT NOT NULL,
 	ip_from INET NOT NULL,
 	ip_to INET NOT NULL,
@@ -184,10 +185,14 @@ CREATE TABLE flows (
 	size BIGINT NOT NULL,
 	count INT NOT NULL,
 	inbound BOOL NOT NULL,
+	tag TEXT,
+	tagged_on TIMESTAMP,
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start <= stop)
 );
+CREATE SEQUENCE flow_ids OWNED BY flows.id;
+ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flow_ids');
 
 INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow');
 CREATE TABLE starttls_protos (
@@ -333,6 +338,9 @@ GRANT SELECT ON certs TO $DBARCHIVIST;
 GRANT SELECT ON cert_chains TO $DBARCHIVIST;
 GRANT SELECT ON flows TO $DBARCHIVIST;
 GRANT SELECT ON bandwidth TO $DBARCHIVIST;
+
+GRANT SELECT ON flows TO $DBFLOWTAGGER;
+GRANT UPDATE (tag, tagged_on) ON flows TO $DBFLOWTAGGER;
 
 COMMIT;
 ENDSQL
