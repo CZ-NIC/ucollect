@@ -3,6 +3,8 @@
 psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
 BEGIN;
 
+DROP TABLE IF EXISTS flow_groups;
+DROP TABLE IF EXISTS flows;
 DROP TABLE IF EXISTS bandwidth;
 DROP TABLE IF EXISTS cert_histograms;
 DROP TABLE IF EXISTS cert_requests;
@@ -207,6 +209,30 @@ CREATE TABLE bandwidth (
 	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
 );
 
+CREATE TABLE flows (
+	id BIGINT PRIMARY KEY NOT NULL,
+	peer_ip INET NOT NULL,
+	peer_port INT NOT NULL,
+	proto CHAR(1) NOT NULL,
+	start TIMESTAMP NOT NULL,
+	stop TIMESTAMP NOT NULL,
+	opposite_start TIMESTAMP,
+	size BIGINT NOT NULL,
+	count INT NOT NULL,
+	tag TEXT NOT NULL,
+	tagged_on TIMESTAMP NOT NULL,
+	CHECK(proto = 'T' OR proto = 'U'),
+	CHECK(start <= stop)
+);
+CREATE SEQUENCE flows_id OWNED BY flows.id;
+ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flows_id');
+CREATE TABLE flow_groups (
+	flow BIGINT NOT NULL,
+	from_group INT NOT NULL,
+	FOREIGN KEY (flow) REFERENCES flows(id),
+	FOREIGN KEY (from_group) REFERENCES groups(id)
+);
+
 GRANT INSERT ON anomalies TO archivist;
 GRANT SELECT (timestamp) ON anomalies TO archivist;
 GRANT INSERT ON anomaly_types TO archivist;
@@ -243,5 +269,8 @@ GRANT DELETE ON cert_histograms TO archivist;
 GRANT SELECT (batch, id) ON cert_histograms TO archivist;
 GRANT SELECT (timestamp) ON bandwidth TO archivist;
 GRANT INSERT ON bandwidth TO archivist;
+GRANT INSERT ON flows TO archivist;
+GRANT INSERT ON flow_groups TO archivist;
+GRANT ALL ON flows_id TO archivist;
 COMMIT;
 END_SQL
