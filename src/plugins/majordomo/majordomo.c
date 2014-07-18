@@ -46,7 +46,7 @@ enterprise edition ;-)
 #include "../../core/loop.h"
 
 #define DUMP_FILE_DST "/tmp/ucollect_majordomo"
-#define SOURCE_SIZE_LIMIT 5000
+#define SOURCE_SIZE_LIMIT 6000
 //in ms - 1 minute
 #define DUMP_TIMEOUT 60000
 
