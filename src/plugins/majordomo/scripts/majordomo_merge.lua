@@ -32,7 +32,11 @@ function eliminate_items(addr, items, count)
 
 	-- Prepare table for recomputed items
 	local new_items = {};
-	new_items[others_key] = items[others_key];
+	if items[others_key] then
+		new_items[others_key] = items[others_key];
+	else
+		new_items[others_key] = { count = 0, size = 0, data_size = 0 };
+	end
 
 	-- Prepare array set to sorting
 	sorted_array = {};
