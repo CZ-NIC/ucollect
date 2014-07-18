@@ -219,6 +219,7 @@ CREATE TABLE flows (
 	opposite_start TIMESTAMP,
 	size BIGINT NOT NULL,
 	count INT NOT NULL,
+	inbound BOOL NOT NULL,
 	tag TEXT NOT NULL,
 	tagged_on TIMESTAMP NOT NULL,
 	CHECK(proto = 'T' OR proto = 'U'),
