@@ -283,9 +283,9 @@ if (fork == 0) {
 		FROM
 			flows
 		JOIN
-			groups
+			group_members
 		ON
-			flows.client = groups.client
+			flows.client = group_members.client
 		WHERE
 			tagged_on > ?
 		ORDER BY

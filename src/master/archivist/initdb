@@ -271,6 +271,7 @@ GRANT SELECT (batch, id) ON cert_histograms TO archivist;
 GRANT SELECT (timestamp) ON bandwidth TO archivist;
 GRANT INSERT ON bandwidth TO archivist;
 GRANT INSERT ON flows TO archivist;
+GRANT SELECT (id, tagged_on) ON flows TO archivist;
 GRANT INSERT ON flow_groups TO archivist;
 GRANT ALL ON flows_id TO archivist;
 COMMIT;
