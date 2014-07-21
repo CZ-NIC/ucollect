@@ -31,11 +31,12 @@ if [ "$CMD" = "genhour" ]; then
 
 
 elif [ "$CMD" = "genday" ]; then
-	DAY=$(date +"%Y-%m-%d")
-	DAY_FILE_NAME="$DB_DAY_PREFIX$DAY"
-	[ -e "$DAY_FILE_NAME" ] || touch $DAY_FILE_NAME
-	for HOUR_FILE in $(ls "$DB_HOUR_PREFIX$DAY-"*); do
-		majordomo_merge.lua $HOUR_FILE $DAY_FILE_NAME $DAY_FILE_NAME
-		rm $HOUR_FILE
+	for DAY in $(ls $DB_HOUR_PREFIX* | sed "s/.*\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)-[0-9]\{2\}/\1/" | uniq); do
+		DAY_FILE_NAME="$DB_DAY_PREFIX$DAY"
+		[ -e "$DAY_FILE_NAME" ] || touch $DAY_FILE_NAME
+		for HOUR_FILE in $(ls "$DB_HOUR_PREFIX$DAY-"*); do
+			majordomo_merge.lua $HOUR_FILE $DAY_FILE_NAME $DAY_FILE_NAME
+			rm $HOUR_FILE
+		done
 	done
 fi
