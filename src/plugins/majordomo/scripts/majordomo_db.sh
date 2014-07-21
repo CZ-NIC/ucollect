@@ -9,11 +9,6 @@ DB_PATH="/tmp/majordomo_db"
 DB_HOUR_PREFIX="$DB_PATH/majordomo_hourly_"
 DB_DAY_PREFIX="$DB_PATH/majordomo_daily_"
 
-if [ ! -e "$DUMP_FILE_PATH"  ]; then
-	echo "No dump file found. Is local ucollect running?"
-	exit 1
-fi
-
 if [ $# -ne 1 ]; then 
 	echo "ERROR: Usage: $0 (genhour|genday)"
 	exit 1
