@@ -41,5 +41,6 @@ elif [ "$CMD" = "genday" ]; then
 	[ -e "$DAY_FILE_NAME" ] || touch $DAY_FILE_NAME
 	for HOUR_FILE in $(ls "$DB_HOUR_PREFIX$DAY-"*); do
 		majordomo_merge.lua $HOUR_FILE $DAY_FILE_NAME $DAY_FILE_NAME
+		rm $HOUR_FILE
 	done
 fi
