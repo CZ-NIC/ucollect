@@ -29,6 +29,8 @@ struct loop;
  * whole lifetime of the program.
  */
 void config_set_dir(const char *dir);
+void config_set_package(const char *package_name);
+void config_allow_null_uplink(void);
 bool load_config(struct loop *loop);
 
 #endif
