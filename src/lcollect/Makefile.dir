@@ -1,0 +1,9 @@
+BINARIES += src/lcollect/lcollect
+
+lcollect_MODULES := \
+	main
+lcollect_LOCAL_LIBS := ucollect_core
+# TODO: Make the build system take this from the ucollect_core somehow
+lcollect_SYSTEM_LIBS := pcap rt dl uci crypto ssl unbound atsha204
+
+DOCS += src/lcollect/lcollect
