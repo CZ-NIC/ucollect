@@ -298,11 +298,11 @@ void init(struct context *context) {
 	// Windows settings
 	// Parameter count should be number that windows_count*window_length is at least 1 second
 	size_t i = 0;
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 50000, 20, common_start_timestamp);
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 100000, 10, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 500000, 4, common_start_timestamp);
 	context->user_data->windows[i++] = init_window(context->permanent_pool, 1000000, 1, common_start_timestamp);
 	context->user_data->windows[i++] = init_window(context->permanent_pool, 2000000, 1, common_start_timestamp);
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 3000000, 1, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 5000000, 1, common_start_timestamp);
+	context->user_data->windows[i++] = init_window(context->permanent_pool, 10000000, 1, common_start_timestamp);
 }
 
 #ifdef STATIC
