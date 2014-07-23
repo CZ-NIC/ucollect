@@ -1,5 +1,5 @@
 LIBRARIES += src/plugins/sniff/libplugin_sniff
-SNIFF_TASKS := ping cert
+SNIFF_TASKS := ping cert nat
 libplugin_sniff_MODULES := sniff task fork nop parse $(SNIFF_TASKS)
 
 define N
