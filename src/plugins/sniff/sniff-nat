@@ -1,0 +1,19 @@
+#!/bin/sh
+
+LOCIP=$(ip addr show | sed -ne '/ *inet6\? *\([^ ]*\) .*/s//\1/p')
+
+test() {
+	IP=$(curl -skf$1 https://api.turris.cz/getip.cgi)
+	if [ "$?" = "0" ] ; then
+		if echo "$LOCIP" | grep -qF "$IP" ; then
+			echo 'DIRECT'
+		else
+			echo 'NAT'
+		fi
+	else
+		echo 'NONE'
+	fi
+}
+
+test 4
+test 6
