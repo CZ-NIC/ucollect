@@ -5,6 +5,7 @@
 psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
+DROP TABLE IF EXISTS nats;
 DROP TABLE IF EXISTS flows;
 DROP TABLE IF EXISTS capture_stats;
 DROP TABLE IF EXISTS counts;
@@ -262,13 +263,22 @@ INSERT INTO count_types (name, description, ord) VALUES
 	('V6TUNNEL', 'Packets sent over IPv6-tunelled connectivity', 16);
 INSERT INTO starttls_protos (id, name) VALUES (0, ''), (1, 'smtp'), (2, 'pop3'), (3, 'imap'), (4, 'ftp'), (5, 'xmpp');
 
+CREATE TABLE nats (
+	client INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	nat_v4 BOOLEAN,
+	nat_v6 BOOLEAN,
+	FOREIGN KEY (client) REFERENCES clients(id),
+	UNIQUE(client, batch)
+);
+
 CREATE TABLE config (
 	plugin TEXT NOT NULL,
 	name TEXT NOT NULL,
 	value TEXT NOT NULL,
 	UNIQUE(plugin, name)
 );
-INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))');
+INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('sniff', 'nat-interval', '3 days';
 
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
