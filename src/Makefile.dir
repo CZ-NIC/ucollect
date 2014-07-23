@@ -1,4 +1,5 @@
 include $(S)/src/ucollect/Makefile.dir
+include $(S)/src/lcollect/Makefile.dir
 include $(S)/src/core/Makefile.dir
 include $(S)/src/plugins/Makefile.dir
 include $(S)/src/master/Makefile.dir

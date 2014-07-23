@@ -967,6 +967,7 @@ struct mem_pool *loop_temp_pool(struct loop *loop) {
 }
 
 bool loop_plugin_send_data(struct loop *loop, const char *name, const uint8_t *data, size_t length) {
+	assert(loop->uplink);
 	LFOR(plugin, plugin, &loop->plugins)
 		if (strcmp(plugin->plugin.name, name) == 0) {
 			plugin_uplink_data(plugin, data, length);
@@ -1134,12 +1135,14 @@ void loop_config_commit(struct loop_configurator *configurator) {
 		interface->watchdog_initialized = true;
 	}
 	// Change the uplink config or copy it
-	if (configurator->remote_name)
-		uplink_configure(loop->uplink, configurator->remote_name, configurator->remote_service, configurator->login, configurator->password, configurator->cert);
-	else
-		uplink_realloc_config(loop->uplink, configurator->config_pool);
-	if (configurator->need_reconnect)
-		uplink_reconnect(loop->uplink);
+	if (loop->uplink) {
+		if (configurator->remote_name)
+			uplink_configure(loop->uplink, configurator->remote_name, configurator->remote_service, configurator->login, configurator->password, configurator->cert);
+		else
+			uplink_realloc_config(loop->uplink, configurator->config_pool);
+		if (configurator->need_reconnect)
+			uplink_reconnect(loop->uplink);
+	}
 	// Destroy the old configuration and merge the new one
 	if (loop->config_pool)
 		mem_pool_destroy(configurator->loop->config_pool);

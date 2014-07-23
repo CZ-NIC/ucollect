@@ -1,8 +1,5 @@
 #!/bin/sh
 
-## Enable/Disable debugging
-set -ex
-
 DUMP_FILE_PATH="/tmp/ucollect_majordomo"
 DB_PATH="/tmp/majordomo_db"
 
@@ -14,6 +11,11 @@ if [ $# -ne 1 ]; then
 	exit 1
 fi
 
+## Try to get different value from uci config
+TRYUCIPATH=$(uci get majordomo.@db[0].path)
+[ $? -eq 0 ] && DB_PATH=$TRYUCIPATH
+
+## Create DB if not exists
 [ -d $DB_PATH ] || mkdir -p $DB_PATH
 
 CMD="$1"

@@ -4,6 +4,7 @@ bin/
 build/buildsystem.html
 docs/
 src/ucollect/ucollect
+src/lcollect/lcollect
 lib/
 src/core/libucollect_core.*
 *.so

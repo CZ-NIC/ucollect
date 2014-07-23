@@ -27,6 +27,17 @@
 #include <assert.h>
 #include <string.h>
 
+struct config_params {
+	const char *config_dir;
+	const char *package;
+	bool use_uplink;
+};
+
+static struct config_params config_params = {
+	.package = "ucollect",
+	.use_uplink = true
+};
+
 static bool load_interface(struct loop_configurator *configurator, struct uci_section *section, struct uci_context *ctx) {
 	ulog(LLOG_DEBUG, "Processing interface %s\n", section->e.name);
 	const char *name = uci_lookup_option_string(ctx, section, "ifname");
@@ -92,16 +103,18 @@ static bool load_package(struct loop_configurator *configurator, struct uci_cont
 		} else
 			ulog(LLOG_WARN, "Ignoring config section '%s' of unknown type '%s'\n", s->e.name, s->type);
 	}
-	if (!seen_uplink) {
-		ulog(LLOG_ERROR, "No uplink configuration found\n");
-		return false;
+	if (config_params.use_uplink) {
+		if (!seen_uplink) {
+			ulog(LLOG_ERROR, "No uplink configuration found\n");
+			return false;
+		}
 	}
 	return true;
 }
 
 static bool load_config_internal(struct loop_configurator *configurator, struct uci_context *ctx) {
 	struct uci_package *package;
-	int ok = uci_load(ctx, "ucollect", &package);
+	int ok = uci_load(ctx, config_params.package, &package);
 	if (ok != UCI_OK || !package) {
 		ulog(LLOG_ERROR, "Can't load configuration of ucollect\n");
 		return false;
@@ -111,10 +124,16 @@ static bool load_config_internal(struct loop_configurator *configurator, struct 
 	return result;
 }
 
-static const char *config_dir;
-
 void config_set_dir(const char *dir) {
-	config_dir = dir;
+	config_params.config_dir = dir;
+}
+
+void config_set_package(const char *package_name) {
+	config_params.package = package_name;
+}
+
+void config_allow_null_uplink(void) {
+	config_params.use_uplink = false;
 }
 
 bool load_config(struct loop *loop) {
@@ -123,9 +142,9 @@ bool load_config(struct loop *loop) {
 		ulog(LLOG_ERROR, "Can't allocate UCI context\n");
 		return false;
 	}
-	if (config_dir)
-		if (uci_set_confdir(ctx, config_dir) != UCI_OK) {
-			ulog(LLOG_ERROR, "Can't set configuration directory to %s\n", config_dir);
+	if (config_params.config_dir)
+		if (uci_set_confdir(ctx, config_params.config_dir) != UCI_OK) {
+			ulog(LLOG_ERROR, "Can't set configuration directory to %s\n", config_params.config_dir);
 			return false;
 		}
 	struct loop_configurator *configurator = loop_config_start(loop);
