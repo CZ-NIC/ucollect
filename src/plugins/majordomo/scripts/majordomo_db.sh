@@ -1,8 +1,5 @@
 #!/bin/sh
 
-## Enable/Disable debugging
-set -ex
-
 DUMP_FILE_PATH="/tmp/ucollect_majordomo"
 DB_PATH="/tmp/majordomo_db"
 
