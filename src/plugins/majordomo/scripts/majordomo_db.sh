@@ -16,7 +16,7 @@ fi
 
 ## Try to get different value from uci config
 TRYUCIPATH=$(uci get majordomo.@db[0].path)
-[ $? -eq 0 ] && DB_PATH=TRYUCIPATH
+[ $? -eq 0 ] && DB_PATH=$TRYUCIPATH
 
 ## Create DB if not exists
 [ -d $DB_PATH ] || mkdir -p $DB_PATH
