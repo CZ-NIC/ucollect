@@ -1,0 +1,3 @@
+MAILTO=""
+*/5 * * * *	root	majordomo_db.sh genhour
+1 * * * *	root	majordomo_db.sh genday
