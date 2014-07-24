@@ -22,7 +22,9 @@ CMD="$1"
 
 if [ "$CMD" = "genhour" ]; then
 	HOUR_FILE_NAME="$DB_HOUR_PREFIX$(date +"%Y-%m-%d-%H")"
-	TMPFILE=$(tempfile --prefix=majordomo)
+	## OK, OpenWrt doesn't have tempfile... grrr
+	#TMPFILE=$(tempfile --prefix=majordomo)
+	TMPFILE="/tmp/majordomo_tempfile_$$_$(date +"%s")"
 
 	## Merge dump file to corresponding hour file should eliminate dump file -
 	## we don't want merge the same data again and again
