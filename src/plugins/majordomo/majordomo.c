@@ -217,7 +217,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
 
 	// We are interested in outgoing packets only.
-	if (info->direction != DIR_OUT) {
+	if (info->direction != DIR_IN) {
 		//Only outgoing packets
 		return;
 	}
