@@ -85,5 +85,6 @@ const uint8_t *finish_nat(struct context *context, struct task_data *data, uint8
 		result[1] = '\0';
 		FAIL(result, "Invalid output");
 	}
+	*ok = true;
 	return result;
 }
