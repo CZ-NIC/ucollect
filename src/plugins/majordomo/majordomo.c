@@ -343,7 +343,7 @@ void init(struct context *context) {
 	*context->user_data = (struct user_data) {
 		.communication = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data->communication),
 		.sources = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data->sources),
-		.list_pool = mem_pool_create("Majordomo linked-lists pool"),
+		.list_pool = loop_pool_create(context->loop, context, "Majordomo linked-lists pool"),
 		.timeout = loop_timeout_add(context->loop, DUMP_TIMEOUT, context, NULL, scheduled_dump)
 	};
 	*context->user_data->communication = (struct comm_items) {
@@ -355,11 +355,7 @@ void init(struct context *context) {
 }
 
 void destroy(struct context *context) {
-	//Cancel scheduled dump and do it manually
-	loop_timeout_cancel(context->loop, context->user_data->timeout);
 	dump(context);
-	//This command should be the last
-	mem_pool_destroy(context->user_data->list_pool);
 }
 
 #ifdef STATIC
