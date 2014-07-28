@@ -155,17 +155,14 @@ static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_l
 }
 
 static bool key_equals(struct comm_item *item, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, char protocol, uint16_t port) {
-	if (
+	return (
 			item->key.from_addr_len == from_addr_len &&
 			item->key.to_addr_len == to_addr_len &&
 			item->key.protocol == protocol &&
 			item->key.port == port &&
 			memcmp(item->key.from, from, from_addr_len) == 0 &&
-			memcmp(item->key.to, to, to_addr_len) == 0 ) {
-		return true;
-	}
-
-	return false;
+			memcmp(item->key.to, to, to_addr_len) == 0
+		);
 }
 
 static struct comm_item *find_item(struct comm_items *comm, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, unsigned char protocol, uint16_t port) {
