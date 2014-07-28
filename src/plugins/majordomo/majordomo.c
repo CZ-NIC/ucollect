@@ -50,7 +50,9 @@ enterprise edition ;-)
 //in ms - 1 minute
 #define DUMP_TIMEOUT 60000
 
+// IPv6 has longer addresses and strings, use them - don't care about few bytes overhead
 #define KEYS_ADDR_LEN 16
+#define ADDRSTRLEN (INET6_ADDRSTRLEN + 1)
 
 // Turris needs to define SWAP_DIRECTION
 // This is temporary solution, we need to find out what's wrong
@@ -138,7 +140,7 @@ struct user_data {
 	size_t timeout;
 };
 
-static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_len, char *output) {
+static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_len, char output[ADDRSTRLEN]) {
 	if (addr_len == 4) {
 		struct in_addr addr;
 
@@ -155,7 +157,7 @@ static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_l
 
 		memcpy(&addr, bytes, addr_len);
 
-		if (inet_ntop(AF_INET6, (void *)&addr, output, INET6_ADDRSTRLEN) == NULL) {
+		if (inet_ntop(AF_INET6, (void *)&addr, output, ADDRSTRLEN) == NULL) {
 			//OK, any reason why it could failed?
 			strcpy(output, "FAILED");
 			ulog(LLOG_ERROR, "MAJORDOMO: conversion failed\n");
@@ -307,9 +309,8 @@ static void dump(struct context *context) {
 		return;
 	}
 
-	//IPv6 has longer strings, use them - don't care about few bytes overhead
-	char src_str[INET6_ADDRSTRLEN];
-	char dst_str[INET6_ADDRSTRLEN];
+	char *src_str = mem_pool_alloc(context->temp_pool, ADDRSTRLEN);
+	char *dst_str = mem_pool_alloc(context->temp_pool, ADDRSTRLEN);
 	char *app_protocol;
 
 	for (struct comm_item *it = d->communication->head; it; it = it->next) {
@@ -326,7 +327,6 @@ static void dump(struct context *context) {
 	}
 
 	for (struct src_item *it = d->sources->head; it; it = it->next) {
-		char src_str[INET6_ADDRSTRLEN];
 		get_string_from_raw_bytes(it->from.addr, it->from.addr_len, src_str);
 		fprintf(dump_file, "%s,%s,%s,%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", "both", src_str, "all", "all", it->other.packets_count, it->other.packets_size, it->other.data_size);
 	}
