@@ -106,6 +106,7 @@ struct src_items {
 #define LIST_WANT_APPEND_POOL
 #define LIST_WANT_INSERT_AFTER
 #define LIST_WANT_REMOVE
+#define LIST_WANT_LFOR
 #include "../../core/link_list.h"
 
 
@@ -115,6 +116,7 @@ struct src_items {
 #define LIST_COUNT count
 #define LIST_PREV prev
 #define LIST_WANT_APPEND_POOL
+#define LIST_WANT_LFOR
 #include "../../core/link_list.h"
 
 struct user_data {
@@ -167,7 +169,7 @@ static bool key_equals(struct comm_item *item, const unsigned char *from, unsign
 }
 
 static struct comm_item *find_item(struct comm_items *comm, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, unsigned char protocol, uint16_t port) {
-	for (struct comm_item *it = comm->head; it; it = it->next) {
+	LFOR(items, it, comm) {
 		if (key_equals(it, from, from_addr_len, to, to_addr_len, protocol, port)) {
 			return it;
 		}
@@ -177,7 +179,7 @@ static struct comm_item *find_item(struct comm_items *comm, const unsigned char 
 }
 
 static struct src_item *find_src(struct src_items *sources, const unsigned char *from, unsigned char addr_len) {
-	for (struct src_item *it = sources->head; it; it = it->next) {
+	LFOR(src_items, it, sources) {
 		if (it->from.addr_len == addr_len && memcmp(it->from.addr, from, addr_len) == 0) {
 			return it;
 		}
