@@ -3,7 +3,7 @@
 --[[
 Copyright 2014, CZ.NIC z.s.p.o. (http://www.nic.cz/)
 
-This file is part of NUCI configuration server.
+This script is part of majordomo plugin for ucollect
 
 NUCI is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
