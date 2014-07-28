@@ -102,9 +102,6 @@ struct src_items {
 #define LIST_BASE struct comm_items
 #define LIST_NAME(X) items_##X
 #define LIST_COUNT count
-#define LIST_HEAD head
-#define LIST_TAIL tail
-#define LIST_NEXT next
 #define LIST_PREV prev
 #define LIST_WANT_APPEND_POOL
 #define LIST_WANT_INSERT_AFTER
@@ -116,9 +113,6 @@ struct src_items {
 #define LIST_BASE struct src_items
 #define LIST_NAME(X) src_items_##X
 #define LIST_COUNT count
-#define LIST_HEAD head
-#define LIST_TAIL tail
-#define LIST_NEXT next
 #define LIST_PREV prev
 #define LIST_WANT_APPEND_POOL
 #include "../../core/link_list.h"
