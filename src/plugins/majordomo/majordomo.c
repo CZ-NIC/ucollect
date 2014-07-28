@@ -115,7 +115,6 @@ struct src_items {
 #define LIST_NAME(X) items_##X
 #define LIST_COUNT count
 #define LIST_PREV prev
-#define LIST_WANT_APPEND_POOL
 #define LIST_WANT_INSERT_AFTER
 #define LIST_WANT_REMOVE
 #define LIST_WANT_LFOR
@@ -200,9 +199,7 @@ static struct src_item *find_src(struct src_items *sources, const unsigned char 
 static struct comm_item *create_comm_item(struct comm_items *communication, struct mem_pool *list_pool, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, const struct packet_info *info) {
 	struct comm_item *item;
 	//Create item
-	item = items_append_pool(communication, list_pool);
-	//update position
-	items_remove(communication, item);
+	item = mem_pool_alloc(list_pool, sizeof *item);
 	items_insert_after(communication, item, NULL); //NULL == insert after head
 	//Fill item's data
 	memcpy(item->key.from, from, from_addr_len);
