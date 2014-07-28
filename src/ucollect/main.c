@@ -59,6 +59,7 @@ int main(int argc, const char* argv[]) {
 		ulog(LLOG_DEBUG, "Setting config dir to %s\n", argv[1]);
 		config_set_dir(argv[1]);
 	}
+	config_set_package("ucollect");
 	// Create the loop.
 	loop = loop_create();
 

@@ -34,7 +34,6 @@ struct config_params {
 };
 
 static struct config_params config_params = {
-	.package = "ucollect",
 	.use_uplink = true
 };
 
@@ -142,6 +141,7 @@ bool load_config(struct loop *loop) {
 		ulog(LLOG_ERROR, "Can't allocate UCI context\n");
 		return false;
 	}
+	assert(config_params.package);
 	if (config_params.config_dir)
 		if (uci_set_confdir(ctx, config_params.config_dir) != UCI_OK) {
 			ulog(LLOG_ERROR, "Can't set configuration directory to %s\n", config_params.config_dir);
