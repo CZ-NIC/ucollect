@@ -52,6 +52,18 @@ enterprise edition ;-)
 
 #define KEYS_ADDR_LEN 16
 
+// Turris needs to define SWAP_DIRECTION
+// This is temporary solution, we need to find out what's wrong
+//#define SWAP_DIRECTION
+
+#ifdef SWAP_DIRECTION
+#define DIRECTION_UPLOAD DIR_IN
+#define DIRECTION_DOWNLOAD DIR_OUT
+#else
+#define DIRECTION_UPLOAD DIR_OUT
+#define DIRECTION_DOWNLOAD DIR_IN
+#endif
+
 struct key {
 	unsigned char from[KEYS_ADDR_LEN];
 	unsigned char to[KEYS_ADDR_LEN];
@@ -210,7 +222,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
 
 	// We are interested in outgoing packets only.
-	if (info->direction != DIR_IN) {
+	if (info->direction != DIRECTION_UPLOAD) {
 		//Only outgoing packets
 		return;
 	}
