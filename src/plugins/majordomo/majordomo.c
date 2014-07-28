@@ -88,7 +88,7 @@ struct comm_items {
 struct src_item {
 	struct src_key from;
 	struct value other;
-	uint64_t items_in_comm_list;
+	size_t items_in_comm_list;
 	struct src_item *next;
 	struct src_item *prev;
 };
