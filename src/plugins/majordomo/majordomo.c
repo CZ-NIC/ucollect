@@ -17,16 +17,6 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-/*
-***************************** WARNING ****************************
-
-This version of Majordomo plugin has no limitation for number of the source
-devices. So, please, do not use this plugin in server rooms.
-
-Limitation will appear in some next version, if will be necessary, or in
-enterprise edition ;-)
-
-*/
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
