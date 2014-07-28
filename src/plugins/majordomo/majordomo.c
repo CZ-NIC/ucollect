@@ -224,7 +224,11 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	}
 
 	const unsigned char *src_mac = info->addresses[END_SRC];
-	unsigned char src_addr_len = 6;
+	if (info->addr_len != 6) {
+		ulog(LLOG_ERROR, "majordomo: Found packet on ethernet layer with bad address size\n");
+		return;
+	}
+	unsigned char src_addr_len = info->addr_len;
 
 	// Go to IP packet if any
 	if (info->next == NULL) {
@@ -232,7 +236,10 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	}
 	info = info->next;
 
-	//Interested only in UDP and TCP packets
+	// Interested only in UDP and TCP packets (IP Layer)
+	if (info->layer != 'I') {
+		return;
+	}
 	if (info->app_protocol != 'T' && info->app_protocol != 'U') {
 		return;
 	}
