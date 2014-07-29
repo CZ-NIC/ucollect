@@ -35,7 +35,7 @@ function eliminate_items(addr, items, count)
 	if items[others_key] then
 		new_items[others_key] = items[others_key];
 	else
-		new_items[others_key] = { count = 0, size = 0, data_size = 0 };
+		new_items[others_key] = { d_count = 0, d_size = 0, d_data_size = 0, u_count = 0, u_size = 0, u_data_size = 0 };
 	end
 
 	-- Prepare array set to sorting
@@ -44,14 +44,17 @@ function eliminate_items(addr, items, count)
 		table.insert(sorted_array, {key = k, value = v});
 	end
 
-	table.sort(sorted_array, function(x, y) return x.value.count > y.value.count  end)
+	table.sort(sorted_array, function(x, y) return x.value.u_count > y.value.u_count  end)
 
 	-- Eliminate items
 	for i, _ in ipairs(sorted_array) do
 		if i > MAX_ITEMS_PER_CLIENT and sorted_array[i].key ~= others_key then
-			new_items[others_key].count = new_items[others_key].count + sorted_array[i].value.count;
-			new_items[others_key].size = new_items[others_key].size + sorted_array[i].value.size;
-			new_items[others_key].data_size = new_items[others_key].data_size + sorted_array[i].value.data_size;
+			new_items[others_key].d_count = new_items[others_key].d_count + sorted_array[i].value.d_count;
+			new_items[others_key].d_size = new_items[others_key].d_size + sorted_array[i].value.d_size;
+			new_items[others_key].d_data_size = new_items[others_key].d_data_size + sorted_array[i].value.d_data_size;
+			new_items[others_key].u_count = new_items[others_key].u_count + sorteu_array[i].value.u_count;
+			new_items[others_key].u_size = new_items[others_key].u_size + sorteu_array[i].value.u_size;
+			new_items[others_key].u_data_size = new_items[others_key].u_data_size + sorteu_array[i].value.u_data_size;
 		else
 			new_items[sorted_array[i].key] = sorted_array[i].value;
 		end
@@ -69,18 +72,24 @@ function read_file(db, file)
 
 	for line in f:lines() do
 		--Use port as string... we need value "all"
-		proto, src, dst, port, count, size, data_size = line:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+),(%d+),(%d+),(%d+)");
+		proto, src, dst, port, d_count, d_size, d_data_size, u_count, u_size, u_data_size = line:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)");
 		key = table.concat({ proto, src, dst, port }, ",");
 		if (key ~= "") then
 			if not db[src] then
 				db[src] = { };
 			end
 			if not db[src][key] then
-				db[src][key] = { count = tonumber(count), size = tonumber(size), data_size = tonumber(data_size) }
+				db[src][key] = {
+					d_count = tonumber(d_count), d_size = tonumber(d_size), d_data_size = tonumber(d_data_size),
+					u_count = tonumber(u_count), u_size = tonumber(u_size), u_data_size = tonumber(u_data_size)
+				}
 			else
-				db[src][key].count = db[src][key].count + tonumber(count);
-				db[src][key].size = db[src][key].size + tonumber(size);
-				db[src][key].data_size = db[src][key].data_size + tonumber(data_size);
+				db[src][key].d_count = db[src][key].d_count + tonumber(d_count);
+				db[src][key].d_size = db[src][key].d_size + tonumber(d_size);
+				db[src][key].d_data_size = db[src][key].d_data_size + tonumber(d_data_size);
+				db[src][key].u_count = db[src][key].u_count + tonumber(u_count);
+				db[src][key].u_size = db[src][key].u_size + tonumber(u_size);
+				db[src][key].u_data_size = db[src][key].u_data_size + tonumber(u_data_size);
 			end
 		end
 	end
@@ -117,7 +126,7 @@ function main()
 	end
 	for _, record in pairs(db) do
 		for key, value in pairs(record) do
-			ofile:write(string.format("%s,%d,%d,%d\n", key, value.count, value.size, value.data_size));
+			ofile:write(string.format("%s,%d,%d,%d,%d,%d,%d\n", key, value.d_count, value.d_size, value.d_data_size, value.u_count, value.u_size, value.u_data_size));
 		end
 	end
 	ofile:close();

@@ -33,18 +33,24 @@ function read_file(db, file)
 
 	for line in f:lines() do
 		--Use port as string... we need value "all"
-		proto, src, dst, port, count, size, data_size = line:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+),(%d+),(%d+),(%d+)");
+		proto, src, dst, port, d_count, d_size, d_data_size, u_count, u_size, u_data_size = line:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)");
 		key = table.concat({ proto, src, dst, port }, ",");
 		if (key ~= "") then
 			if not db[src] then
 				db[src] = { };
 			end
 			if not db[src][key] then
-				db[src][key] = { count = tonumber(count), size = tonumber(size), data_size = tonumber(data_size) }
+				db[src][key] = {
+					d_count = tonumber(d_count), d_size = tonumber(d_size), d_data_size = tonumber(d_data_size),
+					u_count = tonumber(u_count), u_size = tonumber(u_size), u_data_size = tonumber(u_data_size)
+				}
 			else
-				db[src][key].count = db[src][key].count + tonumber(count);
-				db[src][key].size = db[src][key].size + tonumber(size);
-				db[src][key].data_size = db[src][key].data_size + tonumber(data_size);
+				db[src][key].d_count = db[src][key].d_count + tonumber(d_count);
+				db[src][key].d_size = db[src][key].d_size + tonumber(d_size);
+				db[src][key].d_data_size = db[src][key].d_data_size + tonumber(d_data_size);
+				db[src][key].u_count = db[src][key].u_count + tonumber(u_count);
+				db[src][key].u_size = db[src][key].u_size + tonumber(u_size);
+				db[src][key].u_data_size = db[src][key].u_data_size + tonumber(u_data_size);
 			end
 		end
 	end
@@ -66,7 +72,7 @@ function main()
 		for key, value in pairs(items) do
 			-- Disjoin key again
 			proto, _, dst, port = key:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+)");
-			io.stdout:write(string.format("\t - %s - (%s/%s) - (%d/%d/%d)\n", dst, port, proto, value.count, value.size, value.data_size));
+			io.stdout:write(string.format("\t - %s - (%s/%s) - (%d/%d/%d)- (%d/%d/%d)\n", dst, port, proto, value.d_count, value.d_size, value.d_data_size, value.u_count, value.u_size, value.u_data_size));
 		end
 	end
 
