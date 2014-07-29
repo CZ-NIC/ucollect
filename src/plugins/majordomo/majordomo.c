@@ -46,7 +46,7 @@
 
 // Turris needs to define SWAP_DIRECTION
 // This is temporary solution, we need to find out what's wrong
-//#define SWAP_DIRECTION
+#define SWAP_DIRECTION
 
 #ifdef SWAP_DIRECTION
 #define DIRECTION_UPLOAD DIR_IN
