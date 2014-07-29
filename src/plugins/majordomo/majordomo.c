@@ -74,6 +74,9 @@ struct value {
 	uint64_t u_count;
 	uint64_t u_size;
 	uint64_t u_data_size;
+	uint64_t d_count;
+	uint64_t d_size;
+	uint64_t d_data_size;
 };
 
 struct comm_item {
@@ -157,6 +160,20 @@ static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_l
 	}
 }
 
+static void update_value(struct value *value, enum direction direction, uint64_t size, uint64_t data_size) {
+	if (direction == DIRECTION_UPLOAD) {
+		value->u_count++;
+		value->u_size += size;
+		value->u_data_size += data_size;
+	} else if (direction == DIRECTION_DOWNLOAD) {
+		value->d_count++;
+		value->d_size += size;
+		value->d_data_size += data_size;
+	} else {
+		assert(0);
+	}
+}
+
 static bool key_equals(struct comm_item *item, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, char protocol, uint16_t port) {
 	return (
 			item->key.from_addr_len == from_addr_len &&
@@ -188,7 +205,7 @@ static struct src_item *find_src(struct src_items *sources, const unsigned char 
 	return NULL;
 }
 
-static struct comm_item *create_comm_item(struct comm_items *communication, struct mem_pool *list_pool, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, const struct packet_info *info) {
+static struct comm_item *create_comm_item(struct comm_items *communication, struct mem_pool *list_pool, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, uint16_t port, const struct packet_info *info) {
 	struct comm_item *item;
 	//Create item
 	item = mem_pool_alloc(list_pool, sizeof *item);
@@ -197,95 +214,90 @@ static struct comm_item *create_comm_item(struct comm_items *communication, stru
 	memcpy(item->key.from, from, from_addr_len);
 	memcpy(item->key.to, to, to_addr_len);
 	item->key.protocol = info->app_protocol;
-	item->key.port = info->ports[END_DST];
+	item->key.port = port;
 	item->key.from_addr_len = from_addr_len;
 	item->key.to_addr_len = to_addr_len;
-	item->value.u_count = 1;
-	item->value.u_size = info->length;
-	item->value.u_data_size = info->length - info->hdr_length;
+	item->value = (struct value) {
+		.u_count = 1,
+		.u_size = info->length,
+		.u_data_size = info->length - info->hdr_length
+		// Item can be created only in one direction and the rest will be zero
+	};
 
 	return item;
 }
 
 void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
+	const struct packet_info *l2 = info;
 
-	// We are interested in outgoing packets only.
-	if (info->direction != DIRECTION_UPLOAD) {
-		//Only outgoing packets
-		return;
-	}
-
-	if (info->layer != 'E') {
-		ulog(LLOG_DEBUG_VERBOSE, "majordomo: first layers wasn't Ethernet.\n");
-		return;
-	}
-
-	const unsigned char *mac_addr = info->addresses[END_SRC];
-	if (info->addr_len != 6) {
-		ulog(LLOG_ERROR, "majordomo: Found packet on ethernet layer with bad address size\n");
-		return;
-	}
-	unsigned char mac_addr_len = info->addr_len;
-
+	// Drop packets with UNKNOWN direction
+	if (info->direction != DIRECTION_UPLOAD && info->direction != DIRECTION_DOWNLOAD) return;
+	// Accept only ethernet at L2
+	if (info->layer != 'E') return;
 	// Go to IP packet if any
-	if (info->next == NULL) {
-		return;
-	}
+	if (l2->next == NULL) return;
 	info = info->next;
+	// Interested only in UDP and TCP packets (+ check IP Layer)
+	if (info->layer != 'I') return;
+	if (info->app_protocol != 'T' && info->app_protocol != 'U') return;
 
-	// Interested only in UDP and TCP packets (IP Layer)
-	if (info->layer != 'I') {
-		return;
-	}
-	if (info->app_protocol != 'T' && info->app_protocol != 'U') {
-		return;
-	}
+	enum direction direction = (l2->direction == DIRECTION_UPLOAD ? DIRECTION_UPLOAD : DIRECTION_DOWNLOAD);
 
 	//Check situation about this packet
-	struct comm_item *item = find_item(d->communication, mac_addr, mac_addr_len, (unsigned char *) info->addresses[END_DST], info->addr_len, info->app_protocol, info->ports[END_DST]);
-	struct src_item *src = find_src(d->sources, mac_addr, mac_addr_len);
+	struct comm_item *item = NULL;
+	if (l2->direction == DIRECTION_UPLOAD) {
+		item = find_item(d->communication,
+			(unsigned char *) l2->addresses[END_SRC], l2->addr_len,
+			(unsigned char *) info->addresses[END_DST], info->addr_len,
+			info->app_protocol, info->ports[END_DST]
+		);
+	} else {
+		item = find_item(d->communication,
+			(unsigned char *) l2->addresses[END_DST], l2->addr_len,
+			(unsigned char *) info->addresses[END_SRC], info->addr_len,
+			info->app_protocol, info->ports[END_SRC]
+		);
+	}
 
-	//This item exists
+	// Item exists
 	if (item != NULL) {
 		//Update info
-		item->value.u_count++;
-		item->value.u_size += info->length;
-		item->value.u_data_size += (info->length - info->hdr_length);
+		update_value(&(item->value), direction, info->length, (info->length - info->hdr_length));
 		//Update position
 		items_remove(d->communication, item);
 		items_insert_after(d->communication, item, NULL);
+		return;
+	}
 
-	//Item doesn't exists; check source status
+	// Item doesn't exists; check source's status
+	struct src_item *src = find_src(d->sources, l2->addresses[END_SRC], l2->addr_len);
+	// This is first communication from this source
+	if (src == NULL) {
+		// Incoming connection can't create new item
+		if (info->direction != DIRECTION_UPLOAD)
+			return;
+		item = create_comm_item(d->communication, d->list_pool, l2->addresses[END_SRC], l2->addr_len, info->addresses[END_DST], info->addr_len, info->ports[END_DST], info);
+		src = src_items_append_pool(d->sources, d->list_pool);
+		memcpy(src->from.addr, l2->addresses[END_SRC], l2->addr_len);
+		src->from.addr_len = l2->addr_len;
+		src->other = (struct value) {
+			.u_count = 0 // Init all with zero
+		};
+		src->items_in_comm_list = 1;
+		// Add link into item
+		item->src_parent = src;
+
 	} else {
-		//This is first communication from this source (communication should be established from in outgoing way only)
-		if (src == NULL && info->directin == DIRECTION_UPLOAD) {
-			item = create_comm_item(d->communication, d->list_pool, mac_addr, mac_addr_len, info->addresses[END_DST], info->addr_len, info);
-			//Create source record
-			src = src_items_append_pool(d->sources, d->list_pool);
-			//Fill source data
-			memcpy(src->from.addr, mac_addr, mac_addr_len);
-			src->from.addr_len = mac_addr_len;
-			src->other.u_count = 0;
-			src->other.u_size = 0;
-			src->other.u_data_size = 0;
-			src->items_in_comm_list = 1;
-			//Add link into item
+		// Source has some records; check its limit
+		if (src->items_in_comm_list < SOURCE_SIZE_LIMIT) {
+			item = create_comm_item(d->communication, d->list_pool, l2->addresses[END_SRC], l2->addr_len, info->addresses[END_DST], info->addr_len, info->ports[END_DST], info);
+			// Link item with its parent
 			item->src_parent = src;
-
+			item->src_parent->items_in_comm_list++;
 		} else {
-			//Source has some records; check its limit
-			if (src->items_in_comm_list < SOURCE_SIZE_LIMIT) {
-				item = create_comm_item(d->communication, d->list_pool, mac_addr, mac_addr_len, info->addresses[END_DST], info->addr_len, info);
-				//Link item with its parent
-				item->src_parent = src;
-				item->src_parent->items_in_comm_list++;
-			} else {
-				//Source exceeded the limit - update its 'other' value
-				src->other.u_count++;
-				src->other.u_size += info->length;
-				src->other.u_data_size += (info->length - info->hdr_length);
-			}
+			// Source exceeded the limit - update its 'other' value
+			update_value(&(src->other), direction, info->length, (info->length - info->hdr_length));
 		}
 	}
 }
@@ -313,12 +325,12 @@ static void dump(struct context *context) {
 			app_protocol = "UDP";
 		}
 
-		fprintf(dump_file, "%s,%s,%s,%" PRIu16 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", app_protocol, src_str, dst_str, it->key.port, it->value.u_count, it->value.u_size, it->value.u_data_size);
+		fprintf(dump_file, "%s,%s,%s,%" PRIu16 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", app_protocol, src_str, dst_str, it->key.port, it->value.d_count, it->value.d_size, it->value.d_data_size, it->value.u_count, it->value.u_size, it->value.u_data_size);
 	}
 
 	for (struct src_item *it = d->sources->head; it; it = it->next) {
 		get_string_from_raw_bytes(it->from.addr, it->from.addr_len, src_str);
-		fprintf(dump_file, "%s,%s,%s,%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", "both", src_str, "all", "all", it->other.u_count, it->other.u_size, it->other.u_data_size);
+		fprintf(dump_file, "%s,%s,%s,%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", "both", src_str, "all", "all", it->other.d_count, it->other.d_size, it->other.d_data_size, it->other.u_count, it->other.u_size, it->other.u_data_size);
 	}
 
 	//Cleanup
