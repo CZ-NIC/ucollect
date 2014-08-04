@@ -17,35 +17,25 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include "../core/loop.h"
-#include "../core/util.h"
-#include "../core/configure.h"
-#include "../core/startup.h"
+/*
+ * Some helper functions to start up the main process. They
+ * don't do much, but repeating them is boring.
+ */
 
-#include <syslog.h>
+#ifndef UCOLLECT_STARTUP_H
+#define UCOLLECT_STARTUP_H
 
-int main(int argc, const char* argv[]) {
-	(void) argc;
-	openlog("lcollect", LOG_CONS | LOG_NDELAY | LOG_PID, LOG_DAEMON);
-	if (argv[1]) {
-		ulog(LLOG_DEBUG, "Setting config dir to %s\n", argv[1]);
-		config_set_dir(argv[1]);
-	}
+struct loop;
+struct uplink;
 
-	config_set_package("lcollect");
-	config_allow_null_uplink();
+// The main loop used by the process and the uplink (if any).
+extern struct loop *loop;
+extern struct uplink *uplink;
 
-	// Create the loop.
-	loop = loop_create();
+// Set up shutdown signals
+void set_stop_signals(void);
 
-	set_stop_signals();
+// Free the loop and uplink, if they exist
+void system_cleanup(void);
 
-	if (!load_config(loop))
-		die("No configuration available\n");
-
-	// Run until a stop signal comes.
-	loop_run(loop);
-
-	system_cleanup();
-	return 0;
-}
+#endif
