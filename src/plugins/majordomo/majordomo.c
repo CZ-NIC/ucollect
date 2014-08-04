@@ -140,7 +140,7 @@ static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_l
 		memcpy(&addr, bytes, addr_len);
 
 		if (inet_ntop(AF_INET, (void *)&addr, output, INET_ADDRSTRLEN) == NULL) {
-			//OK, any reason why it could failed?
+			//OK, any reason why it could fail?
 			strcpy(output, "FAILED");
 			ulog(LLOG_ERROR, "MAJORDOMO: conversion failed\n");
 		}
@@ -242,8 +242,6 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	if (info->layer != 'I') return;
 	if (info->app_protocol != 'T' && info->app_protocol != 'U') return;
 
-	enum direction direction = (l2->direction == DIRECTION_UPLOAD ? DIRECTION_UPLOAD : DIRECTION_DOWNLOAD);
-
 	//Check situation about this packet
 	struct comm_item *item = NULL;
 	if (l2->direction == DIRECTION_UPLOAD) {
@@ -263,7 +261,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	// Item exists
 	if (item != NULL) {
 		//Update info
-		update_value(&(item->value), direction, info->length, (info->length - info->hdr_length));
+		update_value(&(item->value), l2->direction, info->length, (info->length - info->hdr_length));
 		//Update position
 		items_remove(&(d->communication), item);
 		items_insert_after(&(d->communication), item, NULL);
@@ -297,7 +295,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 			item->src_parent->items_in_comm_list++;
 		} else {
 			// Source exceeded the limit - update its 'other' value
-			update_value(&(src->other), direction, info->length, (info->length - info->hdr_length));
+			update_value(&(src->other), l2->direction, info->length, (info->length - info->hdr_length));
 		}
 	}
 }

@@ -25,7 +25,7 @@ function dump(...)
   print(DataDumper(...), "\n---")
   end
 
-package.path = package.path .. ';/usr/share/ucollect/lua/?.lua'
+package.path = package.path .. ';/usr/share/lcollect/lua/?.lua'
 require("majordomo_lib");
 
 function main()
