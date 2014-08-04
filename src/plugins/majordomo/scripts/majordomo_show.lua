@@ -19,44 +19,13 @@ You should have received a copy of the GNU General Public License
 along with NUCI.  If not, see <http://www.gnu.org/licenses/>.
 ]]
 
- --This names have to be synced with Majordomo plugin
-local KW_OTHER_PROTO = "both"
-local KW_OTHER_DSTIP = "all"
-local KW_OTHER_PORT = "all"
+require("dumper");
 
-function read_file(db, file)
-	local f = io.open(file, "r");
-	if not f then
-		io.stderr:write(string.format("Cannot open file %s\n", file));
-		os.exit(1);
-	end
+function dump(...)
+  print(DataDumper(...), "\n---")
+  end
 
-	for line in f:lines() do
-		--Use port as string... we need value "all"
-		proto, src, dst, port, d_count, d_size, d_data_size, u_count, u_size, u_data_size = line:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)");
-		key = table.concat({ proto, src, dst, port }, ",");
-		if (key ~= "") then
-			if not db[src] then
-				db[src] = { };
-			end
-			if not db[src][key] then
-				db[src][key] = {
-					d_count = tonumber(d_count), d_size = tonumber(d_size), d_data_size = tonumber(d_data_size),
-					u_count = tonumber(u_count), u_size = tonumber(u_size), u_data_size = tonumber(u_data_size)
-				}
-			else
-				db[src][key].d_count = db[src][key].d_count + tonumber(d_count);
-				db[src][key].d_size = db[src][key].d_size + tonumber(d_size);
-				db[src][key].d_data_size = db[src][key].d_data_size + tonumber(d_data_size);
-				db[src][key].u_count = db[src][key].u_count + tonumber(u_count);
-				db[src][key].u_size = db[src][key].u_size + tonumber(u_size);
-				db[src][key].u_data_size = db[src][key].u_data_size + tonumber(u_data_size);
-			end
-		end
-	end
-
-	f:close();
-end
+require("majordomo_lib");
 
 function main()
 	if #arg ~= 1 then
@@ -68,11 +37,15 @@ function main()
 	read_file(db, arg[1]);
 
 	for addr, items in pairs(db) do
+		local sorted = get_sorted_items(addr, items, "u_count");
 		io.stdout:write(string.format("%s\n", addr));
-		for key, value in pairs(items) do
-			-- Disjoin key again
-			proto, _, dst, port = key:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+)");
-			io.stdout:write(string.format("\t - %s - (%s/%s) - (%d/%d/%d)- (%d/%d/%d)\n", dst, port, proto, value.d_count, value.d_size, value.d_data_size, value.u_count, value.u_size, value.u_data_size));
+		for _, item in ipairs(sorted) do
+			proto, _, dst, port = split_key(item.key);
+			io.stdout:write(string.format("\t - %s - (%s/%s) - (%d/%d/%d) - (%d/%d/%d)\n",
+				dst, port, proto,
+				item.value.d_count, item.value.d_size, item.value.d_data_size,
+				item.value.u_count, item.value.u_size, item.value.u_data_size)
+			);
 		end
 	end
 
