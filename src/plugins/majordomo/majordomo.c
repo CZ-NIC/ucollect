@@ -127,8 +127,8 @@ struct src_items {
 
 struct user_data {
 	FILE *file;
-	struct comm_items *communication;
-	struct src_items *sources;
+	struct comm_items communication;
+	struct src_items sources;
 	struct mem_pool *list_pool;
 	size_t timeout;
 };
@@ -247,13 +247,13 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	//Check situation about this packet
 	struct comm_item *item = NULL;
 	if (l2->direction == DIRECTION_UPLOAD) {
-		item = find_item(d->communication,
+		item = find_item(&(d->communication),
 			(unsigned char *) l2->addresses[END_SRC], l2->addr_len,
 			(unsigned char *) info->addresses[END_DST], info->addr_len,
 			info->app_protocol, info->ports[END_DST]
 		);
 	} else {
-		item = find_item(d->communication,
+		item = find_item(&(d->communication),
 			(unsigned char *) l2->addresses[END_DST], l2->addr_len,
 			(unsigned char *) info->addresses[END_SRC], info->addr_len,
 			info->app_protocol, info->ports[END_SRC]
@@ -265,20 +265,20 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		//Update info
 		update_value(&(item->value), direction, info->length, (info->length - info->hdr_length));
 		//Update position
-		items_remove(d->communication, item);
-		items_insert_after(d->communication, item, NULL);
+		items_remove(&(d->communication), item);
+		items_insert_after(&(d->communication), item, NULL);
 		return;
 	}
 
 	// Item doesn't exists; check source's status
-	struct src_item *src = find_src(d->sources, l2->addresses[END_SRC], l2->addr_len);
+	struct src_item *src = find_src(&(d->sources), l2->addresses[END_SRC], l2->addr_len);
 	// This is first communication from this source
 	if (src == NULL) {
 		// Incoming connection can't create new item
 		if (info->direction != DIRECTION_UPLOAD)
 			return;
-		item = create_comm_item(d->communication, d->list_pool, l2->addresses[END_SRC], l2->addr_len, info->addresses[END_DST], info->addr_len, info->ports[END_DST], info);
-		src = src_items_append_pool(d->sources, d->list_pool);
+		item = create_comm_item(&(d->communication), d->list_pool, l2->addresses[END_SRC], l2->addr_len, info->addresses[END_DST], info->addr_len, info->ports[END_DST], info);
+		src = src_items_append_pool(&(d->sources), d->list_pool);
 		memcpy(src->from.addr, l2->addresses[END_SRC], l2->addr_len);
 		src->from.addr_len = l2->addr_len;
 		src->other = (struct value) {
@@ -291,7 +291,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	} else {
 		// Source has some records; check its limit
 		if (src->items_in_comm_list < SOURCE_SIZE_LIMIT) {
-			item = create_comm_item(d->communication, d->list_pool, l2->addresses[END_SRC], l2->addr_len, info->addresses[END_DST], info->addr_len, info->ports[END_DST], info);
+			item = create_comm_item(&(d->communication), d->list_pool, l2->addresses[END_SRC], l2->addr_len, info->addresses[END_DST], info->addr_len, info->ports[END_DST], info);
 			// Link item with its parent
 			item->src_parent = src;
 			item->src_parent->items_in_comm_list++;
@@ -315,7 +315,7 @@ static void dump(struct context *context) {
 	char *dst_str = mem_pool_alloc(context->temp_pool, ADDRSTRLEN);
 	char *app_protocol;
 
-	LFOR(items, it, d->communication) {
+	LFOR(items, it, &(d->communication)) {
 		get_string_from_raw_bytes(it->key.from, it->key.from_addr_len, src_str);
 		get_string_from_raw_bytes(it->key.to, it->key.to_addr_len, dst_str);
 
@@ -328,19 +328,19 @@ static void dump(struct context *context) {
 		fprintf(dump_file, "%s,%s,%s,%" PRIu16 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", app_protocol, src_str, dst_str, it->key.port, it->value.d_count, it->value.d_size, it->value.d_data_size, it->value.u_count, it->value.u_size, it->value.u_data_size);
 	}
 
-	LFOR(src_items, it, d->sources) {
+	LFOR(src_items, it, &(d->sources)) {
 		get_string_from_raw_bytes(it->from.addr, it->from.addr_len, src_str);
 		fprintf(dump_file, "%s,%s,%s,%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", "both", src_str, "all", "all", it->other.d_count, it->other.d_size, it->other.d_data_size, it->other.u_count, it->other.u_size, it->other.u_data_size);
 	}
 
 	//Cleanup
 	//Reinit lists
-	d->communication->head = NULL;
-	d->communication->tail = NULL;
-	d->communication->count = 0;
-	d->sources->head = NULL;
-	d->sources->tail = NULL;
-	d->sources->count = 0;
+	d->communication.head = NULL;
+	d->communication.tail = NULL;
+	d->communication.count = 0;
+	d->sources.head = NULL;
+	d->sources.tail = NULL;
+	d->sources.count = 0;
 	//Drop dumped data
 	mem_pool_reset(d->list_pool);
 	//Close dump file
@@ -358,16 +358,14 @@ void scheduled_dump(struct context *context, void *data, size_t id) {
 void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 	*context->user_data = (struct user_data) {
-		.communication = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data->communication),
-		.sources = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data->sources),
 		.list_pool = loop_pool_create(context->loop, context, "Majordomo linked-lists pool"),
-		.timeout = loop_timeout_add(context->loop, DUMP_TIMEOUT, context, NULL, scheduled_dump)
-	};
-	*context->user_data->communication = (struct comm_items) {
-		.count = 0
-	};
-	*context->user_data->sources = (struct src_items) {
-		.count = 0
+		.timeout = loop_timeout_add(context->loop, DUMP_TIMEOUT, context, NULL, scheduled_dump),
+		.communication = (struct comm_items) {
+			.count = 0
+		},
+		.sources = (struct src_items) {
+			.count = 0
+		}
 	};
 }
 
