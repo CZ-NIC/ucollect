@@ -19,12 +19,15 @@ You should have received a copy of the GNU General Public License
 along with NUCI.  If not, see <http://www.gnu.org/licenses/>.
 ]]
 
-local MAX_ITEMS_PER_CLIENT = 6000
+require("dumper");
 
- --This names have to be synced with Majordomo plugin
-local KW_OTHER_PROTO = "both"
-local KW_OTHER_DSTIP = "all"
-local KW_OTHER_PORT = "all"
+function dump(...)
+  print(DataDumper(...), "\n---")
+  end
+
+require("majordomo_lib");
+
+local MAX_ITEMS_PER_CLIENT = 6000
 
 function eliminate_items(addr, items, count)
 	-- Compute key string only once
@@ -52,49 +55,15 @@ function eliminate_items(addr, items, count)
 			new_items[others_key].d_count = new_items[others_key].d_count + sorted_array[i].value.d_count;
 			new_items[others_key].d_size = new_items[others_key].d_size + sorted_array[i].value.d_size;
 			new_items[others_key].d_data_size = new_items[others_key].d_data_size + sorted_array[i].value.d_data_size;
-			new_items[others_key].u_count = new_items[others_key].u_count + sorteu_array[i].value.u_count;
-			new_items[others_key].u_size = new_items[others_key].u_size + sorteu_array[i].value.u_size;
-			new_items[others_key].u_data_size = new_items[others_key].u_data_size + sorteu_array[i].value.u_data_size;
+			new_items[others_key].u_count = new_items[others_key].u_count + sorted_array[i].value.u_count;
+			new_items[others_key].u_size = new_items[others_key].u_size + sorted_array[i].value.u_size;
+			new_items[others_key].u_data_size = new_items[others_key].u_data_size + sorted_array[i].value.u_data_size;
 		else
 			new_items[sorted_array[i].key] = sorted_array[i].value;
 		end
 	end
 
 	return new_items;
-end
-
-function read_file(db, file)
-	local f = io.open(file, "r");
-	if not f then
-		io.stderr:write(string.format("Cannot open file %s\n", file));
-		os.exit(1);
-	end
-
-	for line in f:lines() do
-		--Use port as string... we need value "all"
-		proto, src, dst, port, d_count, d_size, d_data_size, u_count, u_size, u_data_size = line:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)");
-		key = table.concat({ proto, src, dst, port }, ",");
-		if (key ~= "") then
-			if not db[src] then
-				db[src] = { };
-			end
-			if not db[src][key] then
-				db[src][key] = {
-					d_count = tonumber(d_count), d_size = tonumber(d_size), d_data_size = tonumber(d_data_size),
-					u_count = tonumber(u_count), u_size = tonumber(u_size), u_data_size = tonumber(u_data_size)
-				}
-			else
-				db[src][key].d_count = db[src][key].d_count + tonumber(d_count);
-				db[src][key].d_size = db[src][key].d_size + tonumber(d_size);
-				db[src][key].d_data_size = db[src][key].d_data_size + tonumber(d_data_size);
-				db[src][key].u_count = db[src][key].u_count + tonumber(u_count);
-				db[src][key].u_size = db[src][key].u_size + tonumber(u_size);
-				db[src][key].u_data_size = db[src][key].u_data_size + tonumber(u_data_size);
-			end
-		end
-	end
-
-	f:close();
 end
 
 function main()
@@ -105,8 +74,14 @@ function main()
 
 	db = {}
 
-	read_file(db, arg[1]);
-	read_file(db, arg[2]);
+	if not read_file(db, arg[1]) then
+		io.stderr:write(string.format("Cannot open file %s\n", arg[1]));
+		os.exit(2);
+	end
+	if not read_file(db, arg[2]) then
+		io.stderr:write(string.format("Cannot open file %s\n", arg[2]));
+		os.exit(2);
+	end
 
 	for addr, items in pairs(db) do
 		local count = 0;
@@ -122,7 +97,7 @@ function main()
 	local ofile = io.open(arg[3], "w");
 	if not ofile then
 		io.stderr:write(string.format("Cannot open file %s for writing\n", arg[3]));
-		os.exit(1);
+		os.exit(2);
 	end
 	for _, record in pairs(db) do
 		for key, value in pairs(record) do
