@@ -5,16 +5,18 @@ set -ex
 . ./dbconfig
 
 TABLES='activities anomalies count_snapshots bandwidth'
+BATCH_TABLES='pings certs nats'
 
 (
 	echo 'BEGIN;'
 	for TABLE in $TABLES ; do
 		echo "DELETE FROM $TABLE WHERE timestamp < DATE(NOW()) - $CLEAN_DAYS;"
 	done
+	for TABLE in $BATCH_TABLES ; do
+		echo "DELETE FROM $TABLE WHERE batch < DATE(NOW()) - $CLEAN_DAYS;"
+	done
 	echo "DELETE FROM router_loggedpacket WHERE created_at < DATE(NOW()) - $CLEAN_DAYS;"
 	echo "DELETE FROM router_registrationcode WHERE date < DATE(NOW()) - $CLEAN_DAYS;"
-	echo "DELETE FROM pings WHERE batch < DATE(NOW()) - $CLEAN_DAYS;"
-	echo "DELETE FROM certs WHERE batch < DATE(NOW()) - $CLEAN_DAYS;"
 	echo "DELETE FROM flows WHERE start < DATE(NOW()) - $CLEAN_DAYS;"
 	echo 'COMMIT;'
 ) | psql -U "$DBCLEANER" -d "$DB" $DBPARAMS
