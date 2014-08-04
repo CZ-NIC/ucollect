@@ -315,7 +315,7 @@ static void dump(struct context *context) {
 	char *dst_str = mem_pool_alloc(context->temp_pool, ADDRSTRLEN);
 	char *app_protocol;
 
-	for (struct comm_item *it = d->communication->head; it; it = it->next) {
+	LFOR(items, it, d->communication) {
 		get_string_from_raw_bytes(it->key.from, it->key.from_addr_len, src_str);
 		get_string_from_raw_bytes(it->key.to, it->key.to_addr_len, dst_str);
 
@@ -328,7 +328,7 @@ static void dump(struct context *context) {
 		fprintf(dump_file, "%s,%s,%s,%" PRIu16 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", app_protocol, src_str, dst_str, it->key.port, it->value.d_count, it->value.d_size, it->value.d_data_size, it->value.u_count, it->value.u_size, it->value.u_data_size);
 	}
 
-	for (struct src_item *it = d->sources->head; it; it = it->next) {
+	LFOR(src_items, it, d->sources) {
 		get_string_from_raw_bytes(it->from.addr, it->from.addr_len, src_str);
 		fprintf(dump_file, "%s,%s,%s,%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", "both", src_str, "all", "all", it->other.d_count, it->other.d_size, it->other.d_data_size, it->other.u_count, it->other.u_size, it->other.u_data_size);
 	}
