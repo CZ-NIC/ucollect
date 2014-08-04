@@ -42,12 +42,7 @@ function eliminate_items(addr, items, count)
 	end
 
 	-- Prepare array set to sorting
-	sorted_array = {};
-	for k, v in pairs(items) do
-		table.insert(sorted_array, {key = k, value = v});
-	end
-
-	table.sort(sorted_array, function(x, y) return x.value.u_count > y.value.u_count  end)
+	sorted_array = get_sorted_items(addr, items, "u_count");
 
 	-- Eliminate items
 	for i, _ in ipairs(sorted_array) do
