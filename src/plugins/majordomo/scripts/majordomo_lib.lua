@@ -112,7 +112,6 @@ end
 function read_file(db, file)
 	local f = io.open(file, "r");
 	if not f then
-		io.stderr:write(string.format("Cannot open file %s\n", file));
 		return false;
 	end
 
