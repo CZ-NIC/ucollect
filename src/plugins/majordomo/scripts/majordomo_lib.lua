@@ -124,10 +124,19 @@ function read_file(db, file)
 			if not db[src] then
 				db[src] = { };
 			end
-			db[src][key] = {
-				d_count = tonumber(d_count), d_size = tonumber(d_size), d_data_size = tonumber(d_data_size),
-				u_count = tonumber(u_count), u_size = tonumber(u_size), u_data_size = tonumber(u_data_size)
-			}
+			if not db[src][key] then
+				db[src][key] = {
+					d_count = tonumber(d_count), d_size = tonumber(d_size), d_data_size = tonumber(d_data_size),
+					u_count = tonumber(u_count), u_size = tonumber(u_size), u_data_size = tonumber(u_data_size)
+				}
+			else
+				db[src][key].d_count = db[src][key].d_count + tonumber(d_count);
+				db[src][key].d_size = db[src][key].d_size + tonumber(d_size);
+				db[src][key].d_data_size = db[src][key].d_data_size + tonumber(d_data_size);
+				db[src][key].u_count = db[src][key].u_count + tonumber(u_count);
+				db[src][key].u_size = db[src][key].u_size + tonumber(u_size);
+				db[src][key].u_data_size = db[src][key].u_data_size + tonumber(u_data_size);
+			end
 		end
 	end
 
