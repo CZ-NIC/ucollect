@@ -34,7 +34,10 @@ function main()
 	end
 
 	db = {}
-	read_file(db, arg[1]);
+	if not read_file(db, arg[1]) then
+		io.stderr:write(string.format("Cannot open file %s\n", arg[1]));
+		os.exit(2);
+	end
 
 	for addr, items in pairs(db) do
 		local sorted = get_sorted_items(addr, items, "u_count");
