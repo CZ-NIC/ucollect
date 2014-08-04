@@ -25,6 +25,7 @@ function dump(...)
   print(DataDumper(...), "\n---")
   end
 
+package.path = package.path .. ';/usr/share/ucollect/lua/?.lua'
 require("majordomo_lib");
 
 local MAX_ITEMS_PER_CLIENT = 6000
