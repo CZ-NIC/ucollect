@@ -22,7 +22,6 @@ require("uci");
 -- Definition of important constants
 DAILY_PREFIX="majordomo_daily_";
 HOURLY_PREFIX="majordomo_hourly_";
-TODAY=os.date("%Y-%m-%d", os.time());
 DB_PATH_DEFAULT="/tmp/majordomo_db/";
 
 -- This names have to be synced with Majordomo plugin
