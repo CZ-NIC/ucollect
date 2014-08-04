@@ -136,6 +136,10 @@ function read_file(db, file)
 	return true;
 end
 
+function split_key(key)
+	return key:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+)");
+end
+
 --[[
 	Define DB for reverse domain lookup
 ]]
