@@ -154,10 +154,8 @@ function get_inst_ptrdb()
 	local db_path, _ = majordomo_get_configuration();
 	local ptrdb = db("ptr", db_path);
 	function ptrdb:lookup(key)
-		-- Keep failed keys and do not try it again on this page
-		if not self.not_again then
-			self.not_again = {};
-		end
+		-- Pick some "safe" string
+		local empty_result = "none";
 		-- Unfortunately, lua don't have break
 		local parse = function(handle)
 			for line in handle:lines() do
@@ -175,11 +173,11 @@ function get_inst_ptrdb()
 
 		local cached = self.data[key];
 		if cached then
-			return cached;
-		end
-
-		if self.not_again[key] then
-			return nil;
+			if cached ~= empty_result then
+				return cached;
+			else
+				return nil;
+			end
 		end
 
 		local handle = io.popen("kdig -x " .. key);
@@ -187,10 +185,10 @@ function get_inst_ptrdb()
 
 		local ret;
 		if not ptr and nxdomain then
-			self.not_again[key] = true;
+			self.data[key] = empty_result;
 			ret = nil;
 		elseif not ptr and not nxdomain then
-			self.not_again[key] = true;
+			self.data[key] = empty_result;
 			ret = nil;
 		elseif ptr and not nxdomain then
 			self.data[key] = ptr;
@@ -212,25 +210,23 @@ function get_inst_macdb()
 	-- Define DB for MAC address vendor lookup
 	local macdb = db("mac_vendor", db_path);
 	function macdb:lookup(key)
-		-- Keep failed keys and do not try it again on this page
-		if not self.not_again then
-			self.not_again = {};
-		end
+		-- Pick some "safe" string
+		local empty_result = "none";
 
 		local cached = self.data[key];
 		if cached then
-			return cached;
-		end
-
-		if self.not_again[key] then
-			return nil;
+			if cached ~= empty_result then
+				return cached;
+			else
+				return nil;
+			end
 		end
 
 		local handle = io.popen("curl http://www.macvendorlookup.com/api/v2/" .. key .. "/pipe");
 		local result = handle:read();
 		handle:close();
 		if not result then
-			self.not_again[key] = true;
+			self.data[key] = empty_result;
 			return nil;
 		end
 		local vendor = result:match("%w+|%w+|%w+|%w+|([%w%s]+).*");
