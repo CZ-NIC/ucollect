@@ -29,6 +29,13 @@ package.path = package.path .. ';/usr/share/lcollect/lua/?.lua'
 require("majordomo_lib");
 
 function main()
+	local _, MAKE_LOOKUP = majordomo_get_configuration();
+	if MAKE_LOOKUP then
+		ptrdb = get_inst_ptrdb();
+		macdb = get_inst_macdb();
+		ptrdb:deserialize();
+		macdb:deserialize();
+	end
 	if #arg ~= 1 then
 		io.stderr:write(string.format("Usage: %s file_to_dump\n", arg[0]));
 		os.exit(1);
@@ -42,15 +49,24 @@ function main()
 
 	for addr, items in pairs(db) do
 		local sorted = get_sorted_items(addr, items, "u_count");
-		io.stdout:write(string.format("%s\n", addr));
+		if MAKE_LOOKUP and macdb:lookup(addr) then
+			io.stdout:write(string.format("%s (%s)\n", addr, macdb:lookup(addr)));
+		else
+			io.stdout:write(string.format("%s\n", addr));
+		end
 		for _, item in ipairs(sorted) do
 			proto, _, dst, port = split_key(item.key);
 			io.stdout:write(string.format("\t - %s - (%s/%s) - (%d/%d/%d) - (%d/%d/%d)\n",
-				dst, port, proto,
+				ptrdb and ptrdb:lookup(dst) or dst, port, proto,
 				item.value.d_count, item.value.d_size, item.value.d_data_size,
 				item.value.u_count, item.value.u_size, item.value.u_data_size)
 			);
 		end
+	end
+
+	if MAKE_LOOKUP then
+		ptrdb:serialize();
+		macdb:serialize();
 	end
 
 end
