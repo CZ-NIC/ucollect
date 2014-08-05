@@ -270,9 +270,6 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	struct src_item *src = find_src(&(d->sources), l2->addresses[local_endpoint], l2->addr_len);
 	// This is first communication from this source
 	if (src == NULL) {
-		// Incoming connection can't create new item
-		if (info->direction != DIRECTION_UPLOAD)
-			return;
 		item = create_comm_item(&(d->communication), d->list_pool, l2->addresses[local_endpoint], l2->addr_len, info->addresses[remote_endpoint], info->addr_len, info->ports[remote_endpoint], info);
 		src = src_items_append_pool(&(d->sources), d->list_pool);
 		memcpy(src->from.addr, l2->addresses[local_endpoint], l2->addr_len);
