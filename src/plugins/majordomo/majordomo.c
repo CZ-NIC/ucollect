@@ -240,21 +240,21 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	if (info->layer != 'I') return;
 	if (info->app_protocol != 'T' && info->app_protocol != 'U') return;
 
-	//Check situation about this packet
-	struct comm_item *item = NULL;
+	enum endpoint local_endpoint, remote_endpoint;
 	if (l2->direction == DIRECTION_UPLOAD) {
-		item = find_item(&(d->communication),
-			(unsigned char *) l2->addresses[END_SRC], l2->addr_len,
-			(unsigned char *) info->addresses[END_DST], info->addr_len,
-			info->app_protocol, info->ports[END_DST]
-		);
+		local_endpoint = END_SRC;
+		remote_endpoint = END_DST;
 	} else {
-		item = find_item(&(d->communication),
-			(unsigned char *) l2->addresses[END_DST], l2->addr_len,
-			(unsigned char *) info->addresses[END_SRC], info->addr_len,
-			info->app_protocol, info->ports[END_SRC]
-		);
+		local_endpoint = END_DST;
+		remote_endpoint = END_SRC;
 	}
+
+	//Check situation about this packet
+	struct comm_item *item = find_item(&(d->communication),
+			(unsigned char *) l2->addresses[local_endpoint], l2->addr_len,
+			(unsigned char *) info->addresses[remote_endpoint], info->addr_len,
+			info->app_protocol, info->ports[remote_endpoint]
+		);
 
 	// Item exists
 	if (item != NULL) {
@@ -267,15 +267,15 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	}
 
 	// Item doesn't exists; check source's status
-	struct src_item *src = find_src(&(d->sources), l2->addresses[END_SRC], l2->addr_len);
+	struct src_item *src = find_src(&(d->sources), l2->addresses[local_endpoint], l2->addr_len);
 	// This is first communication from this source
 	if (src == NULL) {
 		// Incoming connection can't create new item
 		if (info->direction != DIRECTION_UPLOAD)
 			return;
-		item = create_comm_item(&(d->communication), d->list_pool, l2->addresses[END_SRC], l2->addr_len, info->addresses[END_DST], info->addr_len, info->ports[END_DST], info);
+		item = create_comm_item(&(d->communication), d->list_pool, l2->addresses[local_endpoint], l2->addr_len, info->addresses[remote_endpoint], info->addr_len, info->ports[remote_endpoint], info);
 		src = src_items_append_pool(&(d->sources), d->list_pool);
-		memcpy(src->from.addr, l2->addresses[END_SRC], l2->addr_len);
+		memcpy(src->from.addr, l2->addresses[local_endpoint], l2->addr_len);
 		src->from.addr_len = l2->addr_len;
 		src->other = (struct value) {
 			.u_count = 0 // Init all with zero
@@ -287,7 +287,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	} else {
 		// Source has some records; check its limit
 		if (src->items_in_comm_list < SOURCE_SIZE_LIMIT) {
-			item = create_comm_item(&(d->communication), d->list_pool, l2->addresses[END_SRC], l2->addr_len, info->addresses[END_DST], info->addr_len, info->ports[END_DST], info);
+			item = create_comm_item(&(d->communication), d->list_pool, l2->addresses[local_endpoint], l2->addr_len, info->addresses[remote_endpoint], info->addr_len, info->ports[remote_endpoint], info);
 			// Link item with its parent
 			item->src_parent = src;
 			item->src_parent->items_in_comm_list++;
