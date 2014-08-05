@@ -44,16 +44,13 @@
 #define KEYS_ADDR_LEN 16
 #define ADDRSTRLEN (INET6_ADDRSTRLEN + 1)
 
-// Turris needs to define SWAP_DIRECTION
-// This is temporary solution, we need to find out what's wrong
-#define SWAP_DIRECTION
-
+// Define constant SWAP_DIRECTION for usage in development environment (i.e. local interface on personal computer)
 #ifdef SWAP_DIRECTION
-#define DIRECTION_UPLOAD DIR_IN
-#define DIRECTION_DOWNLOAD DIR_OUT
-#else
 #define DIRECTION_UPLOAD DIR_OUT
 #define DIRECTION_DOWNLOAD DIR_IN
+#else
+#define DIRECTION_UPLOAD DIR_IN
+#define DIRECTION_DOWNLOAD DIR_OUT
 #endif
 
 struct key {
@@ -170,6 +167,7 @@ static void update_value(struct value *value, enum direction direction, uint64_t
 		value->d_size += size;
 		value->d_data_size += data_size;
 	} else {
+		// DIR_UNKNOWN is filtered in packet_handle
 		assert(0);
 	}
 }
