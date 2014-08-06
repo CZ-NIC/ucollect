@@ -22,6 +22,7 @@ require("uci");
 -- Definition of important constants
 DAILY_PREFIX="majordomo_daily_";
 HOURLY_PREFIX="majordomo_hourly_";
+MONTHLY_PREFIX="majordomo_monthly_";
 DB_PATH_DEFAULT="/tmp/majordomo_db/";
 USE_DNS_LOOKUP_BACKEND = "nslookup_openwrt"
 
@@ -144,6 +145,11 @@ function read_file(db, file)
 	return true;
 end
 
+--[[
+	Split "serialized" key
+
+	Returns proto, src, dst, port
+]]
 function split_key(key)
 	return key:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+)");
 end
