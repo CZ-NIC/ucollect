@@ -49,9 +49,12 @@ function main()
 			io.stdout:write(string.format("%s\n", addr));
 		end
 		for _, item in ipairs(sorted) do
-			proto, _, dst, port = split_key(item.key);
+			local proto, _, dst, port = split_key(item.key);
+				if ptrdb then
+					dst = ptrdb:lookup(dst) or dst;
+				end
 			io.stdout:write(string.format("\t - %s - (%s/%s) - (%d/%d/%d) - (%d/%d/%d)\n",
-				ptrdb and ptrdb:lookup(dst) or dst, port, proto,
+				dst, port, proto,
 				item.value.d_count, item.value.d_size, item.value.d_data_size,
 				item.value.u_count, item.value.u_size, item.value.u_data_size)
 			);
