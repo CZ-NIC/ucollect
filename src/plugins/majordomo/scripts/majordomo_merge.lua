@@ -19,12 +19,6 @@ You should have received a copy of the GNU General Public License
 along with NUCI.  If not, see <http://www.gnu.org/licenses/>.
 ]]
 
-require("dumper");
-
-function dump(...)
-  print(DataDumper(...), "\n---")
-  end
-
 package.path = package.path .. ';/usr/share/lcollect/lua/?.lua'
 require("majordomo_lib");
 
