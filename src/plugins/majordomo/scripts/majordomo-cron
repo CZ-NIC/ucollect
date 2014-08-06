@@ -1,3 +1,6 @@
 MAILTO=""
-*/5 * * * *	root	majordomo_db.sh genhour
-1 * * * *	root	majordomo_db.sh genday
+# m h  dom mon dow  user  command
+*/5 * * * *	root	majordomo_db.sh downsize
+1 * * * *	root	majordomo_db.sh genhour
+4 * * * *	root	majordomo_cache.lua precache
+0 3 */3 * * root	majordomo_cache.lua invalidate
