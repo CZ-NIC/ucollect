@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,20 +17,35 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#ifndef UCOLLECT_CONFIGURE_H
-#define UCOLLECT_CONFIGURE_H
+#include "../core/loop.h"
+#include "../core/util.h"
+#include "../core/configure.h"
+#include "../core/startup.h"
 
-#include <stdbool.h>
+#include <syslog.h>
 
-struct loop;
+int main(int argc, const char* argv[]) {
+	(void) argc;
+	openlog("lcollect", LOG_CONS | LOG_NDELAY | LOG_PID, LOG_DAEMON);
+	if (argv[1]) {
+		ulog(LLOG_DEBUG, "Setting config dir to %s\n", argv[1]);
+		config_set_dir(argv[1]);
+	}
 
-/*
- * Set the configuration directory. Not copied, should be preserved for the
- * whole lifetime of the program.
- */
-void config_set_dir(const char *dir);
-void config_set_package(const char *package_name);
-void config_allow_null_uplink(void);
-bool load_config(struct loop *loop);
+	config_set_package("lcollect");
+	config_allow_null_uplink();
 
-#endif
+	// Create the loop.
+	loop = loop_create();
+
+	set_stop_signals();
+
+	if (!load_config(loop))
+		die("No configuration available\n");
+
+	// Run until a stop signal comes.
+	loop_run(loop);
+
+	system_cleanup();
+	return 0;
+}

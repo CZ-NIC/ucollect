@@ -1,0 +1,23 @@
+The `majordomo` plugin
+======================
+
+`Majordomo` is the `lcollect` plugin for analysing flows of connected clients
+in LAN.
+
+Collected data are just small subset of hypothetical netflow. Eg. time
+dimension is not considered.
+
+Important notes to deployment
+-----------------------------
+
+There are 2 possible memory limits:
+
+1) Maximum flows per client - this value is limited by SOURCE_SIZE_LIMIT
+constant.
+
+2) Maximum number of clients - this value is currently unlimited. Anyway,
+expected production area is in SOHO routers with small number of real connected
+clients. In this case aren't any limits needed.
+
+For bigger networks is recommended to consider the introduction of the maximum
+number of clients.

@@ -1,0 +1,4 @@
+LIBRARIES += src/plugins/majordomo/libplugin_majordomo
+libplugin_majordomo_MODULES := majordomo
+
+DOCS += src/plugins/majordomo/majordomo

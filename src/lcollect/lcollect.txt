@@ -1,0 +1,17 @@
+The `lcollect` binary
+=====================
+
+The `lcollect` is alternative implementation of ucollect that is able to run
+locally - without uplink. This behavior is useful for some plugins that process
+data on client only.
+
+
+The configuration works in the same way as configuration of ucollect (see
+ucollect documentation) with 2 exception:
+
+	- lcollect configuration is stored in package lcollect
+	  (/etc/config/lcollect), not in package ucollect(/etc/config/ucollect).
+
+	- The configuration doesn't contains the uplink section
+
+

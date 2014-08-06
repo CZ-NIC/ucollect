@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,20 +17,25 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#ifndef UCOLLECT_CONFIGURE_H
-#define UCOLLECT_CONFIGURE_H
+/*
+ * Some helper functions to start up the main process. They
+ * don't do much, but repeating them is boring.
+ */
 
-#include <stdbool.h>
+#ifndef UCOLLECT_STARTUP_H
+#define UCOLLECT_STARTUP_H
 
 struct loop;
+struct uplink;
 
-/*
- * Set the configuration directory. Not copied, should be preserved for the
- * whole lifetime of the program.
- */
-void config_set_dir(const char *dir);
-void config_set_package(const char *package_name);
-void config_allow_null_uplink(void);
-bool load_config(struct loop *loop);
+// The main loop used by the process and the uplink (if any).
+extern struct loop *loop;
+extern struct uplink *uplink;
+
+// Set up shutdown signals
+void set_stop_signals(void);
+
+// Free the loop and uplink, if they exist
+void system_cleanup(void);
 
 #endif

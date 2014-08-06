@@ -164,6 +164,7 @@ typedef LIST_NODE LIST_NAME(node_t);
 #undef LIST_PREV
 #undef LIST_WANT_APPEND_POOL
 #undef LIST_WANT_INSERT_AFTER
+#undef LIST_WANT_REMOVE
 
 #ifdef LIST_WANT_LFOR
 #ifndef LFOR
