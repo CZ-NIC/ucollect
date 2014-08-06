@@ -23,6 +23,7 @@ require("uci");
 DAILY_PREFIX="majordomo_daily_";
 HOURLY_PREFIX="majordomo_hourly_";
 DB_PATH_DEFAULT="/tmp/majordomo_db/";
+USE_DNS_LOOKUP_BACKEND = "nslookup_openwrt"
 
 -- This names have to be synced with Majordomo plugin
 KW_OTHER_PROTO = "both"
@@ -147,15 +148,8 @@ function split_key(key)
 	return key:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+)");
 end
 
---[[
-	Define DB for reverse domain lookup
-]]
-function get_inst_ptrdb()
-	local db_path, _ = majordomo_get_configuration();
-	local ptrdb = db("ptr", db_path);
-	function ptrdb:lookup(key)
-		-- Pick some "safe" string
-		local empty_result = "none";
+local DNS_LOOKUP_BACKENDS = {
+	["kdig"] = function(addr)
 		-- Unfortunately, lua don't have break
 		local parse = function(handle)
 			for line in handle:lines() do
@@ -171,6 +165,51 @@ function get_inst_ptrdb()
 			return nil, nil;
 		end
 
+		local handle = io.popen("kdig -x " .. addr);
+		local ptr, nxdomain = parse(handle);
+		handle:close();
+
+		return ptr, nxdomain;
+	end
+	,
+	["nslookup_openwrt"] = function(addr)
+		local parse = function(handle, addr)
+			for line in handle:lines() do
+				dump(line);
+				if string.find(line, "Name or service not known") then
+					return nil, true;
+				end
+
+				if string.find(line, addr) then
+					local rev = line:match("Address%s+%d+:%s+[%w%.%:]+%s+([%.%-%_%w]+).*");
+					if rev then
+						return rev, nil;
+					end
+				end
+			end
+			return nil, nil;
+		end
+
+		local handle = io.popen("nslookup " .. addr);
+		local ptr, nxdomain = parse(handle, addr);
+		handle:close();
+
+		return ptr, nxdomain;
+	end
+	};
+
+
+--[[
+	Define DB for reverse domain lookup
+]]
+function get_inst_ptrdb()
+	local db_path, _ = majordomo_get_configuration();
+	local ptrdb = db("ptr", db_path);
+	function ptrdb:lookup(key)
+		-- Pick some "safe" string
+		local empty_result = "none";
+		local resolve = DNS_LOOKUP_BACKENDS[USE_DNS_LOOKUP_BACKEND];
+
 		local cached = self.data[key];
 		if cached then
 			if cached ~= empty_result then
@@ -180,23 +219,17 @@ function get_inst_ptrdb()
 			end
 		end
 
-		local handle = io.popen("kdig -x " .. key);
-		local ptr, nxdomain = parse(handle);
-
-		local ret;
+		local ptr, nxdomain = resolve(key);
 		if not ptr and nxdomain then
 			self.data[key] = empty_result;
-			ret = nil;
+			return nil;
 		elseif not ptr and not nxdomain then
 			self.data[key] = empty_result;
-			ret = nil;
+			return nil;
 		elseif ptr and not nxdomain then
 			self.data[key] = ptr;
-			ret = ptr;
+			return ptr;
 		end
-		handle:close();
-
-		return ret;
 	end
 
 	return ptrdb
