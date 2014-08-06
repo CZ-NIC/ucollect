@@ -1,0 +1,56 @@
+The `sniff` plugin
+==================
+
+The goal of this plugin is to run tasks that gather some information
+and send the information back to server, when the server requests it.
+
+The plugin is capable of running predefined set of tasks types. The
+server may send parameters for each task and each task can run a
+potentially long time, in the background. Also, there may be multiple
+running tasks, even of the same type.
+
+Internal workings
+-----------------
+
+Most of the time, the plugin is dormant. It doesn't watch for network
+packets or whatever else. Once a request for running a task comes, it
+is passed to task-specific code and the parameters are parsed. A
+background process is started.
+
+The plugin watches over the background process and stores its output.
+Once the process terminates, the output is passed to task-specific
+code to parse it and prepare an answer to the server.
+
+It is also possible to abort the background process. This is done when
+the server requests another task to be run under the same ID. This
+another request may be a NOP task, effectively just canceling the
+previous request.
+
+Generic part of protocol
+------------------------
+
+While each type of tasks describes its parameters and results in its
+own way, part of the protocol is generic no matter what task is being
+run.
+
+A request from the server starts with 32-bit integer, which is the
+request ID. Then there's single byte, specifying which type of task to
+run. The rest of the message is the task-specific parameters.
+
+The answer is a 32-bit integer, ID of a task this response is
+belonging to, and a single byte as a status code.
+
+The codes are:
+
+`U`:: The kind of requested task is unknown to the plugin. This can
+  happen, for example, when the plugin is of older version than the
+  server and the server requests newer kind of task than implemented
+  in the plugin.
+`A`:: The previous task with the given ID was aborted (eg. this is
+  answer for the previous task with this ID, not the current one).
+`O`:: The task run successfully.
+`F`:: The task failed to run.
+
+The `U` and `A` carry no more data. The `O` and `F` are followed by
+task-specific message. What is considered a success or failure is up
+to the implementation of given task.
