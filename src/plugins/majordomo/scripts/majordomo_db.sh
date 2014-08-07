@@ -30,6 +30,7 @@ UCIVALUE=$(uci get majordomo.@statistics[0].store_hourly_files)
 DB_HOUR_PREFIX="$DB_PATH/majordomo_hourly_"
 DB_DAY_PREFIX="$DB_PATH/majordomo_daily_"
 DB_MONTH_PREFIX="$DB_PATH/majordomo_monthly_"
+DB_MONTH_ORIGIN_PREFIX="$DB_PATH/majordomo_origin_monthly_"
 
 ## Usage
 CMD="$1"
@@ -70,12 +71,16 @@ elif [ "$CMD" = "genhour" ]; then
 	NOW=$(date +"%s")
 	LAST_HOUR=$(( $NOW - 3600 ))
 
+	MONTHLY_ORIGIN_FILE_NAME="$DB_MONTH_ORIGIN_PREFIX$(date +"%Y-%m" --date="@$LAST_HOUR")"
 	MONTHLY_FILE_NAME="$DB_MONTH_PREFIX$(date +"%Y-%m" --date="@$LAST_HOUR")"
 	DAILY_FILE_NAME="$DB_DAY_PREFIX$(date +"%Y-%m-%d" --date="@$LAST_HOUR")"
 	HOURLY_FILE_NAME="$DB_HOUR_PREFIX$(date +"%Y-%m-%d-%H" --date="@$LAST_HOUR")"
 
-	[ -e "$MONTHLY_FILE_NAME" ] || touch $MONTHLY_FILE_NAME
-	[ -e "$DAILY_FILE_NAME" ] || touch $DAILY_FILE_NAME
+	[ ! -e "$DAILY_FILE_NAME" ] && touch $DAILY_FILE_NAME
+	if [ ! -e "$MONTHLY_FILE_NAME" ]; then
+		touch $MONTHLY_FILE_NAME
+		echo $LAST_HOUR > $MONTHLY_ORIGIN_FILE_NAME
+	fi
 
 	majordomo_merge.lua $DOWNSIZE_FILE_PATH $MONTHLY_FILE_NAME $MONTHLY_FILE_NAME
 	majordomo_merge.lua $DOWNSIZE_FILE_PATH $DAILY_FILE_NAME $DAILY_FILE_NAME
@@ -84,6 +89,7 @@ elif [ "$CMD" = "genhour" ]; then
 	clean_up $DB_HOUR_PREFIX $KEEP_HOURLY
 	clean_up $DB_DAY_PREFIX $KEEP_DAILY
 	clean_up $DB_MONTH_PREFIX $KEEP_MONTHLY
+	clean_up $DB_MONTH_ORIGIN_PREFIX $KEEP_MONTHLY
 
 else
 	echo "ERROR: undefined command"
