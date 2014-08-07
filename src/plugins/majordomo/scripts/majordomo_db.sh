@@ -1,26 +1,51 @@
 #!/bin/sh
 
 if [ $# -ne 1 ]; then
-	echo "ERROR: Usage: $0 (genhour|genday)"
+	echo "ERROR: Usage: $0 (downsize|genhour)"
 	exit 1
 fi
 
-## Try to get different value from uci config
-TRYUCIPATH=$(uci get majordomo.@db[0].path)
-[ $? -eq 0 ] && DB_PATH=$TRYUCIPATH
-
-## Create DB if not exists
-[ -d $DB_PATH ] || mkdir -p $DB_PATH
-
+## Settings
 DUMP_FILE_PATH="/tmp/ucollect_majordomo"
 DOWNSIZE_FILE_PATH="/tmp/majordomo_downsize"
 DB_PATH="/tmp/majordomo_db"
+KEEP_MONTHLY=12
+KEEP_DAILY=60
+KEEP_HOURLY=96
 
+## Load UCI configuration
+UCIVALUE=$(uci get majordomo.@db[0].path)
+[ $? -eq 0 ] && DB_PATH=$UCIVALUE
+
+UCIVALUE=$(uci get majordomo.@statistics[0].store_monthly_files)
+[ $? -eq 0 -a "$UCIVALUE" -ge 1 ] && KEEP_MONTHLY="$UCIVALUE"
+
+UCIVALUE=$(uci get majordomo.@statistics[0].store_daily_files)
+[ $? -eq 0 -a "$UCIVALUE" -ge 1 ] && KEEP_DAILY="$UCIVALUE"
+
+UCIVALUE=$(uci get majordomo.@statistics[0].store_hourly_files)
+[ $? -eq 0 -a "$UCIVALUE" -ge 1 ] && KEEP_HOURLY="$UCIVALUE"
+
+## Compute the rest of constants
 DB_HOUR_PREFIX="$DB_PATH/majordomo_hourly_"
 DB_DAY_PREFIX="$DB_PATH/majordomo_daily_"
 DB_MONTH_PREFIX="$DB_PATH/majordomo_monthly_"
 
+## Usage
 CMD="$1"
+
+## Create DB if not exists
+[ -d $DB_PATH ] || mkdir -p $DB_PATH
+
+clean_up() {
+	PREFIX="$1"
+	KEEP="$2"
+
+	DELETE=$(( $(ls $PREFIX* | wc -l) - $KEEP ))
+	[ $DELETE -lt 0 ] && DELETE=0
+	DELETE_FILES="$(ls $PREFIX* | sort -n | head -n $DELETE)"
+	[ -n "$DELETE_FILES" ] && rm $DELETE_FILES
+}
 
 if [ "$CMD" = "downsize" ]; then
 	## OK, OpenWrt doesn't have tempfile... grrr
@@ -55,4 +80,12 @@ elif [ "$CMD" = "genhour" ]; then
 	majordomo_merge.lua $DOWNSIZE_FILE_PATH $MONTHLY_FILE_NAME $MONTHLY_FILE_NAME
 	majordomo_merge.lua $DOWNSIZE_FILE_PATH $DAILY_FILE_NAME $DAILY_FILE_NAME
 	mv $DOWNSIZE_FILE_PATH $HOURLY_FILE_NAME
+
+	clean_up $DB_HOUR_PREFIX $KEEP_HOURLY
+	clean_up $DB_DAY_PREFIX $KEEP_DAILY
+	clean_up $DB_MONTH_PREFIX $KEEP_MONTHLY
+
+else
+	echo "ERROR: undefined command"
+	exit 1
 fi
