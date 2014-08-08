@@ -42,7 +42,7 @@ function main()
 	end
 
 	for addr, items in pairs(db) do
-		local sorted = get_sorted_items(addr, items, "u_count");
+		local sorted = get_sorted_items(items, "u_count");
 		if MAKE_LOOKUP and macdb:lookup(addr) then
 			io.stdout:write(string.format("%s (%s)\n", addr, macdb:lookup(addr)));
 		else

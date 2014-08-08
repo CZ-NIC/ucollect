@@ -23,6 +23,7 @@ require("uci");
 DAILY_PREFIX="majordomo_daily_";
 HOURLY_PREFIX="majordomo_hourly_";
 MONTHLY_PREFIX="majordomo_monthly_";
+MONTHLY_ORIGIN_PREFIX="majordomo_origin_monthly_";
 DB_PATH_DEFAULT="/tmp/majordomo_db/";
 USE_DNS_LOOKUP_BACKEND = "nslookup_openwrt"
 
@@ -98,7 +99,7 @@ end
 
 	Function expects composite value part
 ]]
-function get_sorted_items(addr, items, by)
+function get_sorted_items(items, by)
 	-- Prepare array set to sorting
 	sorted_array = {};
 	for k, v in pairs(items) do

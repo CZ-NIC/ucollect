@@ -37,7 +37,7 @@ function eliminate_items(addr, items, count)
 	end
 
 	-- Prepare array set to sorting
-	sorted_array = get_sorted_items(addr, items, "u_count");
+	sorted_array = get_sorted_items(items, "u_count");
 
 	-- Eliminate items
 	for i, _ in ipairs(sorted_array) do
