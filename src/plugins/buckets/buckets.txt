@@ -22,7 +22,7 @@ for the server to analyze them. The server aggregates the counts from
 several clients and keeps history of them. When it sees the counts
 don't look statistically right, it identifies the outstanding bucket
 indices (one or more index in each of the hash functions). It then
-asks the client for keys for the keys.
+asks the client for keys for the indices.
 
 The client drops the buckets on each send of the counts, but it
 keeps few snapshots of the keys, so it can answer the query for keys from

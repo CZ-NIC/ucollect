@@ -92,6 +92,8 @@ uplink_connected_callback:: Called when the uplink connects to the
   never lost).
 uplink_disconnected_callback:: Called when the connection to the
   remote server is lost.
+fd_callback:: Called when the plugin registers a file descriptor to be
+  watched and the file descriptor becomes ready to be read.
 
 Modules of the core
 -------------------
@@ -181,3 +183,24 @@ util
 ~~~~
 
 Various utilities, like logging and error reporting, live here.
+
+loader
+~~~~~~
+
+Allows for loading and unloading plugins.
+
+trie
+~~~~
+
+This holds a binary compressed trie data structure that can be used
+for relatively fast lookups by set of keys.
+
+startup
+~~~~~~~
+
+Common startup code, like signal handling setup.
+
+recycler
+~~~~~~~~
+
+Data structure to allocate and reuse objects.

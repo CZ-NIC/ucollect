@@ -5,6 +5,7 @@
 psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
+DROP TABLE IF EXISTS nats;
 DROP TABLE IF EXISTS flows;
 DROP TABLE IF EXISTS capture_stats;
 DROP TABLE IF EXISTS counts;
@@ -172,6 +173,7 @@ CREATE TABLE pings (
 );
 
 CREATE TABLE flows (
+	id BIGINT PRIMARY KEY NOT NULL,
 	client INT NOT NULL,
 	ip_from INET NOT NULL,
 	ip_to INET NOT NULL,
@@ -184,12 +186,16 @@ CREATE TABLE flows (
 	size BIGINT NOT NULL,
 	count INT NOT NULL,
 	inbound BOOL NOT NULL,
+	tag TEXT,
+	tagged_on TIMESTAMP,
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start <= stop)
 );
+CREATE SEQUENCE flow_ids OWNED BY flows.id;
+ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flow_ids');
 
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow');
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat');
 CREATE TABLE starttls_protos (
 	id SMALLINT NOT NULL PRIMARY KEY,
 	name TEXT NOT NULL,
@@ -257,13 +263,22 @@ INSERT INTO count_types (name, description, ord) VALUES
 	('V6TUNNEL', 'Packets sent over IPv6-tunelled connectivity', 16);
 INSERT INTO starttls_protos (id, name) VALUES (0, ''), (1, 'smtp'), (2, 'pop3'), (3, 'imap'), (4, 'ftp'), (5, 'xmpp');
 
+CREATE TABLE nats (
+	client INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	nat_v4 BOOLEAN,
+	nat_v6 BOOLEAN,
+	FOREIGN KEY (client) REFERENCES clients(id),
+	UNIQUE(client, batch)
+);
+
 CREATE TABLE config (
 	plugin TEXT NOT NULL,
 	name TEXT NOT NULL,
 	value TEXT NOT NULL,
 	UNIQUE(plugin, name)
 );
-INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))');
+INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('sniff', 'nat-interval', '3 days');
 
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
@@ -292,6 +307,8 @@ GRANT INSERT ON certs TO $DBUPDATER;
 GRANT INSERT ON cert_chains TO $DBUPDATER;
 GRANT SELECT ON certs TO $DBUPDATER;
 GRANT INSERT ON flows TO $DBUPDATER;
+GRANT INSERT ON nats TO $DBUPDATER;
+GRANT SELECT (batch) ON nats TO $DBUPDATER;
 GRANT SELECT ON config TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
@@ -307,6 +324,7 @@ GRANT SELECT (batch) ON pings TO $DBCLEANER;
 GRANT SELECT (batch, id) ON certs TO $DBCLEANER;
 GRANT SELECT (cert) ON cert_chains TO $DBCLEANER;
 GRANT SELECT (start) ON flows TO $DBCLEANER;
+GRANT SELECT (batch) ON nats TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
 GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
@@ -315,6 +333,7 @@ GRANT DELETE ON pings TO $DBCLEANER;
 GRANT DELETE ON certs TO $DBCLEANER;
 GRANT DELETE ON cert_chains TO $DBCLEANER;
 GRANT DELETE ON flows TO $DBCLEANER;
+GRANT DELETE ON nats TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
@@ -333,6 +352,10 @@ GRANT SELECT ON certs TO $DBARCHIVIST;
 GRANT SELECT ON cert_chains TO $DBARCHIVIST;
 GRANT SELECT ON flows TO $DBARCHIVIST;
 GRANT SELECT ON bandwidth TO $DBARCHIVIST;
+GRANT SELECT ON nats TO $DBARCHIVIST;
+
+GRANT SELECT ON flows TO $DBFLOWTAGGER;
+GRANT UPDATE (tag, tagged_on) ON flows TO $DBFLOWTAGGER;
 
 COMMIT;
 ENDSQL

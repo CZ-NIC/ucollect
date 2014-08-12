@@ -23,6 +23,7 @@ import logging
 import struct
 import re
 import importlib
+import random
 
 import plugin
 
@@ -93,7 +94,7 @@ class SniffPlugin(plugin.Plugin):
 		used = set(task.active_clients.keys()) | task.finished_clients
 		available = set(self.__connected()) - used
 		if available:
-			client = available.pop()
+			client = random.sample(available, 1)[0]
 			logger.debug("Sending task %s/%s to %s", task.name(), task.task_id, client)
 			message = struct.pack('!Lc', task.task_id, task.code) + task.message(client)
 			try:

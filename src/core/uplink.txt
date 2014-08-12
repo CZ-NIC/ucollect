@@ -104,15 +104,10 @@ The scenario to log in looks like this:
   arbitrary length).
 * The client then computes a hash of the password and the challenge
   (see below). It sends an `L` message. The payload is single
-  character, representing version of the hash, and 3 data blocks
+  character, representing version of the hash, and 2 data blocks
   (encoded usually with length prefix), representing the login name of
-  the client, computed hash and challenge for the server.
-* The server checks the returned hash from client. Then it computes
-  the same kind of hash from the challenge sent by the client and
-  sends it back as payload of an `L` message.
-* The client checks the response of server. When it matches, the
-  authentication is done. The client then proceeds to send the `H`ello
-  message.
+  the client and computed hash.
+* The server checks the returned hash from client.
 
 If the authentication fails, it must not be retried. The receiving
 side might notify the other about the failure by sending an `F`

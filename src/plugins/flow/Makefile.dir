@@ -1,2 +1,4 @@
 LIBRARIES += src/plugins/flow/libplugin_flow
 libplugin_flow_MODULES := main filter flow
+
+DOCS += src/plugins/flow/flow

@@ -1,0 +1,200 @@
+The `sniff` plugin
+==================
+
+The goal of this plugin is to run tasks that gather some information
+and send the information back to server, when the server requests it.
+
+The plugin is capable of running predefined set of tasks types. The
+server may send parameters for each task and each task can run a
+potentially long time, in the background. Also, there may be multiple
+running tasks, even of the same type.
+
+Internal workings
+-----------------
+
+Most of the time, the plugin is dormant. It doesn't watch for network
+packets or whatever else. Once a request for running a task comes, it
+is passed to task-specific code and the parameters are parsed. A
+background process is started.
+
+The plugin watches over the background process and stores its output.
+Once the process terminates, the output is passed to task-specific
+code to parse it and prepare an answer to the server.
+
+It is also possible to abort the background process. This is done when
+the server requests another task to be run under the same ID. This
+another request may be a NOP task, effectively just canceling the
+previous request.
+
+Generic part of the protocol
+----------------------------
+
+While each type of tasks describes its parameters and results in its
+own way, part of the protocol is generic no matter what task is being
+run.
+
+A request from the server starts with 32-bit integer, which is the
+request ID. Then there's single byte, specifying which type of task to
+run. The rest of the message is the task-specific parameters.
+
+The answer is a 32-bit integer, ID of a task this response is
+belonging to, and a single byte as a status code.
+
+The codes are:
+
+`U`:: The kind of requested task is unknown to the plugin. This can
+  happen, for example, when the plugin is of older version than the
+  server and the server requests newer kind of task than implemented
+  in the plugin.
+`A`:: The previous task with the given ID was aborted (eg. this is
+  answer for the previous task with this ID, not the current one).
+`O`:: The task run successfully.
+`F`:: The task failed to run.
+
+The `U` and `A` carry no more data. The `O` and `F` are followed by
+task-specific message. What is considered a success or failure is up
+to the implementation of given task.
+
+Task types
+----------
+
+This is the list of supported tasks, including the format of
+parameters and responses. Each one is designated by its single-byte
+code.
+
+The `NOP` task
+~~~~~~~~~~~~~~
+
+It is represented by `N` code. This task does nothing, it doesn't take
+any parameters (ignores them if given) and succeeds without providing
+any response data. This is for internal protocol use mostly.
+
+The NAT detector
+~~~~~~~~~~~~~~~~
+
+It is represented by `n` code. It takes no parameters and detects if
+the connection is with public IP address or with a NAT. When
+successful, it sends two bytes, corresponding to IPv4 and IPv6
+connectivity. Each byte means:
+
+`0`:: No connectivity over this family.
+`N`:: Connectivity trough NAT.
+`D`:: Directly connected to the Internet.
+
+In case of failure, single opcode is sent as description of the type
+of error that happened:
+
+`S`:: The background script failed to start (for example because there
+  was no free PID to fork).
+`M`:: Part of the output of the background script is missing. It may
+  have terminated prematurely.
+`U`:: Output of the script plugin contains unknown statement and
+  couldn't be parsed.
+
+The pinger
+~~~~~~~~~~
+
+This task is denoted by `P`. It receives list of hosts, pings them one
+by one and reports the resolved IP addresses and round-trip times
+of the pings.
+
+The list of host is preceded by `uint16_t` integer, specifying the
+number of hosts. Each host is record of several items, in this order:
+
+ * Protocol (`char`), which is one of:
+   `4`:: The ping should be done by IPv4.
+   `6`:: The ping should be done by IPv6.
+   `X`:: It doesn't matter if IPv4 or IPv6 and the `ping` command will
+     choose.
+ * Count (`uint8_t`), number of pings to send to this host.
+ * Size (`uint16_t`), size of each ping message.
+ * Hostname (string, see documentation of uplink for string
+   representation). It may be either the DNS host name or textual
+   representation of IP address.
+
+In case of success, a report is sent for each host in the input (in
+the same order). Each report contains:
+
+ * The resolved IP address (string). In case it failed to resolve, the
+   string is empty and no more items are present in this report.
+ * RTT times (count * `uint32_t`). Each time represents the round-trip
+   time of one of the count pings sent to the host, in microseconds.
+   They are ordered by the order of pings sent. In case the ping did
+   not return, the number is maximum possible (`0xFFFFFFFF`).
+
+In case of failure, it sends single character explaining the problem:
+
+ `I`:: The plugin doesn't understand the parameters sent by server.
+   This should actually never happen.
+ `F`:: Failed to run the background script. This might happen if the
+   system runs out of PIDs, for example.
+ `P`:: There was a low-level error when reading the script output.
+ `R`:: The output was truncated, the script probably ended
+   prematurely.
+ `O`:: The output of the script is broken and couldn't be parsed.
+
+The certificate downloader
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It is represented as `C`. The goal is to download SSL certificate of
+services.
+
+Each time invoked, it reads list of services, downloads the
+certificates and sends requested information about them to the server.
+
+The list of services is preceded by `uint16_t` integer, specifying
+number of the services to download from. Each is then represented by a
+record of this items:
+
+ * Request flags (`uint8_t`), which represents how to download the
+   certificate and which information to bundle into the answer. The
+   bits are like this:
+   0-2:: These bits specify a starttls protocol. Some protocols have a
+     plaint-text preamble, then the client issues some kind of
+     `starttls` command and starts the encryption. The three bits form
+     a number and the values are (in order, further numbers are yet
+     unused):
+     - None ‒ just plain SSL from the beginning.
+     - SMTP
+     - POP3
+     - IMAP
+     - FTP
+     - XMPP
+  3:: If this bit is set, the whole certificate is sent. Otherwise,
+    only SHA1 fingerprint is sent.
+  4:: If set, the whole chain (not just the host certificate) is sent.
+  5:: If set, the CN names of the certificate (as specified by CN and
+    DNS: fields) and the expiration date are sent for each
+    certificate.
+  6:: If set, parameters of the encryption (protocol version and
+    cypher) are sent.
+  7:: Signifies there's another flag field. As they are no more flags
+    now, this is never set. Having it set makes the plugin abort
+    parsing this input, since it can't know the format of future flags.
+ * Port (`uint16_t`), which is the port it will connect to to download
+   the certificate from.
+ * Hostname of the service (string).
+
+If successful, one report for each service is sent, put serially
+together without any headers or paddings. Each one looks like this:
+
+ * Count of certificates (`uint8_t`) ‒ the number of certificates for
+   this service to be sent. This can be 0, if the plugin failed to
+   download it (the service is down, no SSL support, etc). In such
+   case, no more items are present in this record. It can be
+   1, in which case it is the host certificate. It also can be more,
+   if the flag 4 is set. In that case, the additional certificates are
+   the chain, from the host up to the root.
+ * SSL cypher (string) ‒ the cypher negotiated. This is present only
+   if the flag 6 is set.
+ * SSL protocol version (string) ‒ the protocol negotiated. This is
+   present only if the flag 6 is set.
+ * Info about certificate ‒ this is present as many times as in the
+   count. Each info is record of multiple items:
+   - The certificate (string) ‒ this is the actual certificate in PEM
+     representation (if the flag 3 is set) or its SHA1 fingerprint.
+   - The CN/DNS names (string) ‒ this is a single string containing
+     all the names the certificate is valid for, separated by
+     newlines. It is present only if flag 5 is set.
+   - The expiration date (string) ‒ Present only if the flag 5 is
+     set.

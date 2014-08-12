@@ -1,0 +1,127 @@
+The `flow` plugin
+=================
+
+This plugin gathers network flows and reports them to the server. A
+flow is something like connection, however, we don't track SYN/FIN
+packets. We just group packets with the same addresses and ports
+together, count how much goes in each direction and send these items
+to the server from time to time.
+
+The server provides configuration (at startup and also when it is
+updated), then client keeps track of when to send the data itself. It
+sends either if too much time went by or when there's too many flows
+to send.
+
+There's also a filter that restricts which flows to capture. If it
+doesn't match, the packet is completely ignored.
+
+Protocol
+--------
+
+Messages are prefixed by single-byte opcode. As always, all numbers
+are in network byte order. The server can send these messages:
+
+`F`:: A force flush. Requests the client sends the flows right away,
+  without any waiting. This is currently not sent by the server under
+  any circumstance, but it may get used in future, for example in case
+  of graceful shutdown.
+`C`:: A configuration. It is followed by 4 32-bit integers, followed
+  by representation of the filter (see below for the filter format).
+  The integers represent:
+  * Configuration ID (to check configuration equality).
+  * Maximum number of flows to store before sending.
+  * Maximum time of gathering before sending the flows, in
+    milliseconds.
+  * Minimum number of packets in a flow to be sent to the server.
+    Smaller flows are omitted.
+
+The client sends these messages:
+
+`C`:: Client requests configuration.
+`D`:: The flow data. The header contains client's current
+  configuration ID (`uint32_t`) and current client's time (`uint64_t`,
+  number of milliseconds since some unspecified time in the past ‒
+  used as calibration of times mentioned in the flows). The rest of
+  the message is filled with flows. See below for the format.
+
+Filter format
+-------------
+
+The filter is a tree structure. Leafs match the packets directly (by
+some parameter), while the inner nodes combine the results of their
+children. The value in root specifies if the thing matches or not.
+
+The data structure is serialized in preorder. Each type of node is
+represented by a single byte and it is directly followed by its
+parameters. In case of inner nodes, the parameters are the children.
+
+The types are:
+
+`T`:: Always true. There are no parameters. Usually used as an empty
+  filter, to match all nodes.
+`F`:: Always false. No parameters. It can be used to almost disable
+  the flow plugin on the fly.
+`!`:: Negation of its single child. The child directly follows after
+  the `!` code.
+`&`:: Logical and of all its children. It returns true if and only if
+  none if its children returns false (from which follows that empty
+  `&` acts like `T`). It doesn't evaluate all the children if one of
+  them already returned false. The code is followed by an `uint32_t`,
+  specifying the number of children. Then there's so many children
+  encoded.
+`|`:: Logical or of all its children. It returns true if and only if
+  at least one children returns true. Its parameters are represented
+  the same way as with `&`.
+`i`:: Match local IP address ‒ it returns true if the local IP address
+  of the packet is the same as one of its parameters. It is followed
+  by single `uint32_t`, specifying the number of addresses. Then, each
+  address starts with `uint8_t` ‒ its length (which is 4 for IPv4 or
+  16 for IPv6) and then so many bytes of the address. The filter takes
+  multiple addresses for performance reasons ‒ it is faster to specify
+  the addresses as single `i` than build it from multiple `i` filters
+  and `|`.
+`I`:: Similar to `i`, but it matches on the remote address.
+`p`:: Local port match ‒ it returns true if the local port of the
+  packet matches one of the ones passed in its parameters. The code is
+  followed by single `uint16_t` number, which is count of the ports.
+  Then there's so many `uint16_t` numbers, each specifying single
+  port (note that there can't possibly be more than 2^16^ different
+  ports).
+`P`:: Same as `p`, but with remote port.
+
+There may be more filter types in future.
+
+So, these representations are the same (the angular brackets enclose
+number elements):
+
+* `T`
+* `!F`
+* `|<0001>&<0000>`
+* `|<0002>p<02><00><01>!p<02><00><01>`
+
+Flow format
+-----------
+
+Each flow is represented on the wire as a sequence of items.
+
+Flags (`uint8_t`):: This encodes the protocol and address family of
+  the flow. If the address family is IPv4, the 0th bit is set to 0, in
+  case of IPv6, it is 1. The 1st bit sets if it is TCP (0) or UDP (1).
+Counts (2*`uint32_t`):: Count of packets in the inbound and outbound
+  direction.
+Sizes (2*`uint64_t`):: Number of bytes in the inbound and outbound
+  directions.
+Ports (2*`uint16_t`):: Local and remote port of the communication.
+Time of first packet (2*`uint64_t`):: The time in which the first
+  packet of the flow came, in inbound and outbound direction. It is
+  the same representation as in the header of the `D` message from
+  client. Specifically, it has the same epoch (which might be
+  different for each client, so it needs to be correlated to the time
+  on the server).
+Time of the last packet (2*`uint64_t`):: The time in which the last
+  packet of the flow came, in inbound and outbound direction.
+Remote address (4 or 16 bytes):: The IP address of the remote end
+  (local one is not included). The length depends on the address
+  family in the first byte.
+
+The flows are stuffed one after another into the message.

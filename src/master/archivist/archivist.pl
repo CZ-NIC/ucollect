@@ -271,4 +271,41 @@ if (fork == 0) {
 	exit;
 }
 
-wait for (1..7);
+if (fork == 0) {
+	my $source = connect_db 'source';
+	my $destination = connect_db 'destination';
+	my $max_time = $destination->selectrow_array('SELECT COALESCE(MAX(flows.tagged_on), TO_TIMESTAMP(0)) FROM flows');
+	print "Getting flows tagget after $max_time\n";
+	my $store_flow = $destination->prepare('INSERT INTO flows (peer_ip, peer_port, inbound, proto, start, stop, opposite_start, size, count, tag, tagged_on) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+	my $store_group = $destination->prepare('INSERT INTO flow_groups (flow, from_group) VALUES (?, ?)');
+	my $get_flows = $source->prepare('SELECT
+			group_members.in_group, flows.id, ip_from, ip_to, port_from, port_to, inbound, proto, start, stop, opposite_start, size, count, tag, tagged_on
+		FROM
+			flows
+		JOIN
+			group_members
+		ON
+			flows.client = group_members.client
+		WHERE
+			tagged_on > ?
+		ORDER BY
+			flows.id');
+	$get_flows->execute($max_time);
+	my ($fid, $dst_fid);
+	my ($fcount, $gcount) = (0, 0);
+	while (my ($group, $id, $ip_from, $ip_to, $port_from, $port_to, $inbound, @payload) = $get_flows->fetchrow_array) {
+		if ($fid != $id) {
+			$store_flow->execute($inbound ? ($ip_from, $port_from) : ($ip_to, $port_to), $inbound, @payload);
+			$dst_fid = $destination->last_insert_id(undef, undef, 'flows', undef);
+			$fcount ++;
+			$fid = $id;
+		}
+		$store_group->execute($dst_fid, $group);
+		$gcount ++;
+	}
+	print "Stored $fcount flows with $gcount group entries\n";
+	$source->commit;
+	$destination->commit;
+}
+
+wait for (1..8);

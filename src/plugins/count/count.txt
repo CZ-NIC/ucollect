@@ -24,13 +24,13 @@ Timestamp::
   guess the length of interval.
 Number of interfaces::
   The number of interfaces being captured in the client, encoded as
-  `uint32_t`.
+  `uint64_t`.
 Interface statistics::
-  For each interface, there is a triple of `uint32_t` numbers, meaning
+  For each interface, there is a triple of `uint64_t` numbers, meaning
   number of packets captured on the interface, dropped by PCAP because
   the software didn't keep up and dropped by the interface driver.
 Property statistics::
-  For each property, there's a pair of `uint32_t` numbers, meaning the
+  For each property, there's a pair of `uint64_t` numbers, meaning the
   count of packets with the property and the total size of these
   packets.
 
@@ -74,6 +74,9 @@ PUSH::
   TCP packets with PUSH flag set.
 SERVER::
   The communication with the uplink server.
+V6TUNNEL::
+  IPv6 communication sent through a tunnel (in contrast with IPv4 or
+  IPv6 native communication).
 
 Note that the related categories don't necessarily form complements.
 There may be, for example, packets that are not considered In nor Out
