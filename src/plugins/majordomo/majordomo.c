@@ -249,7 +249,12 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		remote_endpoint = END_SRC;
 	}
 
-	//Check situation about this packet
+	// Do not handle packets with MAC address that starts with odd numbers (multi- or broadcasts)
+	if ((((uint8_t *) l2->addresses[local_endpoint])[0] % 2) == 1 ||
+		(((uint8_t *) l2->addresses[remote_endpoint])[0] % 2) == 1)
+		return;
+
+	// Check situation about this packet
 	struct comm_item *item = find_item(&(d->communication),
 			(unsigned char *) l2->addresses[local_endpoint], l2->addr_len,
 			(unsigned char *) info->addresses[remote_endpoint], info->addr_len,
