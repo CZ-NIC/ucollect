@@ -28,7 +28,7 @@ local CMD_INVALIDATE = "invalidate";
 local CMD_PRECACHE = "precache";
 
 function invalidate(db_path)
-	os.execute("rm " .. db_path .. "/majordomo_serialized_*");
+	os.execute("rm '" .. db_path .. "/majordomo_serialized_'*");
 end
 
 function precache(db_path)
@@ -38,9 +38,9 @@ function precache(db_path)
 	macdb:deserialize();
 
 	local handles = { };
-	table.insert(handles, io.popen("/bin/ls " .. db_path .. "/" ..  DAILY_PREFIX .."*", "r"));
-	table.insert(handles, io.popen("/bin/ls " .. db_path .. "/" ..  HOURLY_PREFIX .."*", "r"));
-	table.insert(handles, io.popen("/bin/ls " .. db_path .. "/" ..  MONTHLY_PREFIX .."*", "r"));
+	table.insert(handles, io.popen("/bin/ls '" .. db_path .. "/" ..  DAILY_PREFIX .."'*", "r"));
+	table.insert(handles, io.popen("/bin/ls '" .. db_path .. "/" ..  HOURLY_PREFIX .."'*", "r"));
+	table.insert(handles, io.popen("/bin/ls '" .. db_path .. "/" ..  MONTHLY_PREFIX .."'*", "r"));
 
 	for _, handle in ipairs(handles) do
 		for file in handle:lines() do
