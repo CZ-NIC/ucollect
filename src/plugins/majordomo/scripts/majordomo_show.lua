@@ -53,7 +53,7 @@ function main()
 				if ptrdb then
 					dst = ptrdb:lookup(dst) or dst;
 				end
-			io.stdout:write(string.format("\t - %s - (%s/%s) - (%d/%d/%d) - (%d/%d/%d)\n",
+			io.stdout:write(string.format("\t - %s - (%s/%s) - (%f/%f/%f) - (%f/%f/%f)\n",
 				dst, port, proto,
 				item.value.d_count, item.value.d_size, item.value.d_data_size,
 				item.value.u_count, item.value.u_size, item.value.u_data_size)
