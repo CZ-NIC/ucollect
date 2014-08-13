@@ -182,7 +182,6 @@ local DNS_LOOKUP_BACKENDS = {
 	["nslookup_openwrt"] = function(addr)
 		local parse = function(handle, addr)
 			for line in handle:lines() do
-				dump(line);
 				if string.find(line, "Name or service not known") then
 					return nil, true;
 				end
