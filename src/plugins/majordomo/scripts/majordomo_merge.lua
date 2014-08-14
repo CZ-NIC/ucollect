@@ -91,7 +91,7 @@ function main()
 	end
 	for _, record in pairs(db) do
 		for key, value in pairs(record) do
-			ofile:write(string.format("%s,%d,%d,%d,%d,%d,%d\n", key, value.d_count, value.d_size, value.d_data_size, value.u_count, value.u_size, value.u_data_size));
+			ofile:write(string.format("%s,%f,%f,%f,%f,%f,%f\n", key, value.d_count, value.d_size, value.d_data_size, value.u_count, value.u_size, value.u_data_size));
 		end
 	end
 	ofile:close();

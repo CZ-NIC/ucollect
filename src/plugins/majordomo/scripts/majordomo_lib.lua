@@ -119,7 +119,7 @@ function read_file(db, file)
 
 	for line in f:lines() do
 		--Use port as string... we need value "all"
-		proto, src, dst, port, d_count, d_size, d_data_size, u_count, u_size, u_data_size = line:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)");
+		proto, src, dst, port, d_count, d_size, d_data_size, u_count, u_size, u_data_size = line:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+),([%d%.]+),([%d%.]+),([%d%.]+),([%d%.]+),([%d%.]+),([%d%.]+)");
 		key = table.concat({ proto, src, dst, port }, ",");
 		if (key ~= "") then
 			if not db[src] then
@@ -182,7 +182,6 @@ local DNS_LOOKUP_BACKENDS = {
 	["nslookup_openwrt"] = function(addr)
 		local parse = function(handle, addr)
 			for line in handle:lines() do
-				dump(line);
 				if string.find(line, "Name or service not known") then
 					return nil, true;
 				end
