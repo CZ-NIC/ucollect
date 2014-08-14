@@ -80,3 +80,75 @@ for my $host (sort keys %reports) {
 		print "• Whitelisted owners: " . (join ', ', map "$_($whitelist_ips{$_})", keys %whitelist_ips) . "\n";
 	}
 }
+
+# Extract weak ciphers and protocols
+my $ciph = $dbh->selectall_arrayref('SELECT request, batch, cipher, proto, COUNT(*) AS count, MIN(host) AS host, MIN(port) AS port FROM certs JOIN cert_requests on request = cert_requests.id GROUP BY request, batch, cipher, proto');
+
+my %weak_ciphs;
+my %weak_proto;
+
+my %strong_proto = (
+	TLSv1 => 1,
+	'TLSv1.1' => 1,
+	'TLSv1.2' => 1,
+);
+
+my %strong_ciph = (
+	AES128 => 1,
+	AES256 => 1,
+	AES384 => 1,
+);
+
+my %strong_sig = (
+	SHA => 1,
+	SHA256 => 1,
+	SHA384 => 1,
+);
+
+for my $crecord (@$ciph) {
+	my ($request, $batch, $cipher, $proto, $count, $host, $port) = @$crecord;
+	if (!$strong_proto{$proto}) {
+		push @{$weak_proto{$proto}}, $crecord;
+	}
+	my $orig_cipher = $cipher;
+	my $fs = ($cipher =~ s/^(ECDHE|DHE)-//) ? $1 : undef;
+	my $asym = ($cipher =~ s/^(ECDSA|DSA|RSA)-//) ? $1 : undef;
+	$cipher =~ s/^(DES-CBC3|[^-]+)-//;
+	my $ciph = $1;
+	my $chain = ($cipher =~ s/^(GCM)-//) ? $1 : undef;
+	my $sig = ($cipher =~ s/^(SHA\d*|MD5)$//) ? $1 : undef;
+	if (length $cipher) {
+		warn "Badly parsed cipher string, have a rest: $cipher for $host:$port ($count clients at $batch)\n";
+		next;
+	}
+	if (!$strong_ciph{$ciph} || !$strong_sig{$sig}) {
+		push @{$weak_ciphs{$orig_cipher}}, $crecord;
+	}
+}
+
+sub ciph_hosts($) {
+	my ($records) = @_;
+	my %hosts;
+	for my $record (@$records) {
+		my ($request, $batch, $cipher, $proto, $count, $host, $port) = @$record;
+		push @{$hosts{"$host:$port"}}, "$batch ‒ $count";
+	}
+	print map "  ◦ $_\n", sort keys %hosts;
+	# TODO: Do we want some more info?
+}
+
+if (%weak_proto) {
+	print "Weak protocols:\n";
+	for my $proto (sort keys %weak_proto) {
+		print "• $proto\n";
+		ciph_hosts $weak_proto{$proto};
+	}
+}
+
+if (%weak_ciphs) {
+	print "Weak ciphers:\n";
+	for my $ciph (sort keys %weak_ciphs) {
+		print "• $ciph\n";
+		ciph_hosts $weak_ciphs{$ciph};
+	}
+}
