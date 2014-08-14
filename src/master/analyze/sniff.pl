@@ -160,3 +160,67 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 		}
 	}
 }
+
+{
+	# Detect when a certificate is different than in previous batch
+	my $cert_history = $dbh->selectall_arrayref('SELECT MAX(host) AS host, MAX(port) AS port, batch, request, value, MAX(expiry) AS expiry, MAX(name) AS name, count(*) AS count FROM cert_chains JOIN certs ON certs.id = cert_chains.cert JOIN cert_requests ON certs.request = cert_requests.id WHERE ord = 0 GROUP BY request, batch, value ORDER by request, batch, value');
+
+	my ($last_request, $last_batch, $prev_batch);
+	my (%certs, %last_certs);
+	my ($last_host, $last_port);
+	my %report;
+	my ($host, $port, $batch, $request, $value, $expiry, $name, $count);
+	my $cmp_batches = sub {
+		#print Dumper \%certs, \%last_certs, $last_batch, $prev_batch;
+		return unless $last_batch && $prev_batch; # We are interested only if we have two batches to compare
+		my %add = %certs;
+		delete @add{keys %last_certs};
+		my %remove = %last_certs;
+		delete @remove{keys %certs};
+		push @{$report{"$host:$port"}}, {
+			prev => $prev_batch,
+			curr => $last_batch,
+			add => \%add,
+			remove => \%remove,
+		} if %add || %remove;
+	};
+	for my $record (@$cert_history) {
+		($host, $port, $batch, $request, $value, $expiry, $name, $count) = @$record;
+		if ($last_request != $request) {
+			$cmp_batches->();
+			undef $last_batch;
+			undef $prev_batch;
+			%certs = ();
+			%last_certs = ();
+			$last_request = $request;
+			$last_host = $host;
+			$last_port = $port;
+		}
+		if ($last_batch ne $batch) {
+			$cmp_batches->();
+			$prev_batch = $last_batch;
+			$last_batch = $batch;
+			%last_certs = %certs;
+			%certs = ();
+		}
+		$certs{$value} = {
+			expiry => $expiry,
+			name => $name,
+			count => $count,
+		};
+	}
+	$cmp_batches->();
+
+	undef $cert_history;
+
+	next unless %report;
+	print "Changed certificates\n";
+	for my $host (sort keys %report) {
+		print "$host:\n";
+		for my $change (@{$report{$host}}) {
+			print "• $change->{prev} → $change->{curr}\n";
+			print map "  + $_ ($change->{add}->{$_}->{expiry}, $change->{add}->{$_}->{count} x)\n", sort keys %{$change->{add}};
+			print map "  - $_ ($change->{remove}->{$_}->{expiry}, $change->{remove}->{$_}->{count} x)\n", sort keys %{$change->{remove}};
+		}
+	}
+}
