@@ -3,6 +3,7 @@
 psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
 BEGIN;
 
+DROP TABLE IF EXISTS nat_counts;
 DROP TABLE IF EXISTS flow_groups;
 DROP TABLE IF EXISTS flows;
 DROP TABLE IF EXISTS bandwidth;
@@ -234,6 +235,18 @@ CREATE TABLE flow_groups (
 	FOREIGN KEY (from_group) REFERENCES groups(id)
 );
 
+CREATE TABLE nat_counts (
+	from_group INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	v4direct SMALLINT NOT NULL,
+	v4nat SMALLINT NOT NULL,
+	v6direct SMALLINT NOT NULL,
+	v6nat SMALLINT NOT NULL,
+	total SMALLINT NOT NULL,
+	UNIQUE(from_group, batch),
+	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
+);
+
 GRANT INSERT ON anomalies TO archivist;
 GRANT SELECT (timestamp) ON anomalies TO archivist;
 GRANT INSERT ON anomaly_types TO archivist;
@@ -274,5 +287,8 @@ GRANT INSERT ON flows TO archivist;
 GRANT SELECT (id, tagged_on) ON flows TO archivist;
 GRANT INSERT ON flow_groups TO archivist;
 GRANT ALL ON flows_id TO archivist;
+GRANT SELECT (batch) ON nat_counts TO archivist;
+GRANT INSERT ON nat_counts TO archivist;
+GRANT DELETE ON nat_counts TO archivist;
 COMMIT;
 END_SQL
