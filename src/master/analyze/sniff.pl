@@ -122,7 +122,7 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 		my $chain = ($cipher =~ s/^(GCM)-//) ? $1 : undef;
 		my $sig = ($cipher =~ s/^(SHA\d*|MD5)$//) ? $1 : undef;
 		if (length $cipher) {
-			warn "Badly parsed cipher string, have a rest: $cipher for $host:$port ($count clients at $batch)\n";
+			warn "Badly parsed cipher string, unparsed rest = $cipher for $host:$port ($count clients at $batch)\n";
 			next;
 		}
 		if (!$strong_ciph{$ciph} || !$strong_sig{$sig}) {
@@ -261,7 +261,7 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 	print "Certificates not matching name\n";
 	while (my ($request, $certs) = each %report) {
 		while (my ($value, $data) = each %$certs) {
-			print "• $data->[0]->{host}:$data->[0]->{port} not matching $data->[0]->{name}:\n";
+			print "• $data->[0]->{host}:$data->[0]->{port} not matching $data->[0]->{name} ($value):\n";
 			my %clients;
 			for my $record (@$data) {
 				push @{$clients{$record->{client}}}, $record->{batch};
