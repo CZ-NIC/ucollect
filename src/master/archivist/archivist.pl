@@ -316,7 +316,7 @@ if (fork == 0) {
 	print "Dropping nats from batch $max_batch\n";
 	$destination->do('DELETE FROM nat_counts WHERE batch = ?', undef, $max_batch);
 	print "Getting nat records not older than $max_batch\n";
-	my $store_nat = $destination->prepare('INSERT INTO nat_counts (from_group, batch, v4_direct, v4_nat, v6_direct, v6_nat, total) VALUES(?, ?, ?, ?, ?, ?, ?)');
+	my $store_nat = $destination->prepare('INSERT INTO nat_counts (from_group, batch, v4direct, v4nat, v6direct, v6nat, total) VALUES(?, ?, ?, ?, ?, ?, ?)');
 	my $get_nats = $source->prepare('SELECT in_group, batch, COUNT(CASE WHEN nat_v4 = false THEN true END), COUNT(CASE WHEN nat_v4 = true THEN true END), COUNT(CASE WHEN nat_v6 = false THEN true END), COUNT(CASE WHEN nat_v6 = true THEN true END), COUNT(nats.client) FROM nats JOIN group_members ON nats.client = group_members.client WHERE batch >= ? GROUP BY batch, in_group');
 	my $nat_count = 0;
 	$get_nats->execute($max_batch);
