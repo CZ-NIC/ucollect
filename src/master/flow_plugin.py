@@ -144,7 +144,6 @@ def store_flows(client, message, expect_conf_id):
 	(conf_id, calib_time) = struct.unpack('!IQ', header)
 	if conf_id != expect_conf_id:
 		logger.warn('Flows of different config (%s vs. %s) received from client %s', conf_id, expect_conf_id, client)
-		return
 	if not message:
 		logger.warn('Empty list of flows from %s', client)
 		return
