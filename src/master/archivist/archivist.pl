@@ -306,6 +306,7 @@ if (fork == 0) {
 	print "Stored $fcount flows with $gcount group entries\n";
 	$source->commit;
 	$destination->commit;
+	exit;
 }
 
 if (fork == 0) {
@@ -318,6 +319,7 @@ if (fork == 0) {
 	my $store_nat = $destination->prepare('INSERT INTO nat_counts (from_group, batch, v4_direct, v4_nat, v6_direct, v6_nat, total) VALUES(?, ?, ?, ?, ?, ?, ?)');
 	my $get_nats = $source->prepare('SELECT in_group, batch, COUNT(CASE WHEN nat_v4 = false THEN true END), COUNT(CASE WHEN nat_v4 = true THEN true END), COUNT(CASE WHEN nat_v6 = false THEN true END), COUNT(CASE WHEN nat_v6 = true THEN true END), COUNT(client) FROM nats JOIN group_members ON nats.client = group_members.client WHERE batch >= ? GROUP BY batch, in_group');
 	my $nat_count = 0;
+	$get_nats->execute($max_batch);
 	$store_nat->execute_for_fetch(sub {
 		my $data = $get_nats->fetchrow_arrayref;
 		$nat_count ++ if $data;
@@ -326,6 +328,7 @@ if (fork == 0) {
 	print "Stored $nat_count nat counts\n";
 	$destination->commit;
 	$source->commit;
+	exit;
 }
 
 wait for (1..9);
