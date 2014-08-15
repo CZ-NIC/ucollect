@@ -5,7 +5,6 @@ use Config::IniFiles;
 use List::Util qw(sum);
 use Socket qw(inet_pton AF_INET AF_INET6);
 use Net::Whois::IP qw(whoisip_query);
-use Data::Dumper;
 
 # First connect to the database
 my $cfg = Config::IniFiles->new(-file => $ARGV[0]);
@@ -273,3 +272,23 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 		}
 	}
 }
+
+# Having multiple different ciphers or protocols for single host is strange. Even if it is multiple IP addresses with multiple certificates, the configuration is likely to be the same.
+sub report_multi($) {
+	my ($column) = @_;
+
+	my $tree = $dbh->selectall_hashref("SELECT host, port, $column, COUNT(distinct client) AS cnt FROM certs JOIN cert_requests ON certs.request = cert_requests.id GROUP BY host, port, $column", [qw(host port), $column]);
+	my $caption;
+	for my $host (sort keys %$tree) {
+		for my $port (sort { $a <=> $b } keys %{$tree->{$host}}) {
+			my $values = $tree->{$host}->{$port};
+			if (keys %$values > 1) {
+				print "Multiple $column values:\n" unless $caption;
+				$caption = 1;
+				print "• $host:$port: ", (join ", ", map "$_($values->{$_}->{cnt})", sort keys %$values), "\n";
+			}
+		}
+	}
+}
+report_multi 'cipher';
+report_multi 'proto';
