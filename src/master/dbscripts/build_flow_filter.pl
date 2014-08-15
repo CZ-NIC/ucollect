@@ -64,7 +64,10 @@ for my $port (sort keys %data) {
 
 # Check if the filter is different. If not, just keep the old one.
 my ($cur_filter) = $dbh->selectrow_array("SELECT value FROM config WHERE name = 'filter' AND plugin = 'flow'");
-exit if $cur_filter eq $filter;
+if ($cur_filter eq $filter) {
+	$dbh->rollback;
+	exit;
+}
 $dbh->do("UPDATE config SET value = ? WHERE name = 'filter' AND plugin = 'flow'", undef, $filter);
 my $version = time % (2**32);
 $dbh->do("UPDATE config SET value = ? WHERE name = 'version' AND plugin = 'flow'", undef, $version);
