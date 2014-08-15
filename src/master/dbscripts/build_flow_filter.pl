@@ -68,3 +68,4 @@ exit if $cur_filter eq $filter;
 $dbh->do("UPDATE config SET value = ? WHERE name = 'filter' AND plugin = 'flow'", undef, $filter);
 my $version = time % (2**32);
 $dbh->do("UPDATE config SET value = ? WHERE name = 'version' AND plugin = 'flow'", undef, $version);
+$dbh->commit;
