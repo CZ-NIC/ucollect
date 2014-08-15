@@ -311,7 +311,7 @@ if (fork == 0) {
 if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
-	my ($max_batch) = $destination->selectrow_array('SELECT COALESCE(MAX(batch), TO_TIMESTAMP(0)) FROM nat_counts)');
+	my ($max_batch) = $destination->selectrow_array('SELECT COALESCE(MAX(batch), TO_TIMESTAMP(0)) FROM nat_counts');
 	print "Dropping nats from batch $max_batch\n";
 	$destination->do('DELETE FROM nat_counts WHERE batch = ?', undef, $max_batch);
 	print "Getting nat records not older than $max_batch\n";
