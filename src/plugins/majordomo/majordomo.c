@@ -328,7 +328,7 @@ static void dump(struct context *context) {
 
 	LFOR(src_items, it, &(d->sources)) {
 		get_string_from_raw_bytes(it->from.addr, it->from.addr_len, src_str);
-		fprintf(dump_file, "%s,%s,%s,%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", "both", src_str, "all", "all", it->other.d_count, it->other.d_size, it->other.d_data_size, it->other.u_count, it->other.u_size, it->other.u_data_size);
+		fprintf(dump_file, "%s,%s,%s,%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", "both", src_str, "other", "all", it->other.d_count, it->other.d_size, it->other.d_data_size, it->other.u_count, it->other.u_size, it->other.u_data_size);
 	}
 
 	//Cleanup
