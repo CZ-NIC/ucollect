@@ -224,3 +224,52 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 		}
 	}
 }
+
+{
+	# Certificates that don't match the desired name (MITM?)
+	my $stm = $dbh->prepare('SELECT cert_chains.name, cert_requests.host, cert_requests.port, certs.batch, clients.name AS client, cert_chains.value, certs.request FROM cert_chains JOIN certs on certs.id = cert_chains.cert JOIN cert_requests ON cert_requests.id = certs.request JOIN clients ON clients.id = certs.client WHERE ord = 0');
+	$stm->execute;
+	my %report;
+	while (my ($name, $host, $port, $batch, $client, $value, $request) = $stm->fetchrow_array) {
+		my @names = split /\n/, $name;
+		my $match;
+		for my $n (@names) {
+			my $host = $host;
+			$host =~ s/\.$//;
+			$n =~ s/\.$//;
+			while ($n =~ s/^\*\.//) {
+				$host =~ s/^.*?\.//;
+			}
+			if (lc $n eq lc $host) {
+				$match = 1;
+				last;
+			}
+		}
+		if (@names > 1) {
+			$name = "$names[0] and " . (scalar @names - 1) . " others";
+		}
+		push @{$report{$request}->{$value}}, {
+			name => $name,
+			host => $host,
+			port => $port,
+			client => $client,
+			batch => $batch,
+		} unless $match;
+	}
+
+	next unless %report;
+
+	print "Certificates not matching name\n";
+	while (my ($request, $certs) = each %report) {
+		while (my ($value, $data) = each %$certs) {
+			print "• $data->[0]->{host}:$data->[0]->{port} not matching $data->[0]->{name}:\n";
+			my %clients;
+			for my $record (@$data) {
+				push @{$clients{$record->{client}}}, $record->{batch};
+			}
+			for my $client (sort keys %clients) {
+				print "  ◦ $client: ", (join ", ", @{$clients{$client}}), "\n";
+			}
+		}
+	}
+}
