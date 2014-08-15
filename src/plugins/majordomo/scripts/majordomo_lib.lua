@@ -29,7 +29,7 @@ USE_DNS_LOOKUP_BACKEND = "nslookup_openwrt"
 
 -- This names have to be synced with Majordomo plugin
 KW_OTHER_PROTO = "both"
-KW_OTHER_DSTIP = "all"
+KW_OTHER_DSTIP = "other"
 KW_OTHER_PORT = "all"
 
 
