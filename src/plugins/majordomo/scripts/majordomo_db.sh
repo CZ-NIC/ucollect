@@ -17,13 +17,13 @@ KEEP_HOURLY=96
 UCIVALUE="$(uci -q get majordomo.@db[0].path)"
 [ $? -eq 0 ] && DB_PATH=$UCIVALUE
 
-UCIVALUE="$(uci -q get majordomo.@statistics[0].store_monthly_files)"
+UCIVALUE="$(uci -q get majordomo.@db[0].store_monthly_files)"
 [ $? -eq 0 -a "$UCIVALUE" -ge 1 ] && KEEP_MONTHLY="$UCIVALUE"
 
-UCIVALUE="$(uci -q get majordomo.@statistics[0].store_daily_files)"
+UCIVALUE="$(uci -q get majordomo.@db[0].store_daily_files)"
 [ $? -eq 0 -a "$UCIVALUE" -ge 1 ] && KEEP_DAILY="$UCIVALUE"
 
-UCIVALUE="$(uci -q get majordomo.@statistics[0].store_hourly_files)"
+UCIVALUE="$(uci -q get majordomo.@db[0].store_hourly_files)"
 [ $? -eq 0 -a "$UCIVALUE" -ge 1 ] && KEEP_HOURLY="$UCIVALUE"
 
 ## Compute the rest of constants

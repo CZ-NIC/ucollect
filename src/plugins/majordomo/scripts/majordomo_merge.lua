@@ -22,9 +22,7 @@ along with NUCI.  If not, see <http://www.gnu.org/licenses/>.
 package.path = package.path .. ';/usr/share/lcollect/lua/?.lua'
 require("majordomo_lib");
 
-local MAX_ITEMS_PER_CLIENT = 6000
-
-function eliminate_items(addr, items, count)
+function eliminate_items(addr, items, count, max_items_per_client)
 	-- Compute key string only once
 	local others_key = table.concat({ KW_OTHER_PROTO, addr, KW_OTHER_DSTIP, KW_OTHER_PORT }, ",");
 
@@ -41,7 +39,7 @@ function eliminate_items(addr, items, count)
 
 	-- Eliminate items
 	for i, _ in ipairs(sorted_array) do
-		if i > MAX_ITEMS_PER_CLIENT and sorted_array[i].key ~= others_key then
+		if i > max_items_per_client and sorted_array[i].key ~= others_key then
 			new_items[others_key].d_count = new_items[others_key].d_count + sorted_array[i].value.d_count;
 			new_items[others_key].d_size = new_items[others_key].d_size + sorted_array[i].value.d_size;
 			new_items[others_key].d_data_size = new_items[others_key].d_data_size + sorted_array[i].value.d_data_size;
@@ -62,6 +60,8 @@ function main()
 		os.exit(1);
 	end
 
+	local _, _, _, max_items_per_client = majordomo_get_configuration();
+
 	db = {}
 
 	if not read_file(db, arg[1]) then
@@ -79,8 +79,8 @@ function main()
 		for _, _ in pairs(items) do
 			count = count + 1;
 		end
-		if count > MAX_ITEMS_PER_CLIENT then
-			db[addr] = eliminate_items(addr, items, count);
+		if count > max_items_per_client then
+			db[addr] = eliminate_items(addr, items, count, max_items_per_client);
 		end
 	end
 

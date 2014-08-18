@@ -31,7 +31,7 @@ function invalidate(db_path)
 	os.execute("rm '" .. db_path .. "/majordomo_serialized_'*");
 end
 
-function precache(db_path)
+function precache(db_path, ml_mac, ml_dns)
 	local ptrdb = get_inst_ptrdb();
 	local macdb = get_inst_macdb();
 	ptrdb:deserialize();
@@ -47,10 +47,14 @@ function precache(db_path)
 			local db = { };
 			read_file(db, file);
 			for addr, items in pairs(db) do
-				macdb:lookup(addr);
+				if ml_mac then
+					macdb:lookup(addr);
+				end
 				for key, _ in pairs(items) do
 					local _, _, dst, _ = split_key(key);
-					ptrdb:lookup(dst);
+					if ml_dns then
+						ptrdb:lookup(dst);
+					end
 				end
 			end
 		end
@@ -62,7 +66,7 @@ function precache(db_path)
 end
 
 function main()
-	local DB_PATH, MAKE_LOOKUP = majordomo_get_configuration();
+	local db_path, make_lookup_mac, make_lookup_dns, _ = majordomo_get_configuration();
 
 	if #arg ~= 1 then
 		io.stderr:write(string.format("Usage: %s (%s|%s)\n", arg[0], CMD_PRECACHE, CMD_INVALIDATE));
@@ -70,14 +74,14 @@ function main()
 	end
 
 	if arg[1] == CMD_INVALIDATE then
-		invalidate(DB_PATH);
+		invalidate(db_path);
 
 	elseif arg[1] == CMD_PRECACHE then
-		if MAKE_LOOKUP then
-			precache(DB_PATH);
+		if make_lookup_mac or make_lookup_dns then
+			precache(db_path, make_lookup_mac, make_lookup_dns);
 		else
-			io.stderr:write("Precache: Lookup is disabled");
-			os.exdit(0);
+			io.stderr:write("Precache: Lookup is disabled\n");
+			os.exit(0);
 		end
 	end
 end

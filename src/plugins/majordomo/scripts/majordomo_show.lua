@@ -23,12 +23,14 @@ package.path = package.path .. ';/usr/share/lcollect/lua/?.lua'
 require("majordomo_lib");
 
 function main()
-	local _, MAKE_LOOKUP = majordomo_get_configuration();
-	if MAKE_LOOKUP then
-		ptrdb = get_inst_ptrdb();
+	local _, make_lookup_mac, make_lookup_dns, _ = majordomo_get_configuration();
+	if make_lookup_mac then
 		macdb = get_inst_macdb();
-		ptrdb:deserialize();
 		macdb:deserialize();
+	end
+	if make_lookup_dns then
+		ptrdb = get_inst_ptrdb();
+		ptrdb:deserialize();
 	end
 	if #arg ~= 1 then
 		io.stderr:write(string.format("Usage: %s file_to_dump\n", arg[0]));
@@ -43,7 +45,7 @@ function main()
 
 	for addr, items in pairs(db) do
 		local sorted = get_sorted_items(items, "u_count");
-		if MAKE_LOOKUP and macdb:lookup(addr) then
+		if make_lookup_mac and macdb:lookup(addr) then
 			io.stdout:write(string.format("%s (%s)\n", addr, macdb:lookup(addr)));
 		else
 			io.stdout:write(string.format("%s\n", addr));
@@ -61,9 +63,11 @@ function main()
 		end
 	end
 
-	if MAKE_LOOKUP then
-		ptrdb:serialize();
+	if make_lookup_mac then
 		macdb:serialize();
+	end
+	if make_lookup_dns then
+		ptrdb:serialize();
 	end
 
 end
