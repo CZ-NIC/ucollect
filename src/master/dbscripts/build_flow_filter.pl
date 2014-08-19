@@ -45,7 +45,7 @@ while (my ($port, $ips) = each %data) {
 
 # Combine the filter string
 my $comma;
-my $filter;
+my $filter = '|(';
 for my $port (sort keys %data) {
 	my $ips = $data{$port};
 	next unless %$ips;
@@ -53,7 +53,7 @@ for my $port (sort keys %data) {
 	$comma = ',';
 	my $close;
 	if ($port =~ /^(.)(\d+)$/) {
-		$filter .= "&($1($2)),";
+		$filter .= "&($1($2),";
 		$close = ')';
 	}
 	$filter .= 'I(';
@@ -61,6 +61,7 @@ for my $port (sort keys %data) {
 	$filter .= ')';
 	$filter .= $close;
 }
+$filter .= ')';
 
 # Check if the filter is different. If not, just keep the old one.
 my ($cur_filter) = $dbh->selectrow_array("SELECT value FROM config WHERE name = 'filter' AND plugin = 'flow'");
