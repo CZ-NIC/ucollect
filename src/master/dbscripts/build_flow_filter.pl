@@ -25,11 +25,14 @@ close $ipsets;
 die "Wget failed with $?" if $?;
 
 # Extract addresses from the anomalies
-my $an_stm = $dbh->prepare('SELECT DISTINCT value FROM anomalies WHERE relevance_count >= ?');
+my $an_stm = $dbh->prepare('SELECT DISTINCT value, type FROM anomalies WHERE relevance_count >= ?');
 $an_stm->execute($cfg->val('anomalies', 'client_treshold'));
-while (my ($ip) = $an_stm->fetchrow_array) {
+while (my ($ip, $ano_type) = $an_stm->fetchrow_array) {
 	my ($port, $type) = ('', '');
-	($ip, $type, $port) = ($1, $2, $3) if $ip =~ /^(.*)(:|->)(\d+)$/;
+	if ($ano_type =~ /[lLbB]]/) {
+		my $cp_ip = $ip;
+		die "Invalid compound address $cp_ip" unless ($ip, $type, $port) = ($ip =~ /^(.*)(:|->)(\d+)$/);
+	}
 	$ip =~ s/^\[(.*)\]$/$1/;
 	$type = 'P' if $type eq ':';
 	$type = 'p' if $type eq '->';
