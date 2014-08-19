@@ -29,7 +29,7 @@ my $an_stm = $dbh->prepare('SELECT DISTINCT value, type FROM anomalies WHERE rel
 $an_stm->execute($cfg->val('anomalies', 'client_treshold'));
 while (my ($ip, $ano_type) = $an_stm->fetchrow_array) {
 	my ($port, $type) = ('', '');
-	if ($ano_type =~ /[lLbB]]/) {
+	if ($ano_type =~ /[lLbB]/) {
 		my $cp_ip = $ip;
 		die "Invalid compound address $cp_ip" unless ($ip, $type, $port) = ($ip =~ /^(.*)(:|->)(\d+)$/);
 	}
