@@ -205,7 +205,7 @@ local DNS_LOOKUP_BACKENDS = {
 			return nil, nil;
 		end
 
-		local handle = io.popen("nslookup " .. addr);
+		local handle = io.popen("busybox nslookup " .. addr);
 		local ptr, nxdomain = parse(handle, addr);
 		handle:close();
 
