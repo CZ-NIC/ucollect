@@ -48,6 +48,9 @@ clean_up() {
 }
 
 if [ "$CMD" = "downsize" ]; then
+	## Dumped data available?
+	[ ! -f "$DUMP_FILE_PATH" ] && exit 0
+
 	## OK, OpenWrt doesn't have tempfile... grrr
 	#TMPFILE=$(tempfile --prefix=majordomo)
 	TMPFILE="/tmp/majordomo_tempfile_$$_$(date +"%s")"
