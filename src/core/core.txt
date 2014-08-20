@@ -94,6 +94,14 @@ uplink_disconnected_callback:: Called when the connection to the
   remote server is lost.
 fd_callback:: Called when the plugin registers a file descriptor to be
   watched and the file descriptor becomes ready to be read.
+config_check_callback:: When ucollect is loading new configuration, it
+  calls this on each plugin. The plugin then can check if the
+  configuration looks OK and confirm or reject it. This callback
+  doesn't say the plugin should start using that configuration, the
+  values seen inside this callback is not active yet.
+config_finish_callback:: According to parameter, either start using
+  the new configuration previously scanned by `config_check_callback`,
+  or forget it existed.
 
 Modules of the core
 -------------------
