@@ -25,11 +25,14 @@ close $ipsets;
 die "Wget failed with $?" if $?;
 
 # Extract addresses from the anomalies
-my $an_stm = $dbh->prepare('SELECT DISTINCT value FROM anomalies WHERE relevance_count >= ?');
+my $an_stm = $dbh->prepare('SELECT DISTINCT value, type FROM anomalies WHERE relevance_count >= ?');
 $an_stm->execute($cfg->val('anomalies', 'client_treshold'));
-while (my ($ip) = $an_stm->fetchrow_array) {
+while (my ($ip, $ano_type) = $an_stm->fetchrow_array) {
 	my ($port, $type) = ('', '');
-	($ip, $type, $port) = ($1, $2, $3) if $ip =~ /^(.*)(:|->)(\d+)$/;
+	if ($ano_type =~ /[lLbB]/) {
+		my $cp_ip = $ip;
+		die "Invalid compound address $cp_ip" unless ($ip, $type, $port) = ($ip =~ /^(.*)(:|->)(\d+)$/);
+	}
 	$ip =~ s/^\[(.*)\]$/$1/;
 	$type = 'P' if $type eq ':';
 	$type = 'p' if $type eq '->';
@@ -45,7 +48,7 @@ while (my ($port, $ips) = each %data) {
 
 # Combine the filter string
 my $comma;
-my $filter;
+my $filter = '|(';
 for my $port (sort keys %data) {
 	my $ips = $data{$port};
 	next unless %$ips;
@@ -53,7 +56,7 @@ for my $port (sort keys %data) {
 	$comma = ',';
 	my $close;
 	if ($port =~ /^(.)(\d+)$/) {
-		$filter .= "&($1($2)),";
+		$filter .= "&($1($2),";
 		$close = ')';
 	}
 	$filter .= 'I(';
@@ -61,6 +64,7 @@ for my $port (sort keys %data) {
 	$filter .= ')';
 	$filter .= $close;
 }
+$filter .= ')';
 
 # Check if the filter is different. If not, just keep the old one.
 my ($cur_filter) = $dbh->selectrow_array("SELECT value FROM config WHERE name = 'filter' AND plugin = 'flow'");
