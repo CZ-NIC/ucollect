@@ -858,6 +858,11 @@ size_t *loop_pcap_stats(struct context *context) {
 	return result;
 }
 
+void loop_set_plugin_opt(struct loop_configurator *configurator, const char *name, const char *value) {
+	ulog(LLOG_DEBUG, "Option %s: %s\n", name, value);
+	// TODO: Implement O:-)
+}
+
 bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {
 	// Look for existing plugin first
 	LFOR(plugin, old, &configurator->loop->plugins)

@@ -80,6 +80,12 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *plugin)
 // Set the remote endpoint of the uplink
 void loop_uplink_configure(struct loop_configurator *configurator, const char *remote, const char *service, const char *login, const char *password, const char *cert) __attribute__((nonnull(1,2,3)));
 /*
+ * Provide a configuration option for a plugin. This will be given to the next plugin loaded by loop_add_plugin.
+ *
+ * If it is a list, call this with the same name for each value in the list.
+ */
+void loop_set_plugin_opt(struct loop_configurator *configurator, const char *name, const char *value) __attribute__((nonnull));
+/*
  * Reinitialize the current plugin. Must not be called from outside of a plugin.
  *
  * It'll not return to the plugin, the plugin will be terminated at that moment.
