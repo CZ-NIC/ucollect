@@ -2,3 +2,4 @@ LIBRARIES += src/plugins/majordomo/libplugin_majordomo
 libplugin_majordomo_MODULES := majordomo
 
 DOCS += src/plugins/majordomo/majordomo
+include $(S)/src/plugins/majordomo/subnetfilter/Makefile.dir

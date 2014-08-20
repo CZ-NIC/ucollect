@@ -1,0 +1,4 @@
+BINARIES += src/plugins/majordomo/subnetfilter/majordomo_subnetfilter
+majordomo_subnetfilter_MODULES := main
+
+#DOCS += src/plugins/majordomo/majordomo
