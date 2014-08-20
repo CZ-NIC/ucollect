@@ -72,18 +72,20 @@ int main(int argc, char **argv) {
 	int family;
 
 	while (fgets(line, LINE_BUFF, stdin)) {
+		bool print = true;
 		sscanf(line, "%[^','],%[^','],%[^',']", dummy, dummy, addrstr);
-		if (!parse_address(addrstr, &addr, &family)) {
-			fprintf(stdout, "%s", line);
-			continue;
-		}
-		for (size_t i = 0; i < rules_cnt; i++) {
-			if (
-				family == rules[i].family &&
-				!bitcmp((unsigned char *) &addr, (unsigned char *) &(rules[i].addr), rules[i].prefix)
-			) {
-				fprintf(stdout, "%s", line);
+		if (parse_address(addrstr, &addr, &family)) {
+			for (size_t i = 0; i < rules_cnt; i++) {
+				if (
+					family == rules[i].family &&
+					bitcmp((unsigned char *) &addr, (unsigned char *) &(rules[i].addr), rules[i].prefix)
+				) {
+					print = false;
+				}
 			}
+		}
+		if (print) {
+			fprintf(stdout, "%s", line);
 		}
 	}
 
