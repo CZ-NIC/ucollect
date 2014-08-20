@@ -51,9 +51,17 @@ if [ "$CMD" = "downsize" ]; then
 	## Dumped data available?
 	[ ! -f "$DUMP_FILE_PATH" ] && exit 0
 
+	## Get ignored interfaces
+	SUBNET_FILTER_CFG="$(
+	for iface in $(uci -q get lcollect.@interface[0].ifname); do
+		ip --oneline addr show dev $iface | sed -n 's/.*inet[0-9]* \([^\/]*\)\/\([0-9]*\).*/\1 \2/p'
+	done
+	)"
+
 	## OK, OpenWrt doesn't have tempfile... grrr
 	#TMPFILE=$(tempfile --prefix=majordomo)
 	TMPFILE="/tmp/majordomo_tempfile_$$_$(date +"%s")"
+	FILTERFILE="/tmp/majordomo_tempafile_$$_$(date +"%s"_subnet_filter)"
 
 	## Merge dump file to corresponding downsize file should eliminate dump file -
 	## we don't want merge the same data again and again
@@ -61,12 +69,21 @@ if [ "$CMD" = "downsize" ]; then
 	[ "$?" -ne 0 ] && exit 0
 	[ -e "$DOWNSIZE_FILE_PATH" ] || touch "$DOWNSIZE_FILE_PATH"
 
-	majordomo_merge.lua "$TMPFILE" "$DOWNSIZE_FILE_PATH" "$DOWNSIZE_FILE_PATH"
+	## echo command is necessary - it removes newlines
+	cat "$TMPFILE" | majordomo_subnetfilter $(echo "$SUBNET_FILTER_CFG") > "$FILTERFILE"
+	if [ "$?" -ne 0 ]; then
+		mv "$TMPFILE" "$DUMP_FILE_PATH"
+		rm "$FILTERFILE"
+	fi
+
+	majordomo_merge.lua "$FILTERFILE" "$DOWNSIZE_FILE_PATH" "$DOWNSIZE_FILE_PATH"
 	if [ "$?" -eq 0 ]; then
 		rm "$TMPFILE"
+		rm "$FILTERFILE"
 	else
 		## Lose one minute is better than lose 5 minutes
 		mv "$TMPFILE" "$DUMP_FILE_PATH"
+		rm "$FILTERFILE"
 	fi
 
 elif [ "$CMD" = "genhour" ]; then
