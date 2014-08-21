@@ -67,15 +67,17 @@ static void walk_node(struct trie_node *node, trie_walk_callback callback, void 
 	ulog(LLOG_DEBUG_VERBOSE, "Walk: %zu + %zu\n", keypos, node->key_size);
 	memcpy(keybuf + keypos, node->key, node->key_size);
 	keypos += node->key_size;
-	if (node->active)
+	if (node->active) {
+		keybuf[keypos] = '\0';
 		callback(keybuf, keypos, node->data, userdata);
+	}
 	LFOR(trie, child, node)
 		walk_node(child, callback, userdata, keybuf, keypos);
 }
 
 void trie_walk(struct trie *trie, trie_walk_callback callback, void *userdata, struct mem_pool *temp_pool) {
 	ulog(LLOG_DEBUG, "Walking trie with %zu active nodes\n", trie->active_count);
-	uint8_t *keybuf = mem_pool_alloc(temp_pool, trie->max_key_len);
+	uint8_t *keybuf = mem_pool_alloc(temp_pool, trie->max_key_len + 1);
 	walk_node(&trie->root, callback, userdata, keybuf, 0);
 }
 
@@ -113,12 +115,12 @@ static struct trie_data **trie_index_internal(struct trie *trie, struct trie_nod
 		if (key_size == 0) {
 			// We found the position
 			ulog(LLOG_DEBUG_VERBOSE, "Trie exact hit\n");
-			if (!node->active) {
+			if (!node->active && insert_new) {
 				ulog(LLOG_DEBUG_VERBOSE, "Making node active\n");
 				node->active = true;
 				trie->active_count ++;
 			}
-			return &node->data;
+			return &node->data; // Will be NULL for sure if not active
 		} else {
 			// We have more of key to process
 			LFOR(trie, child, node) {
@@ -134,7 +136,7 @@ static struct trie_data **trie_index_internal(struct trie *trie, struct trie_nod
 			// Not found any matching child, create a new one
 			return trie_new_node(trie, node, key, key_size, insert_new);
 		}
-	} else {
+	} else if (insert_new) {
 		ulog(LLOG_DEBUG_VERBOSE, "Splitting node with key of %zu bytes after %zu bytes\n", node->key_size, prefix);
 		/*
 		 * We traversed only part of the path. We need to split it in half, and create a new node for the
@@ -158,7 +160,8 @@ static struct trie_data **trie_index_internal(struct trie *trie, struct trie_nod
 		trie_insert_after(node, new, NULL);
 		// And now add the rest of the index at the split node
 		return trie_new_node(trie, node, key + prefix, key_size - prefix, insert_new);
-	}
+	} else
+		return NULL; // Not inserting a new one
 }
 
 struct trie_data **trie_index(struct trie *trie, const uint8_t *key, size_t key_size) {

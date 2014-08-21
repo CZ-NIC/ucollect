@@ -1,1 +1,1 @@
-include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,count buckets crash badconf sniff bandwidth flow majordomo)
+include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,count buckets crash badconf sniff bandwidth flow majordomo cfgtest)

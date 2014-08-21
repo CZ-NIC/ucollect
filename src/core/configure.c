@@ -56,7 +56,26 @@ static bool load_plugin(struct loop_configurator *configurator, struct uci_secti
 		ulog(LLOG_ERROR, "Failed to load libname of plugin %s\n", section->e.name);
 		return false;
 	}
-	// TODO: Plugin configuration
+	// Go through all the options and store them, so the plugin can inspect them later
+	struct uci_element *option;
+	uci_foreach_element(&section->options, option) {
+		struct uci_option *opt = uci_to_option(option);
+		switch (opt->type) {
+			case UCI_TYPE_STRING:
+				loop_set_plugin_opt(configurator, opt->e.name, opt->v.string);
+				break;
+			case UCI_TYPE_LIST: {
+				struct uci_element *e;
+				uci_foreach_element(&opt->v.list, e) {
+					loop_set_plugin_opt(configurator, opt->e.name, e->name);
+				}
+				break;
+			}
+			default:
+				ulog(LLOG_ERROR, "Option %s of unknown type %d\n", opt->e.name, (int)opt->type);
+				return false;
+		}
+	}
 	return loop_add_plugin(configurator, libpath);
 }
 
