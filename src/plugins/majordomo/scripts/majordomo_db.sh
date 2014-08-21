@@ -61,7 +61,7 @@ if [ "$CMD" = "downsize" ]; then
 	## OK, OpenWrt doesn't have tempfile... grrr
 	#TMPFILE=$(tempfile --prefix=majordomo)
 	TMPFILE="/tmp/majordomo_tempfile_$$_$(date +"%s")"
-	FILTERFILE="/tmp/majordomo_tempafile_$$_$(date +"%s"_subnet_filter)"
+	FILTERFILE="/tmp/majordomo_tempfile_$$_$(date +"%s"_subnet_filter)"
 
 	## Merge dump file to corresponding downsize file should eliminate dump file -
 	## we don't want merge the same data again and again
