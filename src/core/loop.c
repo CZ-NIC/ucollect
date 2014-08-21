@@ -27,6 +27,7 @@
 #include "loader.h"
 #include "configure.h"
 #include "uplink.h"
+#include "trie.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -221,6 +222,11 @@ struct plugin_fd {
 	struct plugin_fd *next, *prev;
 };
 
+struct trie_data {
+	struct config_node config;
+	size_t allocated;
+};
+
 struct plugin_holder {
 	/*
 	 * This one is first, so we can cast the current_context back in case
@@ -237,6 +243,7 @@ struct plugin_holder {
 	struct plugin_holder *next;
 	struct plugin_holder *original; // When copying, in the configurator
 	struct plugin_fd *fd_head, *fd_tail, *fd_unused;
+	struct trie *config_trie;
 	bool mark; // Mark for configurator.
 	size_t failed;
 	uint8_t hash[CHALLENGE_LEN / 2];
@@ -368,6 +375,7 @@ struct loop_configurator {
 	struct pcap_list pcap_interfaces;
 	struct plugin_list plugins;
 	const char *remote_name, *remote_service, *login, *password, *cert;
+	struct trie *config_trie;
 	bool need_reconnect;
 };
 
@@ -860,7 +868,21 @@ size_t *loop_pcap_stats(struct context *context) {
 
 void loop_set_plugin_opt(struct loop_configurator *configurator, const char *name, const char *value) {
 	ulog(LLOG_DEBUG, "Option %s: %s\n", name, value);
-	// TODO: Implement O:-)
+	if (!configurator->config_trie)
+		configurator->config_trie = trie_alloc(configurator->config_pool);
+	struct trie_data **node = trie_index(configurator->config_trie, (const uint8_t *)name, strlen(name));
+	if (!*node) {
+		*node = mem_pool_alloc(configurator->config_pool, sizeof **node);
+		memset(*node, 0, sizeof **node);
+	}
+	if ((*node)->allocated == (*node)->config.value_count) {
+		size_t new_alloc = 2 + 3 * (*node)->allocated;
+		const char **new_values = mem_pool_alloc(configurator->config_pool, new_alloc * sizeof *new_values);
+		memcpy(new_values, (*node)->config.values, (*node)->config.value_count * sizeof *new_values);
+		(*node)->config.values = new_values;
+		(*node)->allocated = new_alloc;
+	}
+	(*node)->config.values[(*node)->config.value_count ++] = mem_pool_strdup(configurator->config_pool, value);
 }
 
 bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {
