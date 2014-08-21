@@ -30,6 +30,7 @@ struct loop_configurator;
 struct plugin;
 struct context;
 struct uplink;
+struct config_node;
 
 struct epoll_handler {
 	void (*handler)(void *data, uint32_t events);
@@ -85,6 +86,14 @@ void loop_uplink_configure(struct loop_configurator *configurator, const char *r
  * If it is a list, call this with the same name for each value in the list.
  */
 void loop_set_plugin_opt(struct loop_configurator *configurator, const char *name, const char *value) __attribute__((nonnull));
+/*
+ * Look up a plugin configuration value (must be called from within a plugin.
+ *
+ * It returns the currently active value usually. Only, during plugin configuration
+ * (especially from within the config_check_callback), it returns the candidate value
+ * to be checked.
+ */
+const struct config_node *loop_plugin_option_get(struct context *context, const char *name) __attribute__((nonnull));
 /*
  * Reinitialize the current plugin. Must not be called from outside of a plugin.
  *

@@ -909,6 +909,21 @@ void loop_set_plugin_opt(struct loop_configurator *configurator, const char *nam
 	(*node)->config.values[(*node)->config.value_count ++] = mem_pool_strdup(configurator->config_pool, value);
 }
 
+const struct config_node *loop_plugin_option_get(struct context *context, const char *name) {
+	struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+	assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+	struct trie *config = holder->config_candidate ? holder->config_candidate : holder->config_trie;
+	assert(config); // We really should have at least some config - at least the libname must be there
+	struct trie_data *data = trie_lookup(config, (const uint8_t *)name, strlen(name));
+	if (data) {
+		return &data->config;
+	} else {
+		return NULL;
+	}
+}
+
 bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {
 	// Look for existing plugin first
 	LFOR(plugin, old, &configurator->loop->plugins)
