@@ -30,6 +30,7 @@ struct loop_configurator;
 struct plugin;
 struct context;
 struct uplink;
+struct config_node;
 
 struct epoll_handler {
 	void (*handler)(void *data, uint32_t events);
@@ -79,6 +80,20 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 bool loop_add_plugin(struct loop_configurator *configurator, const char *plugin) __attribute__((nonnull));
 // Set the remote endpoint of the uplink
 void loop_uplink_configure(struct loop_configurator *configurator, const char *remote, const char *service, const char *login, const char *password, const char *cert) __attribute__((nonnull(1,2,3)));
+/*
+ * Provide a configuration option for a plugin. This will be given to the next plugin loaded by loop_add_plugin.
+ *
+ * If it is a list, call this with the same name for each value in the list.
+ */
+void loop_set_plugin_opt(struct loop_configurator *configurator, const char *name, const char *value) __attribute__((nonnull));
+/*
+ * Look up a plugin configuration value (must be called from within a plugin.
+ *
+ * It returns the currently active value usually. Only, during plugin configuration
+ * (especially from within the config_check_callback), it returns the candidate value
+ * to be checked.
+ */
+const struct config_node *loop_plugin_option_get(struct context *context, const char *name) __attribute__((nonnull));
 /*
  * Reinitialize the current plugin. Must not be called from outside of a plugin.
  *

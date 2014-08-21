@@ -1,0 +1,2 @@
+LIBRARIES += src/plugins/cfgtest/libplugin_cfgtest
+libplugin_cfgtest_MODULES := cfgtest

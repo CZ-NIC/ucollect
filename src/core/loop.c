@@ -27,6 +27,7 @@
 #include "loader.h"
 #include "configure.h"
 #include "uplink.h"
+#include "trie.h"
 
 #include <signal.h> // for sig_atomic_t
 #include <assert.h>
@@ -221,6 +222,11 @@ struct plugin_fd {
 	struct plugin_fd *next, *prev;
 };
 
+struct trie_data {
+	struct config_node config;
+	size_t allocated;
+};
+
 struct plugin_holder {
 	/*
 	 * This one is first, so we can cast the current_context back in case
@@ -237,6 +243,7 @@ struct plugin_holder {
 	struct plugin_holder *next;
 	struct plugin_holder *original; // When copying, in the configurator
 	struct plugin_fd *fd_head, *fd_tail, *fd_unused;
+	struct trie *config_trie, *config_candidate;
 	bool mark; // Mark for configurator.
 	size_t failed;
 	uint8_t hash[CHALLENGE_LEN / 2];
@@ -317,6 +324,17 @@ GEN_CALL_WRAPPER(uplink_disconnected)
 GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
 GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
 GEN_CALL_WRAPPER_PARAM_2(fd, int, void *)
+GEN_CALL_WRAPPER_PARAM(config_finish, bool)
+
+static bool plugin_config_check(struct plugin_holder *plugin) {
+	if (!plugin->plugin.config_check_callback)
+		return true;
+	current_context = &plugin->context;
+	bool result = plugin->plugin.config_check_callback(&plugin->context);
+	mem_pool_reset(plugin->context.temp_pool);
+	current_context = NULL;
+	return result;
+}
 
 struct timeout {
 	uint64_t when;
@@ -368,6 +386,7 @@ struct loop_configurator {
 	struct pcap_list pcap_interfaces;
 	struct plugin_list plugins;
 	const char *remote_name, *remote_service, *login, *password, *cert;
+	struct trie *config_trie;
 	bool need_reconnect;
 };
 
@@ -532,6 +551,17 @@ static void request_reconfigure_full(int unused) {
 	current_loop->reconfigure_full = 1;
 }
 
+static void config_copy_node(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
+	(void)key_size;
+	struct loop_configurator *configurator = userdata;
+	for (size_t i = 0; i < data->config.value_count; i ++)
+		loop_set_plugin_opt(configurator, (const char *)key, data->config.values[i]);
+}
+
+static void config_copy(struct loop_configurator *configurator, struct plugin_holder *plugin) {
+	trie_walk(plugin->config_trie, config_copy_node, configurator, configurator->loop->temp_pool);
+}
+
 void loop_run(struct loop *loop) {
 	ulog(LLOG_INFO, "Running the main loop\n");
 	sigset_t blocked;
@@ -576,7 +606,8 @@ void loop_run(struct loop *loop) {
 			holder->mark = false; // This one is already destroyed
 			const char *libname = holder->libname; // Make sure it is not picked up
 			holder->libname = "";
-			LFOR(plugin, plugin, &loop->plugins)
+			LFOR(plugin, plugin, &loop->plugins) {
+				config_copy(configurator, plugin);
 				if (plugin->mark) { // Copy all the other plugins, and this one if it is to be reinited
 					if (!loop_add_plugin(configurator, plugin->libname))
 						die("Copy of %s failed\n", plugin->libname);
@@ -586,6 +617,7 @@ void loop_run(struct loop *loop) {
 					else
 						configurator->plugins.tail->failed = failed + 1;
 				}
+			}
 			LFOR(pcap, interface, &loop->pcap_interfaces) {
 				if (!loop_add_pcap(configurator, interface->name))
 					die("Copy of %s failed\n", interface->name);
@@ -858,6 +890,40 @@ size_t *loop_pcap_stats(struct context *context) {
 	return result;
 }
 
+void loop_set_plugin_opt(struct loop_configurator *configurator, const char *name, const char *value) {
+	ulog(LLOG_DEBUG, "Option %s: %s\n", name, value);
+	if (!configurator->config_trie)
+		configurator->config_trie = trie_alloc(configurator->config_pool);
+	struct trie_data **node = trie_index(configurator->config_trie, (const uint8_t *)name, strlen(name));
+	if (!*node) {
+		*node = mem_pool_alloc(configurator->config_pool, sizeof **node);
+		memset(*node, 0, sizeof **node);
+	}
+	if ((*node)->allocated == (*node)->config.value_count) {
+		size_t new_alloc = 2 + 3 * (*node)->allocated;
+		const char **new_values = mem_pool_alloc(configurator->config_pool, new_alloc * sizeof *new_values);
+		memcpy(new_values, (*node)->config.values, (*node)->config.value_count * sizeof *new_values);
+		(*node)->config.values = new_values;
+		(*node)->allocated = new_alloc;
+	}
+	(*node)->config.values[(*node)->config.value_count ++] = mem_pool_strdup(configurator->config_pool, value);
+}
+
+const struct config_node *loop_plugin_option_get(struct context *context, const char *name) {
+	struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+	assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+	struct trie *config = holder->config_candidate ? holder->config_candidate : holder->config_trie;
+	assert(config); // We really should have at least some config - at least the libname must be there
+	struct trie_data *data = trie_lookup(config, (const uint8_t *)name, strlen(name));
+	if (data) {
+		return &data->config;
+	} else {
+		return NULL;
+	}
+}
+
 bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {
 	// Look for existing plugin first
 	LFOR(plugin, old, &configurator->loop->plugins)
@@ -869,7 +935,10 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 			new->original = old;
 			new->plugin.name = mem_pool_strdup(configurator->config_pool, old->plugin.name);
 			new->libname = mem_pool_strdup(configurator->config_pool, libname);
-			return true;
+			// Move the configuration into the plugin and check it
+			new->config_candidate = configurator->config_trie;
+			configurator->config_trie = NULL;
+			return plugin_config_check(new);
 		}
 	// Load the plugin
 	struct plugin plugin;
@@ -905,8 +974,10 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 		.canary = PLUGIN_HOLDER_CANARY,
 #endif
 		.plugin = plugin,
+		.config_candidate = configurator->config_trie,
 		.mark = true
 	};
+	configurator->config_trie = NULL;
 	memcpy(new->hash, hash, sizeof hash);
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
@@ -915,7 +986,7 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	// Store the plugin structure.
 	plugin_insert_after(&configurator->plugins, new, configurator->plugins.tail);
 	configurator->need_reconnect = true;
-	return true;
+	return plugin_config_check(new);
 }
 
 void loop_uplink_set(struct loop *loop, struct uplink *uplink) {
@@ -1065,10 +1136,16 @@ void loop_config_abort(struct loop_configurator *configurator) {
 	 * Destroy all the newly-created plugins and interfaces (marked)
 	 *
 	 * Select the ones from the configurator, not loop!
+	 *
+	 * Also, remove config candidate from the in-loop plugins.
 	 */
 	LFOR(plugin, plugin, &configurator->plugins)
-		if (plugin->mark)
+		if (plugin->mark) {
 			plugin_destroy(plugin, false);
+		} else {
+			plugin->config_candidate = NULL;
+			plugin_config_finish(plugin, false);
+		}
 	LFOR(pcap, interface, &configurator->pcap_interfaces)
 		if (interface->mark)
 			pcap_destroy(interface);
@@ -1149,6 +1226,12 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	loop->config_pool = configurator->config_pool;
 	loop->pcap_interfaces = configurator->pcap_interfaces;
 	loop->plugins = configurator->plugins;
+	// Initialize/commit configuration of the plugins
+	LFOR(plugin, plugin, &loop->plugins) {
+		plugin->config_trie = plugin->config_candidate;
+		plugin->config_candidate = NULL;
+		plugin_config_finish(plugin, true);
+	}
 }
 
 static void send_plugin_versions(struct loop *loop) {

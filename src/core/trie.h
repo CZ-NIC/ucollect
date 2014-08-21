@@ -80,6 +80,9 @@ size_t trie_size(struct trie *trie) __attribute__((nonnull));
  * The order is stable as long as the trie is not modified. The functions
  * trie_index and trie_lookup do modify it, even in case the set of keys
  * present does not.
+ *
+ * The passed key is also 0-terminated, to easy up situation when the keys are
+ * ordinary strings, not bytestrings.
  */
 typedef void (*trie_walk_callback)(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata);
 void trie_walk(struct trie *trie, trie_walk_callback callback, void *userdata, struct mem_pool *temp_pool) __attribute__((nonnull(1,2,4)));
