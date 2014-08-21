@@ -67,15 +67,17 @@ static void walk_node(struct trie_node *node, trie_walk_callback callback, void 
 	ulog(LLOG_DEBUG_VERBOSE, "Walk: %zu + %zu\n", keypos, node->key_size);
 	memcpy(keybuf + keypos, node->key, node->key_size);
 	keypos += node->key_size;
-	if (node->active)
+	if (node->active) {
+		keybuf[keypos] = '\0';
 		callback(keybuf, keypos, node->data, userdata);
+	}
 	LFOR(trie, child, node)
 		walk_node(child, callback, userdata, keybuf, keypos);
 }
 
 void trie_walk(struct trie *trie, trie_walk_callback callback, void *userdata, struct mem_pool *temp_pool) {
 	ulog(LLOG_DEBUG, "Walking trie with %zu active nodes\n", trie->active_count);
-	uint8_t *keybuf = mem_pool_alloc(temp_pool, trie->max_key_len);
+	uint8_t *keybuf = mem_pool_alloc(temp_pool, trie->max_key_len + 1);
 	walk_node(&trie->root, callback, userdata, keybuf, 0);
 }
 
