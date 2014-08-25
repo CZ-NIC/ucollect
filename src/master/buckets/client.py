@@ -116,6 +116,12 @@ class Client:
 		"""
 		return self.__groups
 
+	def set_groups(self, groups):
+		"""
+		Update the list of groups. Only the ones stored in here, no index structures on the above level.
+		"""
+		self.__groups = groups
+
 	def name(self):
 		"""
 		Return the name passed to the initialization.
