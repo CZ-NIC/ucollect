@@ -123,12 +123,7 @@ class BucketsPlugin(plugin.Plugin):
 		self.__clients[name] = buckets.client.Client(name, groups, lambda message: self.send(message, name))
 		# Add the client to all the groups in each criterion
 		for g in self.__clients[name].groups():
-			for crit in self.__criteria:
-				# Does the group exist, or create an empty one?
-				if g not in self.__groups[crit.code()]:
-					logger.debug("Creating group %s in criterion %s", g, crit.code());
-					self.__groups[crit.code()][g] = buckets.group.Group(hash_count=self.__hash_count, bucket_count=self.__bucket_count, window_backlog=self.__gather_history_max, treshold=self.__treshold, hasher=self.__hasher)
-				self.__groups[crit.code()][g].add(name)
+			self.__enter_group(name, g)
 
 	def client_disconnected(self, client):
 		name = client.cid()
@@ -140,11 +135,7 @@ class BucketsPlugin(plugin.Plugin):
 		cobj = self.__clients[name]
 		# Remove the client from all the groups
 		for g in cobj.groups():
-			for crit in self.__criteria:
-				self.__groups[crit.code()][g].remove(name)
-				if not self.__groups[crit.code()][g].members():
-					# Remove an empty group
-					del self.__groups[crit.code()][g]
+			self.__leave_group(name, g)
 		self.__clients[name].deactivate()
 		del self.__clients[name]
 
@@ -317,6 +308,51 @@ class BucketsPlugin(plugin.Plugin):
 		header = struct.pack('!2Q8L' + str(len(self.__criteria)) + 'c', self.__seed, int(time.time()), self.__bucket_count, self.__hash_count, len(self.__criteria), self.__history_size , self.__config_version, self.__max_key_count, self.__max_timeslots, self.__granularity, *map(lambda c: c.code(), self.__criteria))
 		return header
 
+	def __enter_group(self, client, group):
+		"""
+		Put a client into a group (create it first if necessary). It is added in all criteria.
+		"""
+		for crit in self.__criteria:
+			# Does the group exist, or create an empty one?
+			if group not in self.__groups[crit.code()]:
+				logger.debug("Creating group %s in criterion %s", group, crit.code());
+				self.__groups[crit.code()][group] = buckets.group.Group(hash_count=self.__hash_count, bucket_count=self.__bucket_count, window_backlog=self.__gather_history_max, treshold=self.__treshold, hasher=self.__hasher)
+			self.__groups[crit.code()][group].add(client)
+
+	def __leave_group(self, client, group):
+		"""
+		Remove a client from group in all the criteria. Remove empty groups if necessary.
+		"""
+		for crit in self.__criteria:
+			self.__groups[crit.code()][group].remove(client)
+			if not self.__groups[crit.code()][group].members():
+				# Remove an empty group
+				del self.__groups[crit.code()][group]
+				logger.debug("Removed empty group %s", group)
+
+	def __reload_groups(self):
+		"""
+		Look into the database and synchronize the groups.
+		"""
+		groups = {}
+		logger.debug("Reloading groups")
+		with database.transaction() as t:
+			t.execute('SELECT groups.name, clients.name FROM groups JOIN group_members ON groups.id = group_members.in_group JOIN clients ON group_members.client = clients.id')
+			for (group, client) in t.fetchall():
+				if not client in groups:
+					groups[client] = []
+				groups[client].append(group)
+		for client in self.__clients:
+			new_groups = set(groups[client])
+			old_groups = set(self.__clients[client].groups())
+			for to_add in new_groups - old_groups:
+				logger.debug("Adding client %s to group %s", client, group)
+				self.__enter_group(client, to_add)
+			for to_remove in old_groups - new_groups:
+				logger.debug("Removing client %s from group %s", client, to_remove)
+				self.__leave_group(client, to_remove)
+			self.__clients[client].set_groups(groups[client])
+
 	def __init_download(self):
 		"""
 		Ask the clients to provide some data.
@@ -324,6 +360,7 @@ class BucketsPlugin(plugin.Plugin):
 		if self.__background_processing:
 			logger.error("Previous data not committed yet, skipping one generation")
 			return
+		self.__reload_groups() # Reload groups from time to time, they may have changed in between
 		self.__background_processing = True
 		now = int(time.time())
 		logger.info('Asking for generation, starting new one at %s', now)
