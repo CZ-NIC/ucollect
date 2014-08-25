@@ -1,4 +1,37 @@
 The `bandwidth` plugin
 ======================
 
-Bandwidth is plugin for passive measurement of available bandwidth of network connection.
+Bandwidth is ucollect plugin for passive measurement of available bandwidth of
+network connection.
+
+Collected data
+--------------
+Bandwidth is trying to get count of bytes per second. Plugin uses multiple
+'windows'. Each window has different length in microseconds. The final number is
+count of bytes per window's length and the bps value must be computed.
+
+Count and length of windows is configurable in source code.
+
+The algorithm places every incoming packet into sliding window that slides at
+time line. In fact, it is a group of sliding windows (of the same length) and
+they are working together as buffer. In some point the sliding window falls out
+from buffer and count of bytes per its length is taken as the candidate for
+global maximum.
+
+The main idea is that the global maximum should represent bandwidth of user's
+internet connection. Different length of windows is just tool to evaluate the
+stability of connection.
+
+The protocol
+------------
+Communication protocol of bandwidth plugin is very simple. Plugin generates 3
+64-bit (uint64_t) numbers for every window length:
+
+	1) Window length in microseconds
+	2) Global maximum of download speed in bytes per 1)
+	3) Global maximum of upload speed in bytes per 1)
+
+Ucollect's binary protocol defines that the head of every message contains the
+length of message in bytes. 64-bit number uses 8 bytes. Message length divided
+by 8 is count of transmitted numbers. Count of transmitted numbers divided by 3
+is the count of different windows defined in plugin.
