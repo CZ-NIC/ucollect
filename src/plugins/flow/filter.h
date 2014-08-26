@@ -28,7 +28,7 @@ struct filter;
 struct packet_info;
 struct mem_pool;
 
-bool filter_apply(const struct filter *filter, const struct packet_info *packet) __attribute__((nonnull));
+bool filter_apply(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) __attribute__((nonnull));
 struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t size) __attribute__((nonnull));
 
 #endif

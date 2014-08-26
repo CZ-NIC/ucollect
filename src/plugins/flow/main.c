@@ -162,7 +162,7 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 		return; // Broken packet, we don't want that
 	if (info->layer != 'I' || (info->ip_protocol != 4 && info->ip_protocol != 6) || (info->app_protocol != 'T' && info->app_protocol != 'U'))
 		return; // Something we don't track
-	if (!filter_apply(u->filter, info))
+	if (!filter_apply(context->temp_pool, u->filter, info))
 		return; // This packet is not interesting
 	size_t key_size;
 	uint8_t *key = flow_key(info, &key_size, context->temp_pool);

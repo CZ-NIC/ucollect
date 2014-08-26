@@ -23,6 +23,7 @@
 #include "../../core/mem_pool.h"
 #include "../../core/util.h"
 #include "../../core/packet.h"
+#include "../../core/uplink.h"
 
 #include <assert.h>
 #include <string.h>
@@ -30,7 +31,7 @@
 
 #define D(MSG, ...) do { ulog(LLOG_ERROR, MSG, __VA_ARGS__); abort(); } while (0)
 
-typedef bool (*filter_fun)(const struct filter *filter, const struct packet_info *packet);
+typedef bool (*filter_fun)(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet);
 struct filter_type;
 typedef void (*filter_parser)(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size);
 
@@ -46,40 +47,47 @@ struct filter {
 	const struct filter *subfilters;
 	struct trie *trie;
 	const struct filter_type *type;
+	// Info for differential plugins
+	const char *name;
+	uint32_t epoch, version;
+	size_t added, deleted; // Statistics, to know when to re-requested the whole filter config
 };
 
-static bool filter_true(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_true(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	(void)tmp_pool;
 	(void)filter;
 	(void)packet;
 	return true;
 }
 
-static bool filter_false(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_false(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	(void)tmp_pool;
 	(void)filter;
 	(void)packet;
 	return false;
 }
 
-static bool filter_not(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_not(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
 	const struct filter *sub = filter->subfilters;
-	return !sub->function(sub, packet);
+	return !sub->function(tmp_pool, sub, packet);
 }
 
-static bool filter_and(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_and(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
 	for (size_t i = 0; i < filter->sub_count; i ++)
-		if (!filter->subfilters[i].function(&filter->subfilters[i], packet))
+		if (!filter->subfilters[i].function(tmp_pool, &filter->subfilters[i], packet))
 			return false;
 	return true;
 }
 
-static bool filter_or(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_or(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
 	for (size_t i = 0; i < filter->sub_count; i ++)
-		if (filter->subfilters[i].function(&filter->subfilters[i], packet))
+		if (filter->subfilters[i].function(tmp_pool, &filter->subfilters[i], packet))
 			return true;
 	return false;
 }
 
-static bool filter_value_match(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_value_match(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	(void)tmp_pool;
 	const uint8_t *data;
 	size_t size;
 	assert(packet->layer == 'I'); // Checked by the caller
@@ -110,12 +118,26 @@ static bool filter_value_match(const struct filter *filter, const struct packet_
 	return trie_lookup(filter->trie, data, size);
 }
 
+static bool filter_differential(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	enum endpoint endpoint = filter->type->code == 'd' ? local_endpoint(packet->direction) : remote_endpoint(packet->direction);
+	// Check for IP address match first
+	if (trie_lookup(filter->trie, packet->addresses[endpoint], packet->addr_len))
+		return true;
+	// We now abuse the fact that IP addresses have either 4 or 16 bytes. If it has 6 or 18, it can't be IP only, it must be IP + port
+	uint8_t *compound = mem_pool_alloc(tmp_pool, packet->addr_len + sizeof(uint16_t));
+	memcpy(compound, packet->addresses[endpoint], packet->addr_len);
+	uint16_t port_net = htons(packet->ports[endpoint]);
+	memcpy(compound + packet->addr_len, &port_net, sizeof port_net);
+	return trie_lookup(filter->trie, compound, packet->addr_len + sizeof port_net);
+}
+
 static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size);
 
 static void parse_sub(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
 	(void)type;
 	struct filter *sub = mem_pool_alloc(pool, sizeof *sub);
 	dest->subfilters = sub;
+	dest->sub_count = 1;
 	parse_one(pool, sub, desc, size);
 }
 
@@ -183,6 +205,13 @@ static void parse_port_match(struct mem_pool *pool, struct filter *dest, const s
 	}
 }
 
+static void parse_differential(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
+	(void)type;
+	// We just create the trie and store info for future updates. We expect the server will send info about all the differential filters it knows in a short moment.
+	dest->trie = trie_alloc(pool);
+	dest->name = uplink_parse_string(pool, desc, size);
+}
+
 static const struct filter_type types[] = {
 	{ // "const true"
 		.function = filter_true,
@@ -226,11 +255,21 @@ static const struct filter_type types[] = {
 		.function = filter_value_match,
 		.code = 'P',
 		.parser = parse_port_match
+	},
+	{ // A differential IPaddress+port match.
+		.function = filter_differential,
+		.code = 'd',
+		.parser = parse_differential
+	},
+	{ // The same, but for remote endpoint
+		.function = filter_differential,
+		.code = 'D',
+		.parser = parse_differential
 	}
 };
 
-bool filter_apply(const struct filter *filter, const struct packet_info *packet) {
-	return filter->function(filter, packet);
+bool filter_apply(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	return filter->function(tmp_pool, filter, packet);
 }
 
 static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size) {
