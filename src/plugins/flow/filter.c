@@ -307,3 +307,27 @@ struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t s
 	}
 	return result;
 }
+
+enum flow_filter_action filter_action(const struct filter *filter, const char *name, uint32_t epoch, uint32_t version, uint32_t *orig_version) {
+	if (filter->name && strcmp(filter->name, name) == 0) {
+		// The update is for this filter.
+		if (epoch == filter->epoch && version == filter->version)
+			return FILTER_NO_ACTION; // Nothing changed. Ignore the update.
+		size_t active = filter->added - filter->deleted;
+		if (active * 10 < filter->deleted && filter->deleted > 100)
+			return FILTER_CONFIG_RELOAD; // There's too much cruft around. Reload the whole config and force freeing memory by that.
+		if (epoch != filter->epoch)
+			return FILTER_FULL;
+		*orig_version = filter->version;
+		return FILTER_INCREMENTAL;
+	}
+	for (size_t i = 0; i < filter->sub_count; i ++) {
+		// Look for the filter in the children
+		enum flow_filter_action action = filter_action(filter->subfilters[i], name, epoch, version, orig_version);
+		if (action != FILTER_UNKNOWN)
+			// A filter that claims to be it is somewhere below this child. Return its value.
+			return action;
+	}
+	// Sorry, this filter is not here.
+	return FILTER_UNKNOWN;
+}

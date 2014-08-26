@@ -31,4 +31,16 @@ struct mem_pool;
 bool filter_apply(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) __attribute__((nonnull));
 struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t size) __attribute__((nonnull));
 
+// Support for differential filters
+enum flow_filter_action {
+	FILTER_INCREMENTAL, // Ask for a differential update,
+	FILTER_FULL,
+	FILTER_CONFIG_RELOAD,
+	FILTER_NO_ACTION,
+	FILTER_UNKNOWN
+};
+
+// Decide how to react to a change on the server. Orig-version is used as an out-parameter in case of FILTER_INCREMENTAL
+enum flow_filter_action filter_action(const struct *filter, const char *name, uint32_t epoch, uint32_t version, uint32_t *orig_version);
+
 #endif
