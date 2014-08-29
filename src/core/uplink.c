@@ -384,6 +384,18 @@ char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t 
 	return result;
 }
 
+uint32_t uplink_parse_uint32(const uint8_t **buffer, size_t *length) {
+	if (*length < sizeof(uint32_t)) {
+		// Not using die, this'll likely happen inside a plugin, so the error will be caught.
+		ulog(LLOG_ERROR, "Message buffer too short to read an uint32_t (%zu available)\n", *length);
+		abort();
+	}
+	uint32_t result;
+	memcpy(&result, *buffer, sizeof result);
+	result = ntohl(result);
+	return result;
+}
+
 void uplink_render_string(const void *string, uint32_t length, uint8_t **buffer_pos, size_t *buffer_len) {
 	// Network byte order
 	uint32_t len_encoded = htonl(length);
@@ -394,6 +406,14 @@ void uplink_render_string(const void *string, uint32_t length, uint8_t **buffer_
 	// Update the buffer position
 	*buffer_pos += sizeof(len_encoded) + length;
 	*buffer_len -= sizeof(len_encoded) + length;
+}
+
+void uplink_renter_uint32(uint32_t value, uint8_t **buffer_pos, size_t *buffer_len) {
+	assert(*buffer_len >= sizeof value);
+	value = htonl(value);
+	memcpy(*buffer_pos, &value, sizeof value);
+	*buffer_pos += sizeof value;
+	*buffer_len -= sizeof value;
 }
 
 static void handle_buffer(struct uplink *uplink) {
