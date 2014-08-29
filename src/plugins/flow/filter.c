@@ -44,7 +44,7 @@ struct filter_type {
 struct filter {
 	filter_fun function;
 	size_t sub_count;
-	const struct filter *subfilters;
+	struct filter *subfilters;
 	struct trie *trie;
 	const struct filter_type *type;
 	// Info for differential plugins
@@ -308,26 +308,94 @@ struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t s
 	return result;
 }
 
-enum flow_filter_action filter_action(const struct filter *filter, const char *name, uint32_t epoch, uint32_t version, uint32_t *orig_version) {
-	if (filter->name && strcmp(filter->name, name) == 0) {
-		// The update is for this filter.
-		if (epoch == filter->epoch && version == filter->version)
-			return FILTER_NO_ACTION; // Nothing changed. Ignore the update.
-		size_t active = filter->added - filter->deleted;
-		if (active * 10 < filter->deleted && filter->deleted > 100)
-			return FILTER_CONFIG_RELOAD; // There's too much cruft around. Reload the whole config and force freeing memory by that.
-		if (epoch != filter->epoch)
-			return FILTER_FULL;
-		*orig_version = filter->version;
+static struct filter *filter_find(const char *name, struct filter *filter) {
+	if (filter->name && strcmp(name, filter->name) == 0)
+		// Found locally
+		return filter;
+	for (size_t i = 0; i < filter->sub_count; i ++) {
+		struct filter *found = filter_find(name, &filter->subfilters[i]);
+		if (found)
+			// Found recursively in one of children
+			return found;
+	}
+	// Not found at all
+	return NULL;
+}
+
+enum flow_filter_action filter_action(struct filter *filter, const char *name, uint32_t epoch, uint32_t version, uint32_t *orig_version) {
+	struct filter *found = filter_find(name, filter);
+	if (!found)
+		return FILTER_UNKNOWN;
+	if (epoch == found->epoch && version == found->version)
+		return FILTER_NO_ACTION; // Nothing changed. Ignore the update.
+	size_t active = found->added - found->deleted;
+	if (active * 10 < found->deleted && found->deleted > 100)
+		return FILTER_CONFIG_RELOAD; // There's too much cruft around. Reload the whole config and force freeing memory by that.
+	if (epoch != found->epoch)
+		return FILTER_FULL;
+	*orig_version = found->version;
+	return FILTER_INCREMENTAL;
+}
+
+/*
+ * We don't use the last bit, there's no address with odd length. We use that bit for something else.
+ *
+ * Actually, we expect these values:
+ * • 4: IPv4 address
+ * • 6: IPv4 + port
+ * • 16: IPv6 address
+ * • 18: IPv6 + port
+ */
+const uint8_t size_mask = 16 + 8 + 4 + 2;
+const uint8_t add_mask = 1;
+
+enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct filter *filter, const char *name, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version) {
+	struct filter *found = filter_find(name, filter);
+	ulog(LLOG_INFO, "Updating filter %s from version %u to version %u (epoch %u)\n", name, (unsigned)from, (unsigned)to, (unsigned)epoch);
+	if (!found)
+		return FILTER_UNKNOWN;
+	if (epoch != found->epoch && !full)
+		// This is for different epoch than we have. Resynchronize!
+		return FILTER_FULL;
+	if (from != found->version) {
+		*orig_version = found->version;
 		return FILTER_INCREMENTAL;
 	}
-	for (size_t i = 0; i < filter->sub_count; i ++) {
-		// Look for the filter in the children
-		enum flow_filter_action action = filter_action(filter->subfilters[i], name, epoch, version, orig_version);
-		if (action != FILTER_UNKNOWN)
-			// A filter that claims to be it is somewhere below this child. Return its value.
-			return action;
+	if (full && found->added != found->deleted) {
+		// We're doing a full update and there's something in the trie. Reset it.
+		found->deleted = found->added;
+		found->trie = trie_alloc(pool);
 	}
-	// Sorry, this filter is not here.
-	return FILTER_UNKNOWN;
+	size_t addr_no = 0;
+	while (diff_size --) {
+		uint8_t flags = *(diff ++);
+		uint8_t addr_len = flags & size_mask;
+		if (addr_len > diff_size) {
+			ulog(LLOG_ERROR, "Filter diff for %s corrupted, need %hhu bytes, have only %zu\n", name, addr_len, diff_size);
+			abort();
+		}
+		struct trie_data **data = trie_index(found->trie, diff, addr_len);
+		bool add = flags & add_mask;
+		if (add) {
+			if (*data) {
+				ulog(LLOG_WARN, "Asked to add an address #%zu of size %hhu to filter %s, but that already exists\n", addr_no, addr_len, name);
+			} else {
+				*data = &mark;
+				found->added ++;
+			}
+		} else {
+			if (*data) {
+				*data = NULL;
+				found->deleted ++;
+			} else {
+				ulog(LLOG_WARN, "Asked to delete an address #%zu of size %hhu from filter %s, but that is not there\n", addr_no, addr_len, name);
+			}
+		}
+		diff += addr_len;
+		diff_size -= addr_len;
+		addr_no ++;
+	}
+	found->epoch = epoch;
+	found->version = to;
+	return FILTER_NO_ACTION;
 }

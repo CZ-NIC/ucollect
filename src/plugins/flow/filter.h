@@ -41,6 +41,15 @@ enum flow_filter_action {
 };
 
 // Decide how to react to a change on the server. Orig-version is used as an out-parameter in case of FILTER_INCREMENTAL
-enum flow_filter_action filter_action(const struct *filter, const char *name, uint32_t epoch, uint32_t version, uint32_t *orig_version);
+enum flow_filter_action filter_action(struct filter *filter, const char *name, uint32_t epoch, uint32_t version, uint32_t *orig_version);
+/*
+ * Apply a difference to a filter of given name.
+ *
+ * It can use the memory pool to allocate permanent data (in the filter).
+ *
+ * It usually returns FILTER_NO_ACTION, which means the change was successful.
+ * However, it can request a full update instead of incremental, if the epoch is different, or say FILTER_UNKNOWN if the filter is not known (or whatever other value ‒ see orig_version in filter_action).
+ */
+enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct filter *filter, const char *name, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version);
 
 #endif
