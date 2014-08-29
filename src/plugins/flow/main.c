@@ -332,7 +332,8 @@ struct plugin *plugin_info(void) {
 		.init_callback = initialize,
 		.uplink_connected_callback = connected,
 		.uplink_data_callback = communicate,
-		.name = "Flow"
+		.name = "Flow",
+		.version = 2
 	};
 	return &plugin;
 }
