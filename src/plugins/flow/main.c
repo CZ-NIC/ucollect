@@ -222,6 +222,37 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 	configure(context, ntohl(config.conf_id), ntohl(config.max_flows), ntohl(config.timeout), ntohl(config.min_packets), data + sizeof config, length - sizeof config);
 }
 
+static void handle_filter_action(struct context *context, enum flow_filter_action action, const char *name, uint32_t epoch, uint32_t old_version, uint32_t new_version) {
+	switch (action) {
+		case FILTER_UNKNOWN:
+		case FILTER_NO_ACTION:
+			break;
+		case FILTER_CONFIG_RELOAD:
+			uplink_plugin_send_message(context, "C", 1);
+			break;
+		case FILTER_INCREMENTAL:
+		case FILTER_FULL: {
+			bool full = (action == FILTER_FULL);
+			size_t len = 1 + 1 + sizeof(uint32_t) + strlen(name) + (2 + !full) * sizeof(uint32_t);
+			uint8_t *message = mem_pool_alloc(context->temp_pool, len);
+			uint8_t *pos = message;
+			size_t rest = len;
+			*(pos ++) = 'U';
+			rest --;
+			*(pos ++) = full;
+			rest --;
+			uplink_render_string(name, strlen(name), &pos, &rest);
+			uplink_render_uint32(epoch, &pos, &rest);
+			if (!full)
+				uplink_render_uint32(old_version, &pos, &rest);
+			uplink_render_uint32(new_version, &pos, &rest);
+			assert(!rest);
+			uplink_plugin_send_message(context, message, len);
+			break;
+		}
+	}
+}
+
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
 	assert(length);
 	switch (*data) {
@@ -232,6 +263,59 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 		case 'C': // Config. Either requested, or flushed. But accept it anyway.
 			config_parse(context, data + 1, length - 1);
 			break;
+		case 'U': {// Offer of an update of a differential filter
+			data ++;
+			length --;
+			char *name = uplink_parse_string(context->temp_pool, &data, &length);
+			if (!name) {
+				ulog(LLOG_ERROR, "Update message too short to contain filter name\n");
+				abort();
+			}
+			uint32_t epoch = uplink_parse_uint32(&data, &length);
+			uint32_t version = uplink_parse_uint32(&data, &length);
+			if (length)
+				ulog(LLOG_WARN, "Extra data at the end of diff-filter update message\n");
+			uint32_t orig_version;
+			enum flow_filter_action action = filter_action(context->user_data->filter, name, epoch, version, &orig_version);
+			if (action == FILTER_UNKNOWN)
+				ulog(LLOG_WARN, "Update for unknown filter %s received\n", name);
+			handle_filter_action(context, action, name, epoch, orig_version, version);
+			break;
+		}
+		case 'D': { // difference to apply to a filter (may be asked for or not)
+			data ++;
+			length --;
+			char *name = uplink_parse_string(context->temp_pool, &data, &length);
+			if (!name) {
+				ulog(LLOG_ERROR, "Diff message too short to contain filter name\n");
+				abort();
+			}
+			if (!length) {
+				ulog(LLOG_ERROR, "Diff message too short, missing update fullness flag\n");
+				abort();
+			}
+			bool full = *data;
+			length --;
+			uint32_t epoch = uplink_parse_uint32(&data, &length);
+			uint32_t from = 0;
+			if (!full)
+				from = uplink_parse_uint32(&data, &length);
+			uint32_t to = uplink_parse_uint32(&data, &length);
+			uint32_t orig_version;
+			enum flow_filter_action action = filter_diff_apply(context->user_data->conf_pool, context->user_data->filter, name, full, epoch, from, to, data, length, &orig_version);
+			switch (action) {
+				case FILTER_UNKNOWN:
+					ulog(LLOG_WARN, "Diff for unknown filter %s received \n", name);
+					break;
+				case FILTER_INCREMENTAL:
+				case FILTER_FULL:
+					ulog(LLOG_WARN, "Filter %s out of sync, dropping diff\n", name);
+					break;
+				default:;
+			}
+			handle_filter_action(context, action, name, epoch, orig_version, to);
+			break;
+		}
 		default:
 			ulog(LLOG_WARN, "Unknown message opcode '%c' (%hhu), ignoring\n", *data, *data);
 			break;
