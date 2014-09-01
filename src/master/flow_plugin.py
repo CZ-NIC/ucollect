@@ -127,6 +127,18 @@ class FilterIP(Filter):
 	def __str__(self):
 		return self._code + '(' + ','.join(self._ips) + ')'
 
+class FilterDifferential(Filter):
+	def serialize(self):
+		return self._code + struct.pack('!I' + str(len(self._name)) + 's', len(self._name), self._name)
+
+	def parse(self, code, param):
+		self._code = code
+		([self._name], param) = self.get_values(param)
+		return param
+
+	def __str__(self):
+		return self._code + '(' + self._name + ')'
+
 filter_index = {
 	'T': Filter,
 	'F': Filter,
@@ -136,7 +148,9 @@ filter_index = {
 	'i': FilterIP,
 	'I': FilterIP,
 	'p': FilterPort,
-	'P': FilterPort
+	'P': FilterPort,
+	'd': FilterDifferential,
+	'D': FilterDifferential
 }
 
 def store_flows(client, message, expect_conf_id):
