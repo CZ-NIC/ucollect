@@ -109,15 +109,15 @@ class FilterPort(Filter):
 	def __str__(self):
 		return self._code + '(' + ','.join(map(str, self._ports)) + ')'
 
+def encode_ip(ip):
+	try:
+		return struct.pack('!B', 4) + socket.inet_pton(socket.AF_INET, ip)
+	except Exception:
+		return struct.pack('!B', 16) + socket.inet_pton(socket.AF_INET6, ip)
+
 class FilterIP(Filter):
 	def serialize(self):
-		return self._code + struct.pack('!I', len(self._ips)) + ''.join(map(lambda ip: self.__encode_ip(ip), self._ips))
-
-	def __encode_ip(self, ip):
-		try:
-			return struct.pack('!B', 4) + socket.inet_pton(socket.AF_INET, ip)
-		except Exception:
-			return struct.pack('!B', 16) + socket.inet_pton(socket.AF_INET6, ip)
+		return self._code + struct.pack('!I', len(self._ips)) + ''.join(map(lambda ip: encode_ip(ip), self._ips))
 
 	def parse(self, code, param):
 		self._code = code
@@ -194,25 +194,106 @@ class FlowPlugin(plugin.Plugin):
 		self.__config = {}
 		self.__conf_checker = LoopingCall(self.__check_conf)
 		self.__conf_checker.start(60, True)
+		self.__filters = {}
+		self.__filter_cache = {}
 
 	def __check_conf(self):
 		with database.transaction() as t:
 			t.execute("SELECT name, value FROM config WHERE plugin = 'flow'")
 			config = dict(t.fetchall())
+			# Doh. We just want the newest version in the newest epoch of each filter name.
+			# There just have to be a simpler way to say this!
+			t.execute('''SELECT
+				filters.filter, MAX(filters.epoch), MAX(flow_filters.version)
+			FROM
+				flow_filters
+			JOIN
+				(SELECT filter, MAX(epoch) AS epoch FROM flow_filters GROUP BY filter) AS filters
+			ON flow_filters.filter = filters.filter AND filters.epoch = flow_filters.epoch
+			GROUP BY filters.filter''')
+			filters = {}
+			for f in t.fetchall():
+				(name, epoch, version) = f
+				filters[name] = (epoch, version)
 		if self.__config != config:
 			logger.info('Config changed, broadcasting')
 			self.__config = config
-			self.broadcast(self.__build_config())
+			self.broadcast(self.__build_config(''), lambda version: version < 2)
+			self.broadcast(self.__build_config('-diff'), lambda version: version >= 2)
+			for f in filters:
+				self.broadcast(self.__build_filter_version(f, filters[f][0], filters[f][1]), lambda version: version >= 2)
+			self.__filter_cache = {}
+		else:
+			for f in filters:
+				# It should not happen there are different filters than in the previous version,
+				# such thing should happen only with config change. But we still do it by the new ones
+				# so we send the appearing ones. Not mentioning disapearing ones is OK and actually
+				# what we want.
+				if f not in self.__filters or filters[f] != self.__filters[f]:
+					self.broadcast(self.__build_filter_version(f, filters[f][0], filters[f][1]), lambda version: version >= 2)
+					self.__filter_cache = {}
+		self.__filters = filters
 
-	def __build_config(self):
+	def __build_filter_version(self, name, epoch, version):
+		return 'U' + struct.pack('!I' + str(len(name)) + 'sII', len(name), name, epoch, version)
+
+	def __build_config(self, filter_suffix):
 		filter_data = ''
-		fil = self.__config['filter']
+		fil = self.__config['filter' + filter_suffix]
 		if fil:
 			f = filter_index[fil[0]]()
 			f.parse(fil[0], fil[1:])
 			logger.debug('Filter: %s', f)
 			filter_data = f.serialize()
 		return 'C' + struct.pack('!IIII', int(self.__config['version']), int(self.__config['max_flows']), int(self.__config['timeout']), int(self.__config['minpackets'])) + filter_data
+
+	def __build_filter_diff(self, name, full, epoch, from_version, to_version):
+		key = (name, full, epoch, from_version, to_version)
+		if key in self.__filter_cache:
+			return self.__filter_cache[key]
+		with database.transaction() as t:
+			t.execute('''SELECT
+				flow_filters.address, add
+			FROM
+				(SELECT
+					address, MAX(version) AS version
+				FROM
+					flow_filters
+				WHERE
+					filter = %s AND epoch = %s AND version > %s AND version <= %s
+				GROUP BY
+					address)
+				AS lasts
+			JOIN
+				flow_filters
+			ON
+				flow_filters.address = lasts.address AND flow_filters.version = lasts.version
+			WHERE
+				filter = %s AND epoch = %s''', (name, epoch, from_version, to_version, name, epoch))
+			addresses = t.fetchall()
+		params = [len(name), name, full, epoch]
+		if not full:
+			params.append(from_version)
+		params.append(to_version)
+		data = 'D' + struct.pack('I' + str(len(name)) + '?II' + ('' if full else 'I'), params)
+		for addr in addresses:
+			(address, add) = addr
+			add = 1 if add else 0
+			# Try parsing the string. First as IPv4, then IPv6, IPv4:port, IPv6:port
+			try:
+				data += struct.pack('!B', 4 + add) + socket.inet_pton(socket.AF_INET, address)
+			except Exception:
+				try:
+					data += struct.pack('!B', 16 + add) + socket.inet_pton(socket.AF_INET6, address)
+				except Exception:
+					(ip, port) = address.rsplit(':', 1)
+					ip = ip.strip('[]')
+					try:
+						data += struct.pack('!B', 6 + add) + socket.inet_pton(socket.AF_INET, address) + struct.pack('!H', int(port))
+					except Exception:
+						data += struct.pack('!B', 18 + add) + socket.inet_pton(socket.AF_INET6, address) + struct.pack('!H', int(port))
+		self.__filter_cache[key] = data
+		return data
 
 	def message_from_client(self, message, client):
 		if message[0] == 'C':
@@ -222,6 +303,20 @@ class FlowPlugin(plugin.Plugin):
 			logger.debug('Flows from %s', client)
 			activity.log_activity(client, 'flow')
 			reactor.callInThread(store_flows, client, message[1:], int(self.__config['version']))
+		elif message[0] == 'U':
+			# Client is requesting difference in a filter
+			(full, name_len) = struct.unpack('!?I', message[1:6])
+			name = message[6:6+name_len]
+			message = message[6+name_len:]
+			l = 2 if full else 3
+			numbers = struct.unpack(str(l) + 'I')
+			if full:
+				(epoch, to_version) = numbers
+				from_version = 0
+			else:
+				(epoch, from_version, to_version) = numbers
+			logger.debug('Sending diff for filter %s@%s from %s to %s to client %s', name, epoch, from_version, to_version, client)
+			self.send(self.__build_filter_diff(name, full, epoch, from_version, to_version), client)
 
 	def name(self):
 		return 'Flow'
