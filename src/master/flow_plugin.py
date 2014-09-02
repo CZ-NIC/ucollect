@@ -312,7 +312,12 @@ class FlowPlugin(plugin.Plugin):
 	def message_from_client(self, message, client):
 		if message[0] == 'C':
 			logger.debug('Sending config to %s', client)
-			self.send(self.__build_config(), client)
+			if self.version(client) < 2:
+				self.send(self.__build_config(''), client)
+			else:
+				self.send(self.__build_config('-diff'), client)
+				for f in self.__filters:
+					self.send(self.__build_filter_version(f, self.__filters[f][0], self.__filters[f][1]), client)
 		elif message[0] == 'D':
 			logger.debug('Flows from %s', client)
 			activity.log_activity(client, 'flow')
