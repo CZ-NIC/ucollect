@@ -408,7 +408,7 @@ void uplink_render_string(const void *string, uint32_t length, uint8_t **buffer_
 	*buffer_len -= sizeof(len_encoded) + length;
 }
 
-void uplink_renter_uint32(uint32_t value, uint8_t **buffer_pos, size_t *buffer_len) {
+void uplink_render_uint32(uint32_t value, uint8_t **buffer_pos, size_t *buffer_len) {
 	assert(*buffer_len >= sizeof value);
 	value = htonl(value);
 	memcpy(*buffer_pos, &value, sizeof value);
