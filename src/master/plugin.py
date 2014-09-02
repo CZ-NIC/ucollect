@@ -83,6 +83,12 @@ class Plugin:
 	def __routed_message(self, message):
 		return 'R' + format_string(self.name()) + message
 
+	def version(self, client):
+		"""
+		Return the version of this plugin in given client, if any.
+		"""
+		return self.__plugins.plugin_version(self.name(), client)
+
 class Plugins:
 	"""
 	Singleton holding all the active plugins and clients. It
@@ -170,3 +176,12 @@ class Plugins:
 		"""
 		# TODO: The plugin of that name might not exist (#2705)
 		self.__plugins[name].message_from_client(message, client)
+
+	def plugin_version(self, plugin, client):
+		"""
+		Provide version of given plugin on given client, if it is available (None otherwise).
+		"""
+		try:
+			return self.__clients[client].plugin_version(plugin)
+		except KeyError:
+			return None
