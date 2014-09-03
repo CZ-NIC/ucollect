@@ -25,6 +25,7 @@
 #include <string.h>
 #include <endian.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <inttypes.h>
 
 #include "../../core/plugin.h"
@@ -122,13 +123,50 @@ struct src_items {
 #define LIST_WANT_LFOR
 #include "../../core/link_list.h"
 
+struct filter_rule {
+	struct in6_addr addr;
+	size_t prefix;
+	int family;
+};
+
 struct user_data {
 	FILE *file;
 	struct comm_items communication;
 	struct src_items sources;
 	struct mem_pool *list_pool;
+	struct mem_pool *config_pool;
+	struct filter_rule *filter;
+	size_t filter_size;
 	size_t timeout;
 };
+
+static bool bitcmp(unsigned char *a, unsigned char *b, size_t bits) {
+
+	do {
+		if (a[0] != b[0]) return false;
+		a++;
+		b++;
+		bits -= 8;
+	} while (bits >= 8);
+
+	unsigned char bitmask = (0xFF << (8-bits));
+	if ((a[0] & bitmask) != (b[0] & bitmask)) return false;
+
+	return true;
+}
+
+static bool parse_address(const char *addrstr, struct in6_addr *addr, int *family) {
+	if (inet_pton(AF_INET, addrstr, addr)) {
+		*family = 4;
+		return true;
+	}
+	if (inet_pton(AF_INET6, addrstr, addr)) {
+		*family = 6;
+		return true;
+	}
+
+	return false;
+}
 
 static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_len, char output[ADDRSTRLEN]) {
 	if (addr_len == 4) {
@@ -357,6 +395,7 @@ void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 	*context->user_data = (struct user_data) {
 		.list_pool = loop_pool_create(context->loop, context, "Majordomo linked-lists pool"),
+		.config_pool = loop_pool_create(context->loop, context, "Majordomo config pool"),
 		.timeout = loop_timeout_add(context->loop, DUMP_TIMEOUT, context, NULL, scheduled_dump),
 		.communication = (struct comm_items) {
 			.count = 0
@@ -365,6 +404,64 @@ void init(struct context *context) {
 			.count = 0
 		}
 	};
+}
+
+static bool parse_option(const char *cfg_line, struct in6_addr *addr, size_t *prefix, int *family) {
+	size_t max_len = ADDRSTRLEN + 1 + 3 + 1; //+1 for "/" character; +3 for 0-128 number; -1 for '\0'
+
+	if (strlen(cfg_line) > max_len)
+		return false;
+
+	char *pos = strchr(cfg_line, '/');
+	if (!pos)
+		return false;
+
+	char addr_part[max_len];
+	size_t addr_part_len = pos - cfg_line;
+
+	strncpy(addr_part, cfg_line, addr_part_len);
+	addr_part[addr_part_len] = '\0';
+
+	if (!parse_address(addr_part, addr, family))
+		return false;
+
+	*prefix = atoi(pos + 1);
+	if (*prefix <= 0 || *prefix > ((*family == 4) ? 32 : 128))
+		return false;
+
+	return true;
+}
+
+bool check_config(struct context *context) {
+	struct in6_addr dummy_addr;
+	size_t dummy_prefix;
+	int dummy_family;
+
+	const struct config_node *conf = loop_plugin_option_get(context, "ignore_subnet");
+	for (size_t i = 0; i < conf->value_count; i++) {
+		if (!parse_option(conf->values[i], &dummy_addr, &dummy_prefix, &dummy_family))
+			return false;
+	}
+
+	return true;
+}
+
+void finish_config(struct context *context, bool commit) {
+	struct user_data *d = context->user_data;
+
+	// Do nothing on revert
+	if (!commit)
+		return;
+
+	// Reset pool with old configuration, parse again and store new one
+	const struct config_node *conf = loop_plugin_option_get(context, "ignore_subnet");
+	d->filter_size = conf->value_count;
+	mem_pool_reset(d->config_pool);
+	d->filter = mem_pool_alloc(d->config_pool, d->filter_size * sizeof(*d->filter));
+
+	for (size_t i = 0; i < d->filter_size; i++) {
+		parse_option(conf->values[i], &(d->filter[i].addr), &(d->filter[i].prefix), &(d->filter[i].family));
+	}
 }
 
 void destroy(struct context *context) {
@@ -380,7 +477,9 @@ struct plugin *plugin_info(void) {
 		.name = "Majordomo",
 		.packet_callback = packet_handle,
 		.init_callback = init,
-		.finish_callback = destroy
+		.finish_callback = destroy,
+		.config_check_callback = check_config,
+		.config_finish_callback = finish_config
 	};
 	return &plugin;
 }
