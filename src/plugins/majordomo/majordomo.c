@@ -263,6 +263,18 @@ static struct comm_item *create_comm_item(struct comm_items *communication, stru
 	return item;
 }
 
+static bool filter_address(struct user_data *d, const void *addr_bytes, int family) {
+	struct in6_addr addr;
+	memcpy(&addr, addr_bytes, (family == 4 ? 4 : 16));
+
+	for (size_t i = 0; i < d->filter_size; i++) {
+		if (family == d->filter[i].family && bitcmp((unsigned char *) &addr, (unsigned char *) &(d->filter[i].addr), d->filter[i].prefix))
+			return true;
+	}
+
+	return false;
+}
+
 void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
 	const struct packet_info *l2 = info;
@@ -286,6 +298,9 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		local_endpoint = END_DST;
 		remote_endpoint = END_SRC;
 	}
+
+	// Filter IP addresses according to configuration
+	if (filter_address(d, info->addresses[remote_endpoint], info->ip_protocol)) return;
 
 	// Do not handle packets with MAC address that starts with odd numbers (multi- or broadcasts)
 	if ((((uint8_t *) l2->addresses[local_endpoint])[0] % 2) == 1 ||
@@ -438,6 +453,11 @@ bool check_config(struct context *context) {
 	int dummy_family;
 
 	const struct config_node *conf = loop_plugin_option_get(context, "ignore_subnet");
+	if (!conf) {
+		ulog(LLOG_WARN, "Majordomo: No subnet filter rules found!\n");
+		return true;
+	}
+
 	for (size_t i = 0; i < conf->value_count; i++) {
 		if (!parse_option(conf->values[i], &dummy_addr, &dummy_prefix, &dummy_family))
 			return false;
@@ -453,14 +473,22 @@ void finish_config(struct context *context, bool commit) {
 	if (!commit)
 		return;
 
-	// Reset pool with old configuration, parse again and store new one
-	const struct config_node *conf = loop_plugin_option_get(context, "ignore_subnet");
-	d->filter_size = conf->value_count;
+	// Reset pool with old configuration
 	mem_pool_reset(d->config_pool);
+	// Empty filter is acceptable
+	d->filter = NULL;
+	d->filter_size = 0;
+
+	const struct config_node *conf = loop_plugin_option_get(context, "ignore_subnet");
+	if (!conf)
+		return;
+	d->filter_size = conf->value_count;
 	d->filter = mem_pool_alloc(d->config_pool, d->filter_size * sizeof(*d->filter));
 
+	// Parse (again) new configuration and store it
 	for (size_t i = 0; i < d->filter_size; i++) {
 		parse_option(conf->values[i], &(d->filter[i].addr), &(d->filter[i].prefix), &(d->filter[i].family));
+		ulog(LLOG_INFO, "Majordomo: Add %s to subnet filter\n", conf->values[i]);
 	}
 }
 
