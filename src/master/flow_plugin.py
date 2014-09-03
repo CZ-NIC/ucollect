@@ -171,7 +171,7 @@ def store_flows(client, message, expect_conf_id):
 			for v in (tbin, tein):
 				if calib_time - v > 86400000:
 					logger.error("Time difference out of range for client %s and in direction: %s", client, calib_time - v)
-				ok = False
+					ok = False
 			if ok:
 				values.append((arem, aloc, prem, ploc, proto, calib_time - tbin, calib_time - tein, calib_time - tbout if cout else None, sin, cin, True, client))
 		if cout:

@@ -195,6 +195,7 @@ struct pcap_interface {
 	struct pcap_interface *next;
 	bool mark; // Mark for configurator.
 	bool in; // Currently processed direction is in (temporary internal mark)
+	bool registered; // Registered inside the main loop
 	// Statistics from the last time, so we can return just the diffs
 	size_t captured, dropped, if_dropped;
 };
@@ -722,7 +723,8 @@ static void pcap_destroy(struct pcap_interface *interface) {
 		loop_timeout_cancel(interface->loop, interface->watchdog_timer);
 	for (size_t i = 0; i < 2; i ++) {
 		int fd = pcap_get_selectable_fd(interface->directions[i].pcap);
-		loop_unregister_fd(interface->loop, fd);
+		if (interface->registered)
+			loop_unregister_fd(interface->loop, fd);
 		pcap_close(interface->directions[i].pcap);
 	}
 }
@@ -1206,6 +1208,7 @@ void loop_config_commit(struct loop_configurator *configurator) {
 					loop->timeouts[i].context = &plugin->context;
 	LFOR(pcap, interface, &configurator->pcap_interfaces) {
 		epoll_register_pcap(loop, interface, interface->mark ? EPOLL_CTL_ADD : EPOLL_CTL_MOD);
+		interface->registered = true;
 		if (!interface->mark)
 			loop_timeout_cancel(loop, interface->watchdog_timer);
 		interface->watchdog_timer = loop_timeout_add(loop, PCAP_WATCHDOG_TIME, NULL, interface, pcap_watchdog);
