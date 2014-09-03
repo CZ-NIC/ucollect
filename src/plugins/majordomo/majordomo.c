@@ -289,6 +289,8 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	// Interested only in UDP and TCP packets (+ check IP Layer)
 	if (info->layer != 'I') return;
 	if (info->app_protocol != 'T' && info->app_protocol != 'U') return;
+	// Interested only in INET and INET6
+	if (info->ip_protocol != 4 && info->ip_protocol != 6) return;
 
 	enum endpoint local_endpoint, remote_endpoint;
 	if (l2->direction == DIRECTION_UPLOAD) {
