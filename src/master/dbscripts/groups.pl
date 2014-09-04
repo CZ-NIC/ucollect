@@ -14,7 +14,7 @@ print Dumper \@groups;
 
 $dbh->do('INSERT INTO groups (name) VALUES (?)', undef, $_) for @groups;
 
-my $ids = $dbh->selectall_arrayref('SELECT id FROM clients');
+my $ids = $dbh->selectall_arrayref("SELECT id FROM clients WHERE name LIKE '00000006%'");
 
 for my $id_row (@$ids) {
 	my ($id) = @$id_row;
