@@ -274,8 +274,9 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			uint32_t epoch = uplink_parse_uint32(&data, &length);
 			uint32_t version = uplink_parse_uint32(&data, &length);
 			if (length)
-				ulog(LLOG_WARN, "Extra data at the end of diff-filter update message\n");
+				ulog(LLOG_WARN, "Extra data at the end of diff-filter update message (%zu bytes: %s)\n", length, mem_pool_hex(context->temp_pool, data, length));
 			uint32_t orig_version;
+			ulog(LLOG_DEBUG, "Received version update of diff filter %s: %u %u\n", name, epoch, version);
 			enum flow_filter_action action = filter_action(context->user_data->filter, name, epoch, version, &orig_version);
 			if (action == FILTER_UNKNOWN)
 				ulog(LLOG_WARN, "Update for unknown filter %s received\n", name);
@@ -296,13 +297,16 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			}
 			bool full = *data;
 			length --;
+			data ++;
+			ulog(LLOG_DEBUG_VERBOSE, "Length: %zu\n", length);
 			uint32_t epoch = uplink_parse_uint32(&data, &length);
 			uint32_t from = 0;
 			if (!full)
 				from = uplink_parse_uint32(&data, &length);
 			uint32_t to = uplink_parse_uint32(&data, &length);
 			uint32_t orig_version;
-			enum flow_filter_action action = filter_diff_apply(context->user_data->conf_pool, context->user_data->filter, name, full, epoch, from, to, data, length, &orig_version);
+			ulog(LLOG_DEBUG_VERBOSE, "Length: %zu\n", length);
+			enum flow_filter_action action = filter_diff_apply(context->user_data->conf_pool, context->temp_pool, context->user_data->filter, name, full, epoch, from, to, data, length, &orig_version);
 			switch (action) {
 				case FILTER_UNKNOWN:
 					ulog(LLOG_WARN, "Diff for unknown filter %s received \n", name);

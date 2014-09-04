@@ -329,6 +329,7 @@ enum flow_filter_action filter_action(struct filter *filter, const char *name, u
 	if (epoch == found->epoch && version == found->version)
 		return FILTER_NO_ACTION; // Nothing changed. Ignore the update.
 	size_t active = found->added - found->deleted;
+	ulog(LLOG_DEBUG, "%zu active, %zu deleted\n", active, found->deleted);
 	if (active * 10 < found->deleted && found->deleted > 100)
 		return FILTER_CONFIG_RELOAD; // There's too much cruft around. Reload the whole config and force freeing memory by that.
 	if (epoch != found->epoch)
@@ -349,7 +350,16 @@ enum flow_filter_action filter_action(struct filter *filter, const char *name, u
 const uint8_t size_mask = 16 + 8 + 4 + 2;
 const uint8_t add_mask = 1;
 
-enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct filter *filter, const char *name, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version) {
+#ifdef DEBUG
+static void debug_dump(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
+	struct mem_pool *pool = userdata;
+	const char *active = data ? "Active" : "Inactive";
+	char *hex = mem_pool_hex(pool, key, key_size);
+	ulog(LLOG_DEBUG_VERBOSE, "Key: %s: %s\n", hex, active);
+}
+#endif
+
+enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct mem_pool *tmp_pool, struct filter *filter, const char *name, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version) {
 	struct filter *found = filter_find(name, filter);
 	ulog(LLOG_INFO, "Updating filter %s from version %u to version %u (epoch %u)\n", name, (unsigned)from, (unsigned)to, (unsigned)epoch);
 	if (!found)
@@ -357,7 +367,7 @@ enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct filter *
 	if (epoch != found->epoch && !full)
 		// This is for different epoch than we have. Resynchronize!
 		return FILTER_FULL;
-	if (from != found->version) {
+	if (from != found->version && !full) {
 		*orig_version = found->version;
 		return FILTER_INCREMENTAL;
 	}
@@ -369,6 +379,7 @@ enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct filter *
 	size_t addr_no = 0;
 	while (diff_size --) {
 		uint8_t flags = *(diff ++);
+		ulog(LLOG_DEBUG_VERBOSE, "Address flags: %hhu\n", flags);
 		uint8_t addr_len = flags & size_mask;
 		if (addr_len > diff_size) {
 			ulog(LLOG_ERROR, "Filter diff for %s corrupted, need %hhu bytes, have only %zu\n", name, addr_len, diff_size);
@@ -397,5 +408,9 @@ enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct filter *
 	}
 	found->epoch = epoch;
 	found->version = to;
+	ulog(LLOG_DEBUG, "Filter %s updated:\n", name);
+#ifdef DEBUG
+	trie_walk(found->trie, debug_dump, tmp_pool, tmp_pool);
+#endif
 	return FILTER_NO_ACTION;
 }
