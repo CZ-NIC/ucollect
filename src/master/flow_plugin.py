@@ -206,12 +206,13 @@ class FlowPlugin(plugin.Plugin):
 	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
 		self.__config = {}
-		self.__conf_checker = LoopingCall(self.__check_conf)
-		self.__conf_checker.start(60, True)
 		self.__filters = {}
 		self.__filter_cache = {}
+		self.__conf_checker = LoopingCall(self.__check_conf)
+		self.__conf_checker.start(60, True)
 
 	def __check_conf(self):
+		logger.trace("Checking flow configs")
 		with database.transaction() as t:
 			t.execute("SELECT name, value FROM config WHERE plugin = 'flow'")
 			config = dict(t.fetchall())
@@ -289,9 +290,11 @@ class FlowPlugin(plugin.Plugin):
 		if not full:
 			params.append(from_version)
 		params.append(to_version)
-		data = 'D' + struct.pack('I' + str(len(name)) + '?II' + ('' if full else 'I'), params)
+		data = 'D' + struct.pack('!I' + str(len(name)) + 's?II' + ('' if full else 'I'), *params)
 		for addr in addresses:
 			(address, add) = addr
+			if not add and full:
+				continue # Don't mention addresses that were deleted on full update
 			add = 1 if add else 0
 			# Try parsing the string. First as IPv4, then IPv6, IPv4:port, IPv6:port
 			try:
@@ -303,9 +306,9 @@ class FlowPlugin(plugin.Plugin):
 					(ip, port) = address.rsplit(':', 1)
 					ip = ip.strip('[]')
 					try:
-						data += struct.pack('!B', 6 + add) + socket.inet_pton(socket.AF_INET, address) + struct.pack('!H', int(port))
+						data += struct.pack('!B', 6 + add) + socket.inet_pton(socket.AF_INET, ip) + struct.pack('!H', int(port))
 					except Exception:
-						data += struct.pack('!B', 18 + add) + socket.inet_pton(socket.AF_INET6, address) + struct.pack('!H', int(port))
+						data += struct.pack('!B', 18 + add) + socket.inet_pton(socket.AF_INET6, ip) + struct.pack('!H', int(port))
 		self.__filter_cache[key] = data
 		return data
 
@@ -328,7 +331,7 @@ class FlowPlugin(plugin.Plugin):
 			name = message[6:6+name_len]
 			message = message[6+name_len:]
 			l = 2 if full else 3
-			numbers = struct.unpack(str(l) + 'I')
+			numbers = struct.unpack('!' + str(l) + 'I', message)
 			if full:
 				(epoch, to_version) = numbers
 				from_version = 0
