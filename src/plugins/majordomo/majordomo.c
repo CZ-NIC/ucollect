@@ -432,26 +432,18 @@ void init(struct context *context) {
 	precompute_masks();
 }
 
-static bool parse_option(const char *cfg_line, struct in6_addr *addr, size_t *prefix, int *family) {
-	size_t max_len = ADDRSTRLEN + 1 + 3 + 1; //+1 for "/" character; +3 for 0-128 number; -1 for '\0'
-
-	if (strlen(cfg_line) > max_len)
-		return false;
-
-	char *pos = strchr(cfg_line, '/');
+static bool parse_option(struct mem_pool *temp_pool, const char *cfg_line, struct in6_addr *addr, size_t *prefix, int *family) {
+	char *line = mem_pool_strdup(temp_pool, cfg_line);
+	char *pos = strchr(line, '/');
 	if (!pos)
 		return false;
+	pos[0] = '\0';
+	pos++;
 
-	char addr_part[max_len];
-	size_t addr_part_len = pos - cfg_line;
-
-	strncpy(addr_part, cfg_line, addr_part_len);
-	addr_part[addr_part_len] = '\0';
-
-	if (!parse_address(addr_part, addr, family))
+	if (!parse_address(line, addr, family))
 		return false;
 
-	*prefix = atoi(pos + 1);
+	*prefix = atoi(pos);
 	if (*prefix <= 0 || *prefix > ((*family == 4) ? 32 : 128))
 		return false;
 
@@ -470,7 +462,7 @@ bool check_config(struct context *context) {
 	}
 
 	for (size_t i = 0; i < conf->value_count; i++) {
-		if (!parse_option(conf->values[i], &dummy_addr, &dummy_prefix, &dummy_family))
+		if (!parse_option(context->temp_pool, conf->values[i], &dummy_addr, &dummy_prefix, &dummy_family))
 			return false;
 	}
 
@@ -498,8 +490,8 @@ void finish_config(struct context *context, bool commit) {
 
 	// Parse (again) new configuration and store it
 	for (size_t i = 0; i < d->filter_size; i++) {
-		parse_option(conf->values[i], &(d->filter[i].addr), &(d->filter[i].prefix), &(d->filter[i].family));
-		ulog(LLOG_INFO, "Majordomo: Add %s to subnet filter\n", conf->values[i]);
+		parse_option(context->temp_pool, conf->values[i], &(d->filter[i].addr), &(d->filter[i].prefix), &(d->filter[i].family));
+		ulog(LLOG_DEBUG, "Majordomo: Add %s to subnet filter\n", conf->values[i]);
 	}
 }
 
