@@ -393,6 +393,8 @@ uint32_t uplink_parse_uint32(const uint8_t **buffer, size_t *length) {
 	uint32_t result;
 	memcpy(&result, *buffer, sizeof result);
 	result = ntohl(result);
+	*length -= sizeof result;
+	*buffer += sizeof result;
 	return result;
 }
 
