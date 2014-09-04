@@ -140,19 +140,26 @@ struct user_data {
 	size_t timeout;
 };
 
-static bool bitcmp(unsigned char *a, unsigned char *b, size_t bits) {
+static uint32_t masks[33];
 
-	do {
+static void precompute_masks() {
+	uint32_t mask = 0xFFFFFFFF;
+
+	for (ssize_t i = 32; i >= 0; i--) {
+		masks[i] = mask;
+		mask <<= 1;
+	}
+}
+
+static bool bitcmp(uint32_t *a, uint32_t *b, size_t bits) {
+	while (bits > 32) {
 		if (a[0] != b[0]) return false;
 		a++;
 		b++;
-		bits -= 8;
-	} while (bits >= 8);
+		bits -= 32;
+	}
 
-	unsigned char bitmask = (0xFF << (8-bits));
-	if ((a[0] & bitmask) != (b[0] & bitmask)) return false;
-
-	return true;
+	return ((a[0] & masks[bits]) != (b[0] & masks[bits]));
 }
 
 static bool parse_address(const char *addrstr, struct in6_addr *addr, int *family) {
@@ -268,7 +275,7 @@ static bool filter_address(struct user_data *d, const void *addr_bytes, int fami
 	memcpy(&addr, addr_bytes, (family == 4 ? 4 : 16));
 
 	for (size_t i = 0; i < d->filter_size; i++) {
-		if (family == d->filter[i].family && bitcmp((unsigned char *) &addr, (unsigned char *) &(d->filter[i].addr), d->filter[i].prefix))
+		if (family == d->filter[i].family && bitcmp((uint32_t *) &addr, (uint32_t *) &(d->filter[i].addr), d->filter[i].prefix))
 			return true;
 	}
 
@@ -421,6 +428,8 @@ void init(struct context *context) {
 			.count = 0
 		}
 	};
+
+	precompute_masks();
 }
 
 static bool parse_option(const char *cfg_line, struct in6_addr *addr, size_t *prefix, int *family) {
