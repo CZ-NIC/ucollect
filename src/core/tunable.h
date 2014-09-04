@@ -47,7 +47,7 @@
 #define COMPRESSION_LEVEL 9
 
 // Buffer size for compression/decompression
-#define COMPRESSION_BUFFSIZE 4096
+#define COMPRESSION_BUFFSIZE 1024
 // WARNING: Code was tested with small buffers and limiting is size for output
 // buffer of deflate(). There must be free space to store complete block header
 // (from 4 to 6 bytes) and some output. Do not use smaller buffers than 10 bytes.
