@@ -21,6 +21,7 @@
 #define UCOLLECT_MEM_POOL_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 // Opaque handle to a memory pool.
 struct mem_pool;
@@ -41,5 +42,7 @@ void mem_pool_reset(struct mem_pool *pool) __attribute__((nonnull));
 char *mem_pool_strdup(struct mem_pool *pool, const char *string) __attribute__((malloc)) __attribute__((nonnull));
 // Format a string by printf formatting to memory from the pool and return
 char *mem_pool_printf(struct mem_pool *pool, const char *format, ...) __attribute__((malloc)) __attribute__((nonnull(1, 2))) __attribute__((format(printf, 2, 3)));
+// Format binary data to hex
+char *mem_pool_hex(struct mem_pool *pool, const uint8_t *data, size_t size) __attribute__((malloc)) __attribute__((nonnull));
 
 #endif
