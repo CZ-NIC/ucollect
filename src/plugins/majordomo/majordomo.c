@@ -163,11 +163,11 @@ static bool bitcmp(uint32_t *a, uint32_t *b, size_t bits) {
 }
 
 static bool parse_address(const char *addrstr, struct in6_addr *addr, int *family) {
-	if (inet_pton(AF_INET, addrstr, addr)) {
+	if (inet_pton(AF_INET, addrstr, addr) == 1) {
 		*family = 4;
 		return true;
 	}
-	if (inet_pton(AF_INET6, addrstr, addr)) {
+	if (inet_pton(AF_INET6, addrstr, addr) == 1) {
 		*family = 6;
 		return true;
 	}
