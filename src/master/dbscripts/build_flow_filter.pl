@@ -2,7 +2,6 @@
 use common::sense;
 use DBI;
 use Config::IniFiles;
-use Data::Dumper;
 
 # First connect to the database
 my $cfg = Config::IniFiles->new(-file => $ARGV[0]);
@@ -35,7 +34,10 @@ while (my ($ip, $ano_type) = $an_stm->fetchrow_array) {
 	}
 	$ip =~ s/^\[(.*)\]$/$1/;
 	$type = 'P' if $type eq ':';
-	$type = 'p' if $type eq '->';
+	if ($type eq '->') { # For local-port anomalies, we're going to watch all communication with the remote end
+		$port = '';
+		$type = '';
+	}
 	$data{$type . $port}->{$ip} = 1;
 }
 
@@ -66,6 +68,55 @@ for my $port (sort keys %data) {
 }
 $filter .= ')';
 
+my %flattened;
+while (my ($port, $ips) = each %data) {
+	$port =~ s/^P//;
+	@flattened{map {
+			my $result = $_;
+			if ($port) {
+				$result = "[$_]" if /:/;
+				$result = "$result:$port";
+			}
+			$result;
+		} keys %$ips} = values %$ips;
+}
+
+my ($max_epoch) = $dbh->selectrow_array("SELECT MAX(epoch) FROM flow_filters WHERE filter = 'addresses'");
+
+my $existing = $dbh->selectall_arrayref("
+SELECT
+	flow_filters.address
+FROM
+	flow_filters
+JOIN
+	(SELECT
+		MAX(epoch) AS epoch,
+		MAX(version) AS version,
+		address
+	FROM
+		flow_filters
+	WHERE
+		filter = 'addresses' AND
+		epoch = ?
+	GROUP BY
+		address)
+	AS selector
+ON
+	flow_filters.version = selector.version AND
+	flow_filters.epoch = selector.epoch AND
+	flow_filters.address = selector.address
+WHERE
+	flow_filters.add AND
+	filter = 'addresses'", undef, $max_epoch);
+
+my %existing = map { $_->[0] => 1 } @$existing;
+
+# Compute simetric differences between previous and current versions
+my %to_delete = %existing;
+delete @to_delete{keys %flattened}; # Delete everything that was except the things that still are to be
+my %to_add = %flattened;
+delete @to_add{keys %existing}; # Add everything that shall be but didn't exist before
+
 # Check if the filter is different. If not, just keep the old one.
 my ($cur_filter) = $dbh->selectrow_array("SELECT value FROM config WHERE name = 'filter' AND plugin = 'flow'");
 if ($cur_filter eq $filter) {
@@ -73,6 +124,10 @@ if ($cur_filter eq $filter) {
 	exit;
 }
 $dbh->do("UPDATE config SET value = ? WHERE name = 'filter' AND plugin = 'flow'", undef, $filter);
-my $version = time % (2**32);
+my $version = (time / 30) % (2**32); # We won't run it more often than once a minute. Half a minute resolution should be enough to provide security that'll never generate two same versions.
+# TODO: Once we migrate to the new filters completely, drop changing version here. That provokes propagating version to the poor clients, and, while we don't send the whole filter, it produces needless clutter.
 $dbh->do("UPDATE config SET value = ? WHERE name = 'version' AND plugin = 'flow'", undef, $version);
+my $mod = $dbh->prepare("INSERT INTO flow_filters (filter, epoch, version, add, address) VALUES ('addresses', ?, ?, ?, ?)");
+$mod->execute($max_epoch, $version, 1, $_) for keys %to_add;
+$mod->execute($max_epoch, $version, 0, $_) for keys %to_delete;
 $dbh->commit;
