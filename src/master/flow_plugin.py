@@ -284,7 +284,9 @@ class FlowPlugin(plugin.Plugin):
 			ON
 				flow_filters.address = lasts.address AND flow_filters.version = lasts.version
 			WHERE
-				filter = %s AND epoch = %s''', (name, epoch, from_version, to_version, name, epoch))
+				filter = %s AND epoch = %s
+			ORDER BY
+				address''', (name, epoch, from_version, to_version, name, epoch))
 			addresses = t.fetchall()
 		params = [len(name), name, full, epoch]
 		if not full:
