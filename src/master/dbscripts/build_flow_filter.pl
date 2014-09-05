@@ -81,7 +81,7 @@ while (my ($port, $ips) = each %data) {
 		} keys %$ips} = values %$ips;
 }
 
-my ($max_epoch) = $dbh->selectrow_array("SELECT MAX(epoch) FROM flow_filters WHERE filter = 'addresses'");
+my ($max_epoch) = $dbh->selectrow_array("SELECT COALESCE(MAX(epoch), 1) FROM flow_filters WHERE filter = 'addresses'");
 
 my $existing = $dbh->selectall_arrayref("
 SELECT
