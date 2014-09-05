@@ -34,6 +34,21 @@ are in network byte order. The server can send these messages:
     milliseconds.
   * Minimum number of packets in a flow to be sent to the server.
     Smaller flows are omitted.
+`U`:: Version info about a differential filter (`d` or `D`). It holds
+  one string, the name of the filter, and two `uint32_t`, the epoch
+  and version of the filter. It doesn't contain the data for the
+  filter, the client needs to request them.
+`D`:: Filter differences ‒ the actual data for a differential filter.
+  This is followed by a string ‒ name of the filter, one boolean (1
+  byte), saying if it is a full update or not, and two or three
+  `uint32_t` numbers. If full is true, there's epoch and the target
+  version this update leads to. If it is false, the numbers are epoch,
+  previous version and the target version. It is followed by a series
+  of addresses. Each is prefixed by single flag byte. The 0th bbit is
+  1 if the address should be added, 0 if removed. If the 0th bit is
+  zeroed-out, the flags specify the length of address (4 for IPv4, 6
+  for IPv4+port, 16 for IPv6, 18 for IPv6+port), already in network
+  byte order.
 
 The client sends these messages:
 
@@ -43,6 +58,11 @@ The client sends these messages:
   number of milliseconds since some unspecified time in the past ‒
   used as calibration of times mentioned in the flows). The rest of
   the message is filled with flows. See below for the format.
+`U`:: Ask for differences for a differential filter. It is followed by
+  single-byte boolean, if the requested difference should be full, then
+  string, which is the name of requested filter, `uint32_t` epoch
+  number, starting version (in case when full is false) and destination
+  version.
 
 Filter format
 -------------
@@ -88,6 +108,14 @@ The types are:
   port (note that there can't possibly be more than 2^16^ different
   ports).
 `P`:: Same as `p`, but with remote port.
+`d`:: Local differential IP-address or IP-address+port match. It
+  contains addresses and address-port pairs and a packet matches if it
+  finds corresponding local address in there or address-port. However,
+  the list is updated outside of the configuration, by separate
+  commands, incrementally. The only parameter of the filter is single
+  string, which is name of the filter by which it the other commands
+  can refer to it.
+`D`:: Remote version of `d`.
 
 There may be more filter types in future.
 
@@ -98,6 +126,27 @@ number elements):
 * `!F`
 * `|<0001>&<0000>`
 * `|<0002>p<02><00><01>!p<02><00><01>`
+
+Differential filters
+--------------------
+
+The differential filters have versions. The versions are numbered with
+increasing numbers. To solve the problem of large changes in the
+content, not needing to keep a history indefinitely and possibility of
+running out of the numbers, there are also epochs. Epochs are also
+increasing numbers, but the versions in different epochs are not
+continuous ‒ each epoch starts a new history.
+
+The server needs to inform each client about the versions of all the
+filters it knows about. After the client receives the information, it
+decides if it needs to get some differences to get the version and
+requests either full or partial update. Full update is complete list
+of the addresses in the filter (and the client is expected to throw
+away any older versions in getting full update). The full update is
+needed when the epoch differs or when the client has no previous
+version.
+
+The server sends the needed update.
 
 Flow format
 -----------
