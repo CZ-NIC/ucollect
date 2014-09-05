@@ -159,7 +159,7 @@ static bool bitcmp(uint32_t *a, uint32_t *b, size_t bits) {
 		bits -= 32;
 	}
 
-	return ((a[0] & masks[bits]) != (b[0] & masks[bits]));
+	return ((htonl(a[0]) & masks[bits]) == (htonl(b[0]) & masks[bits]));
 }
 
 static bool parse_address(const char *addrstr, struct in6_addr *addr, int *family) {
