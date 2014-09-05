@@ -208,6 +208,7 @@ class FlowPlugin(plugin.Plugin):
 		self.__config = {}
 		self.__filters = {}
 		self.__filter_cache = {}
+		self.__top_filter_cache = {}
 		self.__conf_checker = LoopingCall(self.__check_conf)
 		self.__conf_checker.start(60, True)
 
@@ -232,6 +233,7 @@ class FlowPlugin(plugin.Plugin):
 				filters[name] = (epoch, version)
 		if self.__config != config:
 			logger.info('Config changed, broadcasting')
+			self.__top_filter_cache = {}
 			self.__config = config
 			self.broadcast(self.__build_config(''), lambda version: version < 2)
 			self.broadcast(self.__build_config('-diff'), lambda version: version >= 2)
@@ -255,12 +257,16 @@ class FlowPlugin(plugin.Plugin):
 	def __build_config(self, filter_suffix):
 		filter_data = ''
 		fil = self.__config['filter' + filter_suffix]
+		if fil in self.__top_filter_cache:
+			return self.__top_filter_cache[fil]
 		if fil:
 			f = filter_index[fil[0]]()
 			f.parse(fil[0], fil[1:])
 			logger.debug('Filter: %s', f)
 			filter_data = f.serialize()
-		return 'C' + struct.pack('!IIII', int(self.__config['version']), int(self.__config['max_flows']), int(self.__config['timeout']), int(self.__config['minpackets'])) + filter_data
+		result = 'C' + struct.pack('!IIII', int(self.__config['version']), int(self.__config['max_flows']), int(self.__config['timeout']), int(self.__config['minpackets'])) + filter_data
+		self.__top_filter_cache[fil] = result
+		return result
 
 	def __build_filter_diff(self, name, full, epoch, from_version, to_version):
 		key = (name, full, epoch, from_version, to_version)
