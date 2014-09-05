@@ -23,6 +23,7 @@
 #include "../../core/mem_pool.h"
 #include "../../core/util.h"
 #include "../../core/packet.h"
+#include "../../core/uplink.h"
 
 #include <assert.h>
 #include <string.h>
@@ -30,7 +31,7 @@
 
 #define D(MSG, ...) do { ulog(LLOG_ERROR, MSG, __VA_ARGS__); abort(); } while (0)
 
-typedef bool (*filter_fun)(const struct filter *filter, const struct packet_info *packet);
+typedef bool (*filter_fun)(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet);
 struct filter_type;
 typedef void (*filter_parser)(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size);
 
@@ -43,43 +44,50 @@ struct filter_type {
 struct filter {
 	filter_fun function;
 	size_t sub_count;
-	const struct filter *subfilters;
+	struct filter *subfilters;
 	struct trie *trie;
 	const struct filter_type *type;
+	// Info for differential plugins
+	const char *name;
+	uint32_t epoch, version;
+	size_t added, deleted; // Statistics, to know when to re-requested the whole filter config
 };
 
-static bool filter_true(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_true(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	(void)tmp_pool;
 	(void)filter;
 	(void)packet;
 	return true;
 }
 
-static bool filter_false(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_false(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	(void)tmp_pool;
 	(void)filter;
 	(void)packet;
 	return false;
 }
 
-static bool filter_not(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_not(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
 	const struct filter *sub = filter->subfilters;
-	return !sub->function(sub, packet);
+	return !sub->function(tmp_pool, sub, packet);
 }
 
-static bool filter_and(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_and(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
 	for (size_t i = 0; i < filter->sub_count; i ++)
-		if (!filter->subfilters[i].function(&filter->subfilters[i], packet))
+		if (!filter->subfilters[i].function(tmp_pool, &filter->subfilters[i], packet))
 			return false;
 	return true;
 }
 
-static bool filter_or(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_or(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
 	for (size_t i = 0; i < filter->sub_count; i ++)
-		if (filter->subfilters[i].function(&filter->subfilters[i], packet))
+		if (filter->subfilters[i].function(tmp_pool, &filter->subfilters[i], packet))
 			return true;
 	return false;
 }
 
-static bool filter_value_match(const struct filter *filter, const struct packet_info *packet) {
+static bool filter_value_match(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	(void)tmp_pool;
 	const uint8_t *data;
 	size_t size;
 	assert(packet->layer == 'I'); // Checked by the caller
@@ -110,12 +118,26 @@ static bool filter_value_match(const struct filter *filter, const struct packet_
 	return trie_lookup(filter->trie, data, size);
 }
 
+static bool filter_differential(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	enum endpoint endpoint = filter->type->code == 'd' ? local_endpoint(packet->direction) : remote_endpoint(packet->direction);
+	// Check for IP address match first
+	if (trie_lookup(filter->trie, packet->addresses[endpoint], packet->addr_len))
+		return true;
+	// We now abuse the fact that IP addresses have either 4 or 16 bytes. If it has 6 or 18, it can't be IP only, it must be IP + port
+	uint8_t *compound = mem_pool_alloc(tmp_pool, packet->addr_len + sizeof(uint16_t));
+	memcpy(compound, packet->addresses[endpoint], packet->addr_len);
+	uint16_t port_net = htons(packet->ports[endpoint]);
+	memcpy(compound + packet->addr_len, &port_net, sizeof port_net);
+	return trie_lookup(filter->trie, compound, packet->addr_len + sizeof port_net);
+}
+
 static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size);
 
 static void parse_sub(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
 	(void)type;
 	struct filter *sub = mem_pool_alloc(pool, sizeof *sub);
 	dest->subfilters = sub;
+	dest->sub_count = 1;
 	parse_one(pool, sub, desc, size);
 }
 
@@ -183,6 +205,13 @@ static void parse_port_match(struct mem_pool *pool, struct filter *dest, const s
 	}
 }
 
+static void parse_differential(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
+	(void)type;
+	// We just create the trie and store info for future updates. We expect the server will send info about all the differential filters it knows in a short moment.
+	dest->trie = trie_alloc(pool);
+	dest->name = uplink_parse_string(pool, desc, size);
+}
+
 static const struct filter_type types[] = {
 	{ // "const true"
 		.function = filter_true,
@@ -226,11 +255,21 @@ static const struct filter_type types[] = {
 		.function = filter_value_match,
 		.code = 'P',
 		.parser = parse_port_match
+	},
+	{ // A differential IPaddress+port match.
+		.function = filter_differential,
+		.code = 'd',
+		.parser = parse_differential
+	},
+	{ // The same, but for remote endpoint
+		.function = filter_differential,
+		.code = 'D',
+		.parser = parse_differential
 	}
 };
 
-bool filter_apply(const struct filter *filter, const struct packet_info *packet) {
-	return filter->function(filter, packet);
+bool filter_apply(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	return filter->function(tmp_pool, filter, packet);
 }
 
 static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size) {
@@ -267,4 +306,111 @@ struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t s
 			D("Extra data in filter: %zu left\n", size);
 	}
 	return result;
+}
+
+static struct filter *filter_find(const char *name, struct filter *filter) {
+	if (filter->name && strcmp(name, filter->name) == 0)
+		// Found locally
+		return filter;
+	for (size_t i = 0; i < filter->sub_count; i ++) {
+		struct filter *found = filter_find(name, &filter->subfilters[i]);
+		if (found)
+			// Found recursively in one of children
+			return found;
+	}
+	// Not found at all
+	return NULL;
+}
+
+enum flow_filter_action filter_action(struct filter *filter, const char *name, uint32_t epoch, uint32_t version, uint32_t *orig_version) {
+	struct filter *found = filter_find(name, filter);
+	if (!found)
+		return FILTER_UNKNOWN;
+	if (epoch == found->epoch && version == found->version)
+		return FILTER_NO_ACTION; // Nothing changed. Ignore the update.
+	size_t active = found->added - found->deleted;
+	ulog(LLOG_DEBUG, "%zu active, %zu deleted\n", active, found->deleted);
+	if (active * 10 < found->deleted && found->deleted > 100)
+		return FILTER_CONFIG_RELOAD; // There's too much cruft around. Reload the whole config and force freeing memory by that.
+	if (epoch != found->epoch)
+		return FILTER_FULL;
+	*orig_version = found->version;
+	return FILTER_INCREMENTAL;
+}
+
+/*
+ * We don't use the last bit, there's no address with odd length. We use that bit for something else.
+ *
+ * Actually, we expect these values:
+ * • 4: IPv4 address
+ * • 6: IPv4 + port
+ * • 16: IPv6 address
+ * • 18: IPv6 + port
+ */
+const uint8_t size_mask = 16 + 8 + 4 + 2;
+const uint8_t add_mask = 1;
+
+#ifdef DEBUG
+static void debug_dump(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
+	struct mem_pool *pool = userdata;
+	const char *active = data ? "Active" : "Inactive";
+	char *hex = mem_pool_hex(pool, key, key_size);
+	ulog(LLOG_DEBUG_VERBOSE, "Key: %s: %s\n", hex, active);
+}
+#endif
+
+enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct mem_pool *tmp_pool, struct filter *filter, const char *name, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version) {
+	struct filter *found = filter_find(name, filter);
+	ulog(LLOG_INFO, "Updating filter %s from version %u to version %u (epoch %u)\n", name, (unsigned)from, (unsigned)to, (unsigned)epoch);
+	if (!found)
+		return FILTER_UNKNOWN;
+	if (epoch != found->epoch && !full)
+		// This is for different epoch than we have. Resynchronize!
+		return FILTER_FULL;
+	if (from != found->version && !full) {
+		*orig_version = found->version;
+		return FILTER_INCREMENTAL;
+	}
+	if (full && found->added != found->deleted) {
+		// We're doing a full update and there's something in the trie. Reset it.
+		found->deleted = found->added;
+		found->trie = trie_alloc(pool);
+	}
+	size_t addr_no = 0;
+	while (diff_size --) {
+		uint8_t flags = *(diff ++);
+		ulog(LLOG_DEBUG_VERBOSE, "Address flags: %hhu\n", flags);
+		uint8_t addr_len = flags & size_mask;
+		if (addr_len > diff_size) {
+			ulog(LLOG_ERROR, "Filter diff for %s corrupted, need %hhu bytes, have only %zu\n", name, addr_len, diff_size);
+			abort();
+		}
+		struct trie_data **data = trie_index(found->trie, diff, addr_len);
+		bool add = flags & add_mask;
+		if (add) {
+			if (*data) {
+				ulog(LLOG_WARN, "Asked to add an address #%zu of size %hhu to filter %s, but that already exists\n", addr_no, addr_len, name);
+			} else {
+				*data = &mark;
+				found->added ++;
+			}
+		} else {
+			if (*data) {
+				*data = NULL;
+				found->deleted ++;
+			} else {
+				ulog(LLOG_WARN, "Asked to delete an address #%zu of size %hhu from filter %s, but that is not there\n", addr_no, addr_len, name);
+			}
+		}
+		diff += addr_len;
+		diff_size -= addr_len;
+		addr_no ++;
+	}
+	found->epoch = epoch;
+	found->version = to;
+	ulog(LLOG_DEBUG, "Filter %s updated:\n", name);
+#ifdef DEBUG
+	trie_walk(found->trie, debug_dump, tmp_pool, tmp_pool);
+#endif
+	return FILTER_NO_ACTION;
 }

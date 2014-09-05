@@ -384,6 +384,20 @@ char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t 
 	return result;
 }
 
+uint32_t uplink_parse_uint32(const uint8_t **buffer, size_t *length) {
+	if (*length < sizeof(uint32_t)) {
+		// Not using die, this'll likely happen inside a plugin, so the error will be caught.
+		ulog(LLOG_ERROR, "Message buffer too short to read an uint32_t (%zu available)\n", *length);
+		abort();
+	}
+	uint32_t result;
+	memcpy(&result, *buffer, sizeof result);
+	result = ntohl(result);
+	*length -= sizeof result;
+	*buffer += sizeof result;
+	return result;
+}
+
 void uplink_render_string(const void *string, uint32_t length, uint8_t **buffer_pos, size_t *buffer_len) {
 	// Network byte order
 	uint32_t len_encoded = htonl(length);
@@ -394,6 +408,14 @@ void uplink_render_string(const void *string, uint32_t length, uint8_t **buffer_
 	// Update the buffer position
 	*buffer_pos += sizeof(len_encoded) + length;
 	*buffer_len -= sizeof(len_encoded) + length;
+}
+
+void uplink_render_uint32(uint32_t value, uint8_t **buffer_pos, size_t *buffer_len) {
+	assert(*buffer_len >= sizeof value);
+	value = htonl(value);
+	memcpy(*buffer_pos, &value, sizeof value);
+	*buffer_pos += sizeof value;
+	*buffer_len -= sizeof value;
 }
 
 static void handle_buffer(struct uplink *uplink) {
@@ -595,11 +617,8 @@ CLOSED:
 			uplink->zstrm_recv.next_in = (unsigned char *)uplink->inc_buffer;
 
 			if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
-				char *dbg_raw_data = mem_pool_alloc(loop_temp_pool(uplink->loop), amount*4);
-				for (ssize_t i = 0; i < amount; i++) {
-					sprintf(dbg_raw_data+i*3, "%02X ", uplink->inc_buffer[i]);
-				}
-				ulog(LLOG_DEBUG_VERBOSE, "compression: recv: compressed data (size %zu): %s\n", amount, dbg_raw_data);
+
+				ulog(LLOG_DEBUG_VERBOSE, "compression: recv: compressed data (size %zu): %s\n", amount, mem_pool_hex(loop_temp_pool(uplink->loop), uplink->inc_buffer, amount));
 			}
 		}
 	}
@@ -648,12 +667,7 @@ static void uplink_read(struct uplink *uplink, uint32_t unused) {
 
 		} else {
 			if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
-				char *dbg_raw_data = mem_pool_alloc(loop_temp_pool(uplink->loop), amount*4);
-				dbg_raw_data[0] = '\0'; // Eliminate size == 0 bug
-				for (ssize_t i = 0; i < amount; i++) {
-					sprintf(dbg_raw_data+i*3, "%02X ", uplink->buffer_pos[i]);
-				}
-				ulog(LLOG_DEBUG_VERBOSE, "compression: recv: original data (size %zu): %s\n", amount, dbg_raw_data);
+				ulog(LLOG_DEBUG_VERBOSE, "compression: recv: original data (size %zu): %s\n", amount, mem_pool_hex(loop_temp_pool(uplink->loop), uplink->buffer_pos, amount));
 			}
 			uplink->seen_data = true;
 			uplink->buffer_pos += amount;
@@ -747,11 +761,7 @@ static bool send_raw_data(struct uplink *uplink, const uint8_t *buffer, size_t s
 	if (size == 0)
 		return true;
 	if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
-		char *dbg_raw_data = mem_pool_alloc(loop_temp_pool(uplink->loop), size*4);
-		for (size_t i = 0; i < size; i++) {
-			sprintf(dbg_raw_data+i*3, "%02X ", buffer[i]);
-		}
-		ulog(LLOG_DEBUG_VERBOSE, "compression: send: compressed data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", dbg_raw_data);
+		ulog(LLOG_DEBUG_VERBOSE, "compression: send: compressed data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", mem_pool_hex(loop_temp_pool(uplink->loop), buffer, size));
 	}
 	while (size > 0) {
 		ssize_t amount = send(uplink->fd, buffer, size, MSG_NOSIGNAL | flags);
@@ -786,12 +796,7 @@ static bool buffer_send(struct uplink *uplink, const uint8_t *buffer, size_t siz
 	uplink->zstrm_send.next_in = (unsigned char *)buffer;
 
 	if (MAX_LOG_LEVEL == LLOG_DEBUG_VERBOSE) {
-		char *dbg_raw_data = mem_pool_alloc(temp_pool, size*4);
-		dbg_raw_data[0] = '\0'; // Eliminate size == 0 bug
-		for (size_t i = 0; i < size; i++) {
-			sprintf(dbg_raw_data+i*3, "%02X ", buffer[i]);
-		}
-		ulog(LLOG_DEBUG_VERBOSE, "compression: send: original data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", dbg_raw_data);
+		ulog(LLOG_DEBUG_VERBOSE, "compression: send: original data (size %zu, %s): %s\n", size, (flags == 0) ? "LAST" : "MSG_MORE", mem_pool_hex(loop_temp_pool(uplink->loop), buffer, size));
 	}
 	unsigned int available_output = 0;
 	while (uplink->zstrm_send.avail_in > 0) {

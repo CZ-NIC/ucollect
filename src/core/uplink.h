@@ -76,9 +76,13 @@ bool uplink_plugin_send_message(struct context *context, const void *data, size_
 // Some parsing & rendering functions
 
 // Get a string from buffer. Returns NULL if badly formatted. The buffer position is updated.
-char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) __attribute__((nonnull));
+char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) __attribute__((nonnull)) __attribute__((malloc));
+// Parses a uint32_t from the buffer. Aborts if not enough data. The buffer position is updated.
+uint32_t uplink_parse_uint32(const uint8_t **buffer, size_t *length) __attribute__((nonnull));
 // Render string to the wire format. Update position and length of buffer.
 void uplink_render_string(const void *string, uint32_t string_len, uint8_t **buffer_pos, size_t *buffer_length) __attribute__((nonnull));
+// Render a uint32_t value to wire formate. Update position and length of the buffer.
+void uplink_render_uint32(uint32_t value, uint8_t **buffer_pol, size_t *buffer_length) __attribute__((nonnull));
 
 // Get the addresses of uplink, to check the values against packets. It should include all available addresses.
 struct addrinfo;

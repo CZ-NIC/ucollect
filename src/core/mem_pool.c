@@ -294,3 +294,11 @@ char *mem_pool_printf(struct mem_pool *pool, const char *format, ...) {
 	assert(written == needed - 1);
 	return result;
 }
+
+char *mem_pool_hex(struct mem_pool *pool, const uint8_t *data, size_t size) {
+	char *result = mem_pool_alloc(pool, 3*size);
+	for (size_t i = 0; i < size; i ++)
+		sprintf(result + 3*i, "%.2hhX%c", data[i], (i+1) % 4 ? ':' : ' ');
+	result[size ? 3*size-1 : 0] = '\0';
+	return result;
+}

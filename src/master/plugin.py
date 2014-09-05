@@ -65,13 +65,13 @@ class Plugin:
 		"""
 		pass
 
-	def broadcast(self, message):
+	def broadcast(self, message, version_check=None):
 		"""
 		Broadcast a message from this plugin to all the connected
 		clients.
 		"""
 		logger.trace('Broadcasting message to all clients: %s', repr(message))
-		self.__plugins.broadcast(self.__routed_message(message), self.name())
+		self.__plugins.broadcast(self.__routed_message(message), self.name(), version_check)
 
 	def send(self, message, to):
 		"""
@@ -82,6 +82,12 @@ class Plugin:
 
 	def __routed_message(self, message):
 		return 'R' + format_string(self.name()) + message
+
+	def version(self, client):
+		"""
+		Return the version of this plugin in given client, if any.
+		"""
+		return self.__plugins.plugin_version(self.name(), client)
 
 class Plugins:
 	"""
@@ -137,13 +143,16 @@ class Plugins:
 		else:
 			logger.debug('Not removing client ' + client.cid())
 
-	def broadcast(self, message, from_plugin):
+	def broadcast(self, message, from_plugin, version_check=None):
 		"""
-		Send a message to all the connected clients.
+		Send a message to all the connected clients who has the given plugin, optionally with a version check.
 		"""
 		for c in self.__clients.values():
 			if c.has_plugin(from_plugin):
-				c.sendString(message)
+				if version_check is None or version_check(c.plugin_version(from_plugin)):
+					c.sendString(message)
+				else:
+					logger.trace('Not broadcasting to %s, client has wrong version of plugin %s (%s)', c.cid(), from_plugin, c.plugin_version(from_plugin))
 			else:
 				logger.trace('Not broadcasting to %s, client does not have plugin %s', c.cid(), from_plugin)
 
@@ -167,3 +176,12 @@ class Plugins:
 		"""
 		# TODO: The plugin of that name might not exist (#2705)
 		self.__plugins[name].message_from_client(message, client)
+
+	def plugin_version(self, plugin, client):
+		"""
+		Provide version of given plugin on given client, if it is available (None otherwise).
+		"""
+		try:
+			return self.__clients[client].plugin_version(plugin)
+		except KeyError:
+			return None

@@ -28,7 +28,28 @@ struct filter;
 struct packet_info;
 struct mem_pool;
 
-bool filter_apply(const struct filter *filter, const struct packet_info *packet) __attribute__((nonnull));
+bool filter_apply(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) __attribute__((nonnull));
 struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t size) __attribute__((nonnull));
+
+// Support for differential filters
+enum flow_filter_action {
+	FILTER_INCREMENTAL, // Ask for a differential update,
+	FILTER_FULL,
+	FILTER_CONFIG_RELOAD,
+	FILTER_NO_ACTION,
+	FILTER_UNKNOWN
+};
+
+// Decide how to react to a change on the server. Orig-version is used as an out-parameter in case of FILTER_INCREMENTAL
+enum flow_filter_action filter_action(struct filter *filter, const char *name, uint32_t epoch, uint32_t version, uint32_t *orig_version);
+/*
+ * Apply a difference to a filter of given name.
+ *
+ * It can use the memory pool to allocate permanent data (in the filter).
+ *
+ * It usually returns FILTER_NO_ACTION, which means the change was successful.
+ * However, it can request a full update instead of incremental, if the epoch is different, or say FILTER_UNKNOWN if the filter is not known (or whatever other value ‒ see orig_version in filter_action).
+ */
+enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct mem_pool *tmp_pool, struct filter *filter, const char *name, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version);
 
 #endif

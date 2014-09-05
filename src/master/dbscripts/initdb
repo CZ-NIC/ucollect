@@ -7,6 +7,7 @@ BEGIN;
 
 DROP TABLE IF EXISTS nats;
 DROP TABLE IF EXISTS flows;
+DROP TABLE IF EXISTS flow_filters;
 DROP TABLE IF EXISTS capture_stats;
 DROP TABLE IF EXISTS counts;
 DROP TABLE IF EXISTS count_types;
@@ -278,7 +279,15 @@ CREATE TABLE config (
 	value TEXT NOT NULL,
 	UNIQUE(plugin, name)
 );
-INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('sniff', 'nat-interval', '3 days');
+INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('flow', 'filter-diff', 'D(addresses)'), ('sniff', 'nat-interval', '3 days');
+
+CREATE TABLE flow_filters (
+	filter TEXT NOT NULL,
+	epoch INT NOT NULL,
+	version INT NOT NULL,
+	add BOOL NOT NULL,
+	address TEXT NOT NULL
+);
 
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
@@ -311,6 +320,7 @@ GRANT ALL on flow_ids TO $DBUPDATER;
 GRANT INSERT ON nats TO $DBUPDATER;
 GRANT SELECT (batch) ON nats TO $DBUPDATER;
 GRANT SELECT ON config TO $DBUPDATER;
+GRANT SELECT ON flow_filters to $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
@@ -357,9 +367,11 @@ GRANT SELECT ON nats TO $DBARCHIVIST;
 
 GRANT SELECT ON flows TO $DBFLOWTAGGER;
 GRANT UPDATE (tag, tagged_on) ON flows TO $DBFLOWTAGGER;
-GRANT SELECT (name, type) ON anomalies TO $DBFLOWTAGGER;
+GRANT SELECT (value, type) ON anomalies TO $DBFLOWTAGGER;
 GRANT SELECT ON config TO $DBFLOWTAGGER;
 GRANT UPDATE ON config TO $DBFLOWTAGGER;
+GRANT SELECT ON flow_filters TO $DBFLOWTAGGER;
+GRANT INSERT ON flow_filters TO $DBFLOWTAGGER;
 
 COMMIT;
 ENDSQL
