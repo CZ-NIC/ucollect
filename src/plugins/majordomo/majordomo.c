@@ -146,7 +146,7 @@ static void precompute_masks() {
 	uint32_t mask = 0xFFFFFFFF;
 
 	for (ssize_t i = 32; i >= 0; i--) {
-		masks[i] = mask;
+		masks[i] = htonl(mask);
 		mask <<= 1;
 	}
 }
@@ -159,7 +159,7 @@ static bool bitcmp(uint32_t *a, uint32_t *b, size_t bits) {
 		bits -= 32;
 	}
 
-	return ((htonl(a[0]) & masks[bits]) == (htonl(b[0]) & masks[bits]));
+	return ((a[0] & masks[bits]) == (b[0] & masks[bits]));
 }
 
 static bool parse_address(const char *addrstr, struct in6_addr *addr, int *family) {
