@@ -26,7 +26,7 @@ UCIVALUE="$(uci -q get majordomo.@db[0].store_daily_files)"
 UCIVALUE="$(uci -q get majordomo.@db[0].store_hourly_files)"
 [ $? -eq 0 -a "$UCIVALUE" -ge 1 ] && KEEP_HOURLY="$UCIVALUE"
 
-## Compute the rest of constants
+## Compute the rest of paths
 DB_HOUR_PREFIX="$DB_PATH/majordomo_hourly_"
 DB_DAY_PREFIX="$DB_PATH/majordomo_daily_"
 DB_MONTH_PREFIX="$DB_PATH/majordomo_monthly_"
@@ -65,7 +65,10 @@ if [ "$CMD" = "downsize" ]; then
 	if [ "$?" -eq 0 ]; then
 		rm "$TMPFILE"
 	else
-		## Lose one minute is better than lose 5 minutes
+		## At this moment, $TMPFILE contains data from the last 5 minutes. It is
+		## very probable, that dump file doesn't exists. Anyway, if dump file
+		## exists, it is storing just last one minute. This operation is saving
+		## collected data or lose 1 minut data instead of 5 minut.
 		mv "$TMPFILE" "$DUMP_FILE_PATH"
 	fi
 
