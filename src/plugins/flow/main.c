@@ -191,6 +191,8 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 	f->last_time[info->direction] = loop_now(context->loop);
 	if (!f->first_time[info->direction])
 		f->first_time[info->direction] = loop_now(context->loop);
+	if (info->app_protocol == 'T' && (info->app_protocol & TCP_SYN) && !(info->app_protocol & TCP_ACK))
+		f->seen_flow_start[info->direction] = true;
 }
 
 static void initialize(struct context *context) {

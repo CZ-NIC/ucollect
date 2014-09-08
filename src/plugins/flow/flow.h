@@ -37,6 +37,8 @@ enum flow_proto {
 	FLOW_UDP = 2// Maybe others?
 };
 
+static const uint8_t const flow_starts[2] = { 4, 8 };
+
 typedef uint8_t flow_addr_t[16];
 
 // Order is in, out, resp local/remote
@@ -48,6 +50,8 @@ struct flow  {
 	flow_addr_t addrs[2];
 	enum flow_ipv ipv;
 	enum flow_proto proto;
+	// Detected an initialization of the communication. Curretly, this is done only for TCP and it means a packet with only SYN was seen.
+	bool seen_flow_start[2];
 };
 
 void flow_parse(struct flow *target, const struct packet_info *packet) __attribute__((nonnull));
