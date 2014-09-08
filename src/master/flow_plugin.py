@@ -167,6 +167,8 @@ def store_flows(client, message, expect_conf_id):
 		(flags, cin, cout, sin, sout, ploc, prem, tbin, tbout, tein, teout) = struct.unpack('!BIIQQHHQQQQ', flow)
 		v6 = flags & 1
 		udp = flags & 2
+		in_started = not not (flags & 4)
+		out_started = not not (flags & 8)
 		if v6:
 			size = 16
 			tp = socket.AF_INET6
@@ -187,7 +189,7 @@ def store_flows(client, message, expect_conf_id):
 					logger.error("Time difference out of range for client %s and in direction: %s", client, calib_time - v)
 					ok = False
 			if ok:
-				values.append((arem, aloc, prem, ploc, proto, calib_time - tbin, calib_time - tein, calib_time - tbout if cout else None, sin, cin, True, client))
+				values.append((arem, aloc, prem, ploc, proto, calib_time - tbin, calib_time - tein, calib_time - tbout if cout else None, sin, cin, True, in_started, client))
 		if cout:
 			ok = True
 			for v in (tbout, teout):
@@ -195,9 +197,9 @@ def store_flows(client, message, expect_conf_id):
 					logger.error("Time difference out of range for client %s and out direction: %s", client, calib_time - v)
 					ok = False
 			if ok:
-				values.append((aloc, arem, ploc, prem, proto, calib_time - tbout, calib_time - teout, calib_time - tbin if cin else None, sout, cout, False, client))
+				values.append((aloc, arem, ploc, prem, proto, calib_time - tbout, calib_time - teout, calib_time - tbin if cin else None, sout, cout, False, out_started, client))
 	with database.transaction() as t:
-		t.executemany("INSERT INTO flows (client, ip_from, ip_to, port_from, port_to, proto, start, stop, opposite_start, size, count, inbound) SELECT clients.id, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', %s, %s, %s FROM clients WHERE clients.name = %s", values)
+		t.executemany("INSERT INTO flows (client, ip_from, ip_to, port_from, port_to, proto, start, stop, opposite_start, size, count, inbound, seen_start) SELECT clients.id, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
 
 class FlowPlugin(plugin.Plugin):
 	"""
