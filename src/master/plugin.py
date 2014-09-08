@@ -19,6 +19,7 @@
 
 from protocol import format_string
 import logging
+import time
 
 logger = logging.getLogger(name='plugin')
 
@@ -123,8 +124,12 @@ class Plugins:
 		When a client connects.
 		"""
 		if client.cid() in self.__clients:
-			logger.warn("%s already connected, dropping connection", client.cid())
-			return False
+			if self.__clients[client.cid()].last_pong + 900 < time.time():
+				# The client seems connected, but it didn't pong for really long time, kill it
+				logger.warn('Stray connection from %s, dropping old connection', client.cid())
+			else:
+				logger.warn("%s already connected, dropping connection", client.cid())
+				return False
 		self.__clients[client.cid()] = client
 		for p in self.__plugins.values():
 			p.client_connected(client)

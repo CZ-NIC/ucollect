@@ -28,6 +28,7 @@ import logging
 import database
 import activity
 import auth
+import time
 
 logger = logging.getLogger(name='client')
 sysrand = random.SystemRandom()
@@ -57,6 +58,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			'Sniff': 1
 		}
 		self.MAX_LENGTH = 1024 * 1024 * 1024 # A gigabyte should be enough
+		self.last_pong = time.time()
 
 	def has_plugin(self, plugin_name):
 		return plugin_name in self.__available_plugins
@@ -165,6 +167,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.sendString('p' + params)
 		elif msg == 'p': # Pong. Reset the watchdog count
 			self.__pings_outstanding = 0
+			self.last_pong = time.time()
 		elif msg == 'R': # Route data to a plugin
 			(plugin, data) = extract_string(params)
 			self.__plugins.route_to_plugin(plugin, data, self.cid())
