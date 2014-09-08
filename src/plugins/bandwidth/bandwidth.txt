@@ -6,6 +6,7 @@ network connection.
 
 Collected data
 --------------
+
 Bandwidth is trying to get count of bytes per second. Plugin uses multiple
 'windows'. Each window has different length in microseconds. The final number is
 count of bytes per window's length and the bps value must be computed.
@@ -24,8 +25,10 @@ stability of connection.
 
 The protocol
 ------------
-Communication protocol of bandwidth plugin is very simple. Plugin generates 3
-64-bit (uint64_t) numbers for every window length:
+
+Communication protocol of bandwidth plugin is very simple. Server sends request
+to dump data. The format of request is just one number - timestamp. Plugin (as
+the response) generates 3 64-bit (uint64_t) numbers for every window length:
 
 	1) Window length in microseconds
 	2) Global maximum of download speed in bytes per 1)
