@@ -25,6 +25,7 @@
 #include <string.h>
 #include <endian.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <inttypes.h>
 
 #include "../../core/plugin.h"
@@ -122,13 +123,57 @@ struct src_items {
 #define LIST_WANT_LFOR
 #include "../../core/link_list.h"
 
+struct filter_rule {
+	struct in6_addr addr;
+	size_t prefix;
+	int family;
+};
+
 struct user_data {
 	FILE *file;
 	struct comm_items communication;
 	struct src_items sources;
 	struct mem_pool *list_pool;
+	struct mem_pool *config_pool;
+	struct filter_rule *filter;
+	size_t filter_size;
 	size_t timeout;
 };
+
+static uint32_t masks[33];
+
+static void precompute_masks() {
+	uint32_t mask = 0xFFFFFFFF;
+
+	for (ssize_t i = 32; i >= 0; i--) {
+		masks[i] = htonl(mask);
+		mask <<= 1;
+	}
+}
+
+static bool bitcmp(uint32_t *a, uint32_t *b, size_t bits) {
+	while (bits > 32) {
+		if (a[0] != b[0]) return false;
+		a++;
+		b++;
+		bits -= 32;
+	}
+
+	return ((a[0] & masks[bits]) == (b[0] & masks[bits]));
+}
+
+static bool parse_address(const char *addrstr, struct in6_addr *addr, int *family) {
+	if (inet_pton(AF_INET, addrstr, addr) == 1) {
+		*family = 4;
+		return true;
+	}
+	if (inet_pton(AF_INET6, addrstr, addr) == 1) {
+		*family = 6;
+		return true;
+	}
+
+	return false;
+}
 
 static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_len, char output[ADDRSTRLEN]) {
 	if (addr_len == 4) {
@@ -225,6 +270,18 @@ static struct comm_item *create_comm_item(struct comm_items *communication, stru
 	return item;
 }
 
+static bool filter_address(struct user_data *d, const void *addr_bytes, int family) {
+	struct in6_addr addr;
+	memcpy(&addr, addr_bytes, (family == 4 ? 4 : 16));
+
+	for (size_t i = 0; i < d->filter_size; i++) {
+		if (family == d->filter[i].family && bitcmp((uint32_t *) &addr, (uint32_t *) &(d->filter[i].addr), d->filter[i].prefix))
+			return true;
+	}
+
+	return false;
+}
+
 void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
 	const struct packet_info *l2 = info;
@@ -239,6 +296,8 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	// Interested only in UDP and TCP packets (+ check IP Layer)
 	if (info->layer != 'I') return;
 	if (info->app_protocol != 'T' && info->app_protocol != 'U') return;
+	// Interested only in INET and INET6
+	if (info->ip_protocol != 4 && info->ip_protocol != 6) return;
 
 	enum endpoint local_endpoint, remote_endpoint;
 	if (l2->direction == DIRECTION_UPLOAD) {
@@ -248,6 +307,9 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		local_endpoint = END_DST;
 		remote_endpoint = END_SRC;
 	}
+
+	// Filter IP addresses according to configuration
+	if (filter_address(d, info->addresses[remote_endpoint], info->ip_protocol)) return;
 
 	// Do not handle packets with MAC address that starts with odd numbers (multi- or broadcasts)
 	if ((((uint8_t *) l2->addresses[local_endpoint])[0] % 2) == 1 ||
@@ -357,6 +419,7 @@ void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 	*context->user_data = (struct user_data) {
 		.list_pool = loop_pool_create(context->loop, context, "Majordomo linked-lists pool"),
+		.config_pool = loop_pool_create(context->loop, context, "Majordomo config pool"),
 		.timeout = loop_timeout_add(context->loop, DUMP_TIMEOUT, context, NULL, scheduled_dump),
 		.communication = (struct comm_items) {
 			.count = 0
@@ -365,6 +428,71 @@ void init(struct context *context) {
 			.count = 0
 		}
 	};
+
+	precompute_masks();
+}
+
+static bool parse_option(struct mem_pool *temp_pool, const char *cfg_line, struct in6_addr *addr, size_t *prefix, int *family) {
+	char *line = mem_pool_strdup(temp_pool, cfg_line);
+	char *pos = strchr(line, '/');
+	if (!pos)
+		return false;
+	pos[0] = '\0';
+	pos++;
+
+	if (!parse_address(line, addr, family))
+		return false;
+
+	*prefix = atoi(pos);
+	if (*prefix <= 0 || *prefix > ((*family == 4) ? 32 : 128))
+		return false;
+
+	return true;
+}
+
+bool check_config(struct context *context) {
+	struct in6_addr dummy_addr;
+	size_t dummy_prefix;
+	int dummy_family;
+
+	const struct config_node *conf = loop_plugin_option_get(context, "ignore_subnet");
+	if (!conf) {
+		ulog(LLOG_WARN, "Majordomo: No subnet filter rules found!\n");
+		return true;
+	}
+
+	for (size_t i = 0; i < conf->value_count; i++) {
+		if (!parse_option(context->temp_pool, conf->values[i], &dummy_addr, &dummy_prefix, &dummy_family))
+			return false;
+	}
+
+	return true;
+}
+
+void finish_config(struct context *context, bool commit) {
+	struct user_data *d = context->user_data;
+
+	// Do nothing on revert
+	if (!commit)
+		return;
+
+	// Reset pool with old configuration
+	mem_pool_reset(d->config_pool);
+	// Empty filter is acceptable
+	d->filter = NULL;
+	d->filter_size = 0;
+
+	const struct config_node *conf = loop_plugin_option_get(context, "ignore_subnet");
+	if (!conf)
+		return;
+	d->filter_size = conf->value_count;
+	d->filter = mem_pool_alloc(d->config_pool, d->filter_size * sizeof(*d->filter));
+
+	// Parse (again) new configuration and store it
+	for (size_t i = 0; i < d->filter_size; i++) {
+		parse_option(context->temp_pool, conf->values[i], &(d->filter[i].addr), &(d->filter[i].prefix), &(d->filter[i].family));
+		ulog(LLOG_DEBUG, "Majordomo: Add %s to subnet filter\n", conf->values[i]);
+	}
 }
 
 void destroy(struct context *context) {
@@ -380,7 +508,9 @@ struct plugin *plugin_info(void) {
 		.name = "Majordomo",
 		.packet_callback = packet_handle,
 		.init_callback = init,
-		.finish_callback = destroy
+		.finish_callback = destroy,
+		.config_check_callback = check_config,
+		.config_finish_callback = finish_config
 	};
 	return &plugin;
 }
