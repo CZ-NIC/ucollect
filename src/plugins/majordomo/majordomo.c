@@ -214,6 +214,16 @@ static struct key* build_key(struct mem_pool *pool,
 	return key;
 }
 
+static void init_trie_data(struct mem_pool *pool, struct trie_data **data, const struct packet_info *info) {
+	*data = mem_pool_alloc(pool, sizeof **data);
+	**data = (struct trie_data) {
+		.u_count = 1,
+		.u_size = info->length,
+		.u_data_size = info->length - info->hdr_length
+		// Item can be created only in one direction and the rest will be zero
+	};
+}
+
 static struct src_item *find_src(struct src_items *sources, const unsigned char *from, unsigned char addr_len) {
 	LFOR(src_items, it, sources) {
 		if (it->from.addr_len == addr_len && memcmp(it->from.addr, from, addr_len) == 0) {
@@ -282,7 +292,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	// Item exists
 	if (*data != NULL) {
 		//Update info
-		update_value(&(**data), l2->direction, info->length, (info->length - info->hdr_length));
+		update_value(*data, l2->direction, info->length, (info->length - info->hdr_length));
 		return;
 	}
 
@@ -290,13 +300,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	struct src_item *src = find_src(&(d->sources), l2->addresses[local_endpoint], l2->addr_len);
 	// This is first communication from this source
 	if (src == NULL) {
-		*data = mem_pool_alloc(d->data_pool, sizeof **data);
-		**data = (struct trie_data) {
-			.u_count = 1,
-			.u_size = info->length,
-			.u_data_size = info->length - info->hdr_length
-			// Item can be created only in one direction and the rest will be zero
-		};
+		init_trie_data(d->data_pool, data, info);
 
 		src = src_items_append_pool(&(d->sources), d->data_pool);
 		memcpy(src->from.addr, l2->addresses[local_endpoint], l2->addr_len);
@@ -309,13 +313,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	} else {
 		// Source has some records; check its limit
 		if (src->items_in_comm_list < SOURCE_SIZE_LIMIT) {
-			*data = mem_pool_alloc(d->data_pool, sizeof **data);
-			**data = (struct trie_data) {
-				.u_count = 1,
-				.u_size = info->length,
-				.u_data_size = info->length - info->hdr_length
-				// Item can be created only in one direction and the rest will be zero
-			};
+			init_trie_data(d->data_pool, data, info);
 		} else {
 			// Source exceeded the limit - update its 'other' value
 			update_value(&(src->other), l2->direction, info->length, (info->length - info->hdr_length));
@@ -331,7 +329,7 @@ static void dump_item(const uint8_t *key_bytes, size_t key_size, struct trie_dat
 	get_string_from_raw_bytes(key->from, key->from_addr_len, d->src_str);
 	get_string_from_raw_bytes(key->to, key->to_addr_len, d->dst_str);
 
-	char *app_protocol;
+	const char *app_protocol;
 	if (key->protocol == 'T') {
 		app_protocol = "TCP";
 	} else if (key->protocol == 'U') {
