@@ -2,11 +2,32 @@
 use common::sense;
 use DBI;
 use Config::IniFiles;
+use Socket qw(getaddrinfo getnameinfo NI_NUMERICHOST);
+use Data::Dumper;
 
 # First connect to the database
 my $cfg = Config::IniFiles->new(-file => $ARGV[0]);
 my ($host, $db, $user, $passwd, $port) = map { $cfg->val('db', $_) } qw(host db user passwd port);
 my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd, { RaiseError => 1, AutoCommit => 0 });
+
+my $blacklist_file = $cfg->val('blacklist', 'file');
+my %blacklist;
+open my $black_open, '<', $blacklist_file or die "Couldn't read blacklist from $blacklist_file: $!\n";
+while (my $line = <$black_open>) {
+	chomp $line;
+	$line =~ s/#.*//;
+	$line =~ s/^\s*//;
+	$line =~ s/\s*$//;
+	next unless length $line;
+	my ($err, @addresses) = getaddrinfo $line, 0;
+	die "Couldn't resolve $line: $err\n" if $err;
+	for my $addr (@addresses) {
+		my ($err, $ip) = getnameinfo $addr->{addr}, NI_NUMERICHOST;
+		die "Couldn't print address for $line: $err\n" if $err;
+		$blacklist{$ip} = 1;
+	}
+}
+close $black_open;
 
 # Read the IPset rules and extract addresses
 open my $ipsets, '-|', 'wget', 'https://api.turris.cz/firewall/turris-ipsets', '-q', '-O', '-' or die "Couldn't download ip set rules: $!\n";
@@ -43,6 +64,7 @@ while (my ($ip, $ano_type) = $an_stm->fetchrow_array) {
 
 # Drop IP addresses from specific rules if they are in the generic one
 while (my ($port, $ips) = each %data) {
+	delete @{$data{$port}}{keys %blacklist};
 	next unless $port;
 	# Magic. See perldoc perldata, talk about hash slices.
 	delete @{$data{$port}}{keys %{$data{''}}};
