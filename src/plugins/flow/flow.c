@@ -76,6 +76,9 @@ void flow_render(uint8_t *dst, size_t dst_size, const struct flow *flow) {
 	size_t size = flow_size(flow);
 	assert(dst_size == size);
 	*dst = flow->ipv | flow->proto;
+	for (size_t i = 0; i < 2; i ++)
+		if (flow->seen_flow_start[i])
+			*dst |= flow_starts[i];
 	dst ++;
 	// Encode counts
 	for (size_t i = 0; i < 2; i ++) {

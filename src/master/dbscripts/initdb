@@ -189,6 +189,7 @@ CREATE TABLE flows (
 	inbound BOOL NOT NULL,
 	tag TEXT,
 	tagged_on TIMESTAMP,
+	seen_start BOOL NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start <= stop)

@@ -156,6 +156,10 @@ Each flow is represented on the wire as a sequence of items.
 Flags (`uint8_t`):: This encodes the protocol and address family of
   the flow. If the address family is IPv4, the 0th bit is set to 0, in
   case of IPv6, it is 1. The 1st bit sets if it is TCP (0) or UDP (1).
+  Another two bits (2nd and 3rd) specify if the flow has been seen to
+  be initialized in inbound resp. outbound direction. This is
+  implemented for TCP only and it means a packet with SYN flag but
+  without ACK.
 Counts (2*`uint32_t`):: Count of packets in the inbound and outbound
   direction.
 Sizes (2*`uint64_t`):: Number of bytes in the inbound and outbound
