@@ -45,6 +45,6 @@ struct server_desc {
 	unsigned conn_timeout; // Timeout in milliseconds
 };
 
-const struct server_desc *server_descs;
+extern const struct server_desc *server_descs;
 
 #endif
