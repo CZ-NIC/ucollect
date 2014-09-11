@@ -276,10 +276,10 @@ if (fork == 0) {
 	my $destination = connect_db 'destination';
 	my $max_time = $destination->selectrow_array('SELECT COALESCE(MAX(flows.tagged_on), TO_TIMESTAMP(0)) FROM flows');
 	print "Getting flows tagget after $max_time\n";
-	my $store_flow = $destination->prepare('INSERT INTO flows (peer_ip, peer_port, inbound, proto, start, stop, opposite_start, size, count, tag, tagged_on) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+	my $store_flow = $destination->prepare('INSERT INTO flows (peer_ip, peer_port, inbound, proto, start, stop, opposite_start, size, count, tag, tagged_on, seen_start) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 	my $store_group = $destination->prepare('INSERT INTO flow_groups (flow, from_group) VALUES (?, ?)');
 	my $get_flows = $source->prepare('SELECT
-			group_members.in_group, flows.id, ip_from, ip_to, port_from, port_to, inbound, proto, start, stop, opposite_start, size, count, tag, tagged_on
+			group_members.in_group, flows.id, ip_from, ip_to, port_from, port_to, inbound, proto, start, stop, opposite_start, size, count, tag, tagged_on, flows.seen_start
 		FROM
 			flows
 		JOIN

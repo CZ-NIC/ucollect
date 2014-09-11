@@ -223,6 +223,7 @@ CREATE TABLE flows (
 	inbound BOOL NOT NULL,
 	tag TEXT NOT NULL,
 	tagged_on TIMESTAMP NOT NULL,
+	seen_start BOOL NOT NULL,
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start <= stop)
 );
