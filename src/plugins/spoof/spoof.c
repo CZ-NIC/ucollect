@@ -18,9 +18,100 @@
 */
 
 #include "../../core/plugin.h"
+#include "../../core/util.h"
+
+#include <string.h>
+#include <errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <unistd.h>
+
+struct request_v4 {
+	uint32_t src_address;
+	uint32_t dest_address;
+	uint16_t port;
+	uint64_t token;
+} __attribute__((packed));
+
+#define C(RESULT, FUNCTION) do { if ((RESULT) == -1) { ulog(LLOG_ERROR, "Spoofer failed at " FUNCTION ": %s\n", strerror(errno)); if (fd != -1) { close(fd); } return; } } while (0)
+
+struct udp {
+	uint16_t sport;
+	uint16_t dport;
+	uint16_t len;
+	uint16_t check;
+} __attribute__((packed));
+
+struct packet_v4 {
+	struct iphdr iphdr;
+	struct udp udp;
+	uint64_t token;
+	bool spoofed;
+} __attribute__((packed));
+
+static void handle_request_v4(const struct request_v4 *request) {
+	// Prepare a raw socket
+	int fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+	C(fd, "socket");
+	/*
+	 * Prepare the packet. Note that the request already contains network-byte-order data,
+	 * we didn't translate it to host byte order and therefore we don't have to translate
+	 * back.
+	 */
+	struct packet_v4 packet = {
+		.iphdr = {
+			.version = 4,
+			.ihl = 5,
+			.ttl = 64,
+			.protocol = IPPROTO_UDP,
+			.saddr = request->src_address,
+			.daddr = request->dest_address
+		},
+		.udp = {
+			.sport = request->port,
+			.dport = request->port,
+			.len = htons(sizeof packet - sizeof packet.iphdr)
+		},
+		.token = request->token,
+		.spoofed = true
+	};
+	// Construct the address for the packet
+	struct sockaddr_in addr = {
+		.sin_family = AF_INET,
+		.sin_port = htons(IPPROTO_UDP),
+		.sin_addr.s_addr = request->dest_address
+	};
+	// Send it out
+	C(sendto(fd, &packet, sizeof packet, 0, (struct sockaddr *)&addr, sizeof addr), "sendto spoofed");
+	// Create the non-spoofed one and send it out too (0 address means to let the OS fill it in).
+	packet.iphdr.saddr = 0;
+	packet.spoofed = false;
+	C(sendto(fd, &packet, sizeof packet, 0, (struct sockaddr *)&addr, sizeof addr), "sendto non-spoofed");
+	close(fd);
+}
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
-
+	(void)context;
+	if (!length) {
+		ulog(LLOG_ERROR, "No data for spoof plugin\n");
+		return;
+	}
+	length --;
+	switch (*data) {
+		case '4':
+			if (length < sizeof(struct request_v4)) {
+				ulog(LLOG_ERROR, "Too short data for spoof v4 request, need %zu, have %zu\n", sizeof(struct request_v4), length);
+				return;
+			}
+			struct request_v4 request;
+			memcpy(&request, data + 1, sizeof request);
+			handle_request_v4(&request);
+			break;
+		default:
+			ulog(LLOG_ERROR, "Unknown spoof command %c\n", *data);
+			return;
+	}
 }
 
 #ifdef STATIC
