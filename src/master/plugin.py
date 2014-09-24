@@ -90,6 +90,9 @@ class Plugin:
 		"""
 		return self.__plugins.plugin_version(self.name(), client)
 
+	def plugins(self):
+		return self.__plugins
+
 class Plugins:
 	"""
 	Singleton holding all the active plugins and clients. It
