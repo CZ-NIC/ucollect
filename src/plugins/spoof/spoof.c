@@ -43,11 +43,15 @@ struct udp {
 	uint16_t check;
 } __attribute__((packed));
 
+#define MLEN 128
+#define MESSAGE "This is a testing packet from the turris project. Contact us at info@turris.cz if you have questions."
+
 struct packet_v4 {
 	struct iphdr iphdr;
 	struct udp udp;
 	uint64_t token;
 	bool spoofed;
+	char message[MLEN];
 } __attribute__((packed));
 
 static void handle_request_v4(const struct request_v4 *request) {
@@ -76,6 +80,7 @@ static void handle_request_v4(const struct request_v4 *request) {
 		.token = request->token,
 		.spoofed = true
 	};
+	strncpy(packet.message, MESSAGE, MLEN);
 	// Construct the address for the packet
 	struct sockaddr_in addr = {
 		.sin_family = AF_INET,
