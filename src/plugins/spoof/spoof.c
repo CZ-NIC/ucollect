@@ -45,10 +45,12 @@ struct udp {
 
 #define MLEN 128
 #define MESSAGE "This is a testing packet from the turris project. Contact us at info@turris.cz if you have questions."
+#define MAGIC 0x17ACEE43
 
 struct packet_v4 {
 	struct iphdr iphdr;
 	struct udp udp;
+	uint32_t magic;
 	uint64_t token;
 	bool spoofed;
 	char message[MLEN];
@@ -77,6 +79,7 @@ static void handle_request_v4(const struct request_v4 *request) {
 			.dport = request->port,
 			.len = htons(sizeof packet - sizeof packet.iphdr)
 		},
+		.magic = htonl(MAGIC),
 		.token = request->token,
 		.spoofed = true
 	};
