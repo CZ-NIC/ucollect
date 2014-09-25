@@ -22,6 +22,9 @@ from twisted.internet import reactor
 import plugin
 import database
 import logging
+import socket
+import struct
+import random
 
 logger = logging.getLogger(name='spoof')
 
@@ -33,6 +36,9 @@ class Token:
 		self.__expect_spoofed = True
 		self.__expect_ordinary = True
 
+	def value(self):
+		return self.__value
+
 class SpoofPlugin(plugin.Plugin):
 	"""
 	Plugin asking clients to send spoofed packets and checking if they arrive.
@@ -42,6 +48,9 @@ class SpoofPlugin(plugin.Plugin):
 		plugin.Plugin.__init__(self, plugins)
 		self.__tokens = {}
 		self.__answer_timeout = int(config['answer_timeout'])
+		self.__dest_addr = config['dest_addr']
+		self.__src_addr = config['src_addr']
+		self.__port = int(config['port'])
 		self.__check_timer = LoopingCall(self.__check)
 		# TODO: Change the time to something larger
 		self.__check_timer.start(10, True)
@@ -60,12 +69,17 @@ class SpoofPlugin(plugin.Plugin):
 			# TODO: Check if we really need to run now
 			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
 			(now,) = t.fetchone()
+		logger.info('Asking clients to send spoofed packets')
 		batch = set()
+		prefix = '4' + \
+			socket.inet_pton(socket.AF_INET, socket.gethostbyname(self.__src_addr)) + \
+			socket.inet_pton(socket.AF_INET, socket.gethostbyname(self.__dest_addr)) + \
+			struct.pack("!H", self.__port)
 		for client in self.plugins().get_clients():
 			token = Token(client, now)
 			self.__tokens[token.value()] = token
 			batch.add(token.value())
-			# TODO: Send the message
+			self.send(prefix + struct.pack('!Q', token.value()), client)
 		# Drop the tokens after some time if they get no answer
 		# (Dropping the already handled ones doesn't matter)
 		def cleanup():
