@@ -90,11 +90,11 @@ class SpoofPlugin(plugin.Plugin):
 		self.__dest_addr = config['dest_addr']
 		self.__src_addr = config['src_addr']
 		self.__port = int(config['port'])
+		self.__interval = config['interval']
 		self.__receiver = UDPReceiver(self)
 		reactor.listenUDP(self.__port, self.__receiver)
 		self.__check_timer = LoopingCall(self.__check)
-		# TODO: Change the time to something larger
-		self.__check_timer.start(10, True)
+		self.__check_timer.start(300, False)
 
 	def message_from_client(self, message, client):
 		logger.error("Message from spoof plugin, but none expected: %s, on client %s", message, client)
@@ -120,9 +120,11 @@ class SpoofPlugin(plugin.Plugin):
 		Check the DB to see if we should ask for another round of spoofed packets.
 		"""
 		with database.transaction() as t:
-			# TODO: Check if we really need to run now
-			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
-			(now,) = t.fetchone()
+			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC', MAX(batch) + INTERVAL %s < CURRENT_TIMESTAMP AT TIME ZONE 'UTC' FROM spoof", (self.__interval,));
+			(now, run) = t.fetchone()
+		if not run:
+			logger.debug("Too early to ask for spoofed packets")
+			return
 		logger.info('Asking clients to send spoofed packets')
 		batch = set()
 		prefix = '4' + \
