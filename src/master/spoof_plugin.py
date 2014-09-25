@@ -19,6 +19,7 @@
 
 from twisted.internet.task import LoopingCall
 from twisted.internet import reactor
+import twisted.internet.protocol
 import plugin
 import database
 import logging
@@ -33,11 +34,49 @@ class Token:
 		self.__value = random.randint(0, 2**64 - 1)
 		self.__client = client
 		self.__time = time
-		self.__expect_spoofed = True
-		self.__expect_ordinary = True
+		self.expect_spoofed = True
+		self.expect_ordinary = True
 
 	def value(self):
 		return self.__value
+
+	def client(self):
+		return self.__client
+
+	def time(self):
+		return self.__time
+
+def store_packet(token, spoofed):
+	logger.debug("Storing packet with spoof %s from client %s", spoofed, token.client())
+	with database.transaction() as t:
+		t.execute("INSERT INTO spoof (client, batch, spoofed) SELECT id, %s, %s FROM clients WHERE name = %s", (token.time(), spoofed, token.client()))
+
+class UDPReceiver(twisted.internet.protocol.DatagramProtocol):
+	def __init__(self, spoof):
+		self.__spoof = spoof
+
+	def datagramReceived(self, dgram, addr):
+		if len(dgram) < 13:
+			logger.warn("Spoof packet too short (probably a stray one), only %s bytes", len(dgram))
+			return
+		(magic, token, spoofed) = struct.unpack('!LQ?', dgram[:13])
+		if magic != 0x17ACEE43:
+			logger.warn("Wrong magic number in spoof packet (probably a stray one)")
+			return
+		tok = self.__spoof.get_token(token)
+		if not tok:
+			logger.warn("Token %s not known", token)
+			return
+		if spoofed and addr[0] != self.__spoof.src_addr():
+			logger.warn("Spoofed packet with wrong spoofed address %s from %s", addr, tok.client())
+			return
+		if spoofed:
+			tok.expect_spoofed = False
+		else:
+			tok.expect_ordinary = False
+		if not tok.expect_spoofed and not tok.expect_ordinary:
+			self.__spoof.drop_token(token)
+		reactor.callInThread(store_packet, tok, spoofed)
 
 class SpoofPlugin(plugin.Plugin):
 	"""
@@ -51,6 +90,8 @@ class SpoofPlugin(plugin.Plugin):
 		self.__dest_addr = config['dest_addr']
 		self.__src_addr = config['src_addr']
 		self.__port = int(config['port'])
+		self.__receiver = UDPReceiver(self)
+		reactor.listenUDP(self.__port, self.__receiver)
 		self.__check_timer = LoopingCall(self.__check)
 		# TODO: Change the time to something larger
 		self.__check_timer.start(10, True)
@@ -60,6 +101,19 @@ class SpoofPlugin(plugin.Plugin):
 
 	def name(self):
 		return "Spoof"
+
+	def get_token(self, token):
+		"""
+		Look up a token with the given value.
+		"""
+		return self.__tokens.get(token)
+
+	def drop_token(self, token):
+		"""
+		Remove a token from the list of known ones.
+		"""
+		logger.debug("Token %s handled, removing", token)
+		del self.__tokens[token]
 
 	def __check(self):
 		"""
@@ -89,3 +143,6 @@ class SpoofPlugin(plugin.Plugin):
 				except KeyError:
 					pass # Not there. But we don't care.
 		reactor.callLater(self.__answer_timeout, cleanup)
+
+	def src_addr(self):
+		return self.__src_addr
