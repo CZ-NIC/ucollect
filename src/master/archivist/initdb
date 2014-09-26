@@ -3,6 +3,7 @@
 psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
 BEGIN;
 
+DROP TABLE IF EXISTS spoof_counts;
 DROP TABLE IF EXISTS nat_counts;
 DROP TABLE IF EXISTS flow_groups;
 DROP TABLE IF EXISTS flows;
@@ -248,6 +249,15 @@ CREATE TABLE nat_counts (
 	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
 );
 
+CREATE TABLE spoof_counts (
+	from_group INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	reachable SMALLINT NOT NULL,
+	spoofable SMALLINT NOT NULL,
+	UNIQUE(from_group, batch),
+	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
+);
+
 GRANT INSERT ON anomalies TO archivist;
 GRANT SELECT (timestamp) ON anomalies TO archivist;
 GRANT INSERT ON anomaly_types TO archivist;
@@ -291,5 +301,8 @@ GRANT ALL ON flows_id TO archivist;
 GRANT SELECT (batch) ON nat_counts TO archivist;
 GRANT INSERT ON nat_counts TO archivist;
 GRANT DELETE ON nat_counts TO archivist;
+GRANT SELECT (batch) ON spoof_counts TO archivist;
+GRANT DELETE ON spoof_counts TO archivist;
+GRANT INSERT ON spoof_counts TO archivist;
 COMMIT;
 END_SQL
