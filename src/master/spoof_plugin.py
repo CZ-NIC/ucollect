@@ -120,7 +120,7 @@ class SpoofPlugin(plugin.Plugin):
 		Check the DB to see if we should ask for another round of spoofed packets.
 		"""
 		with database.transaction() as t:
-			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC', MAX(batch) + INTERVAL %s < CURRENT_TIMESTAMP AT TIME ZONE 'UTC' FROM spoof", (self.__interval,));
+			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC', COALESCE(MAX(batch) + INTERVAL %s < CURRENT_TIMESTAMP AT TIME ZONE 'UTC', TRUE) FROM spoof", (self.__interval,));
 			(now, run) = t.fetchone()
 		if not run:
 			logger.debug("Too early to ask for spoofed packets")
