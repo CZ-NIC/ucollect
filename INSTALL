@@ -1,0 +1,39 @@
+Ucollect client
+===============
+apt-get install git
+git clone https://gitlab.labs.nic.cz/turris/ucollect.git
+git submodule init
+git submodule update
+apt-get install qt4-qmake
+apt-get install libqt4-dev
+apt-get install gcc g++
+apt-get install zlib1g-dev
+apt-get install libpcap-dev
+apt-get install pkg-config
+apt-get install libssl-dev
+------------------------------------
+	git clone https://gitlab.labs.nic.cz/turris/libatsha204.git
+	git submodule init
+	git submodule update
+	apt-get install libunbound-dev
+	make USE_LAYER=USE_LAYER_EMULATION NO_DOC=1
+	make install
+	cp atsha204.sw /etc/.
+------------------------------------
+	git clone git://nbd.name/uci.git
+	git checkout v0.8.0
+	apt-get install cmake
+	cmake -D BUILD_LUA:BOOL=OFF .
+	make
+	make install
+------------------------------------
+apt-get install python-dev
+make NO_DOC=1
+
+Ucollect server
+===============
+apt-get install python-twisted
+apt-get install python-pygresql
+apt-get install python-dateutil
+
+
