@@ -5,7 +5,7 @@ set -ex
 . ./dbconfig
 
 TABLES='activities anomalies count_snapshots bandwidth'
-BATCH_TABLES='pings certs nats'
+BATCH_TABLES='pings certs nats spoof'
 
 (
 	echo 'BEGIN;'
