@@ -339,8 +339,9 @@ if (fork == 0) {
 	$destination->do('DELETE FROM spoof_counts WHERE batch = ?', undef, $max_batch);
 	print "Getting spoof records not older than $max_batch\n";
 	my $store_spoof = $destination->prepare('INSERT INTO spoof_counts (from_group, batch, reachable, spoofable) VALUES (?, ?, ?, ?)');
-	my $get_spoof = $source->prepare('SELECT in_group, batch, COUNT(CASE WHEN NOT spoofed THEN TRUE END), COUNT(CASE WHEN spoofed THEN TRUE END) FROM spoof JOIN group_members ON group_members.client = spoof.client GROUP BY batch, in_group');
+	my $get_spoof = $source->prepare('SELECT in_group, batch, COUNT(CASE WHEN NOT spoofed THEN TRUE END), COUNT(CASE WHEN spoofed THEN TRUE END) FROM spoof JOIN group_members ON group_members.client = spoof.client WHERE batch >= ? GROUP BY batch, in_group');
 	my $spoof_count = -1;
+	$get_spoof->execute($max_batch);
 	$store_spoof->execute_for_fetch(sub {
 		$spoof_count ++;
 		return $get_spoof->fetchrow_arrayref;
