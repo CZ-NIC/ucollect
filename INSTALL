@@ -1,34 +1,99 @@
+This file documents installation and compilation process of ucollect on clean
+linux operating system.
+
+In the tutorial there is clean installation of Debian. In the other
+distributions should be names of packages similar.
+
+Build options are customized to installation on the developer's station.
+
+Our projects are compiled with flag NO_DOC=1. If you want documentation you
+have to run 'apt-get install asciidoc' command first. Note: 'asciidoc' includes
+latex and circa 700MB of dependencies.
+
 Ucollect client
 ===============
-apt-get install git
-git clone https://gitlab.labs.nic.cz/turris/ucollect.git
-git submodule init
-git submodule update
-apt-get install qt4-qmake
-apt-get install libqt4-dev
-apt-get install gcc g++
-apt-get install zlib1g-dev
-apt-get install libpcap-dev
-apt-get install pkg-config
-apt-get install libssl-dev
-------------------------------------
-	git clone https://gitlab.labs.nic.cz/turris/libatsha204.git
-	git submodule init
-	git submodule update
-	apt-get install libunbound-dev
-	make USE_LAYER=USE_LAYER_EMULATION NO_DOC=1
-	make install
-	cp atsha204.sw /etc/.
-------------------------------------
+
+1) Install developmnet tools
+----------------------------
+
+apt-get install gcc g++ git qt4-qmake pkg-config cmake
+
+2) Install ucollect dependencies
+--------------------------------
+
+apt-get install zlib1g-dev libpcap-dev libssl-dev python-dev libqt4-dev
+
+3) Build the rest of dependencies from source code
+--------------------------------------------------
+
+Not all of ucollect's dependencies are packaged in distributions. This projects
+are necessary too:
+
+3.A) libuci
+-----------
+
+Libuci is project from the authors of OpenWrt. It is library for manipulation
+with UCI configuration files.
+
+Clone repository with libuci:
 	git clone git://nbd.name/uci.git
+
+Checkout latest working(!) version:
 	git checkout v0.8.0
-	apt-get install cmake
+
+Build and install:
 	cmake -D BUILD_LUA:BOOL=OFF .
 	make
 	make install
-------------------------------------
-apt-get install python-dev
-make NO_DOC=1
+
+3.B) libatsha204
+---------------
+
+Libatsha204 is library for communication with Atmel ATSHA204 crypto chip. This
+library supports several ways how the chip could be installed. Native I2C
+driver of Linux kernel, some USB sticks and SW emulation of chip features are
+supported.
+
+This tutorial is primary targeted to installation ucollect on the developer's
+station so we will use the SW emulation of the chip.
+
+Install some specific libatsha204 dependencies:
+	apt-get install libunbound-dev
+
+Clone repository with libatsha204:
+	git clone https://gitlab.labs.nic.cz/turris/libatsha204.git
+
+Libatsha204 uses our own build system that is included as a git submodule:
+	git submodule init
+	git submodule update
+
+Build and install libtsha204 with emulation layer:
+	make USE_LAYER=USE_LAYER_EMULATION NO_DOC=1
+	make install
+
+Note: For another layers you have to own some device with Atmel ATSHA204 crypto
+chip.
+
+Copy configuration file to expected location:
+	cp atsha204.sw /etc/.
+
+Note: Configuration file describes content of internal ATSHA204 memory. Not all
+of memory slots are needed or valid.
+
+4) Build ucollect
+-----------------
+
+Clone repository with ucollect:
+	git clone https://gitlab.labs.nic.cz/turris/ucollect.git
+
+Ucollect uses our own build system that is included as a git submodule:
+	git submodule init
+	git submodule update
+
+Build and install:
+	make NO_DOC=1
+	make install
+
 
 Ucollect server
 ===============
