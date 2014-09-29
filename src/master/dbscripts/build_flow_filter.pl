@@ -32,13 +32,24 @@ close $black_open;
 # Read the IPset rules and extract addresses
 open my $ipsets, '-|', 'wget', 'https://api.turris.cz/firewall/turris-ipsets', '-q', '-O', '-' or die "Couldn't download ip set rules: $!\n";
 my %data;
+my %ranges;
 while (<$ipsets>) {
 	next if /^\s*(#.*|)$/; # Skip comments and empty lines
 	next if /^create /; # Creations of sets are not interesting for us
 	if (/^add\s+\S+\s+(\S+)/) {
-		my ($ip, $port) = ($1, '');
+		my ($ip, $port, $range) = ($1, '', '');
 		($ip, $port) = ($1, "P$3") if $ip =~ /(.*),(udp|tcp):(\d+)/;
-		$data{$port}->{$ip} = 1;
+		($ip, $range) = ($1, $2) if $ip =~ /(.*)\/(\d+)/;
+		if ($ip =~ /:/) {
+			$range = '' if $range == 128;
+		} else {
+			$range = '' if $range == 32;
+		}
+		if (length $range) {
+			$ranges{"$ip/$range"} = 1;
+		} else {
+			$data{$port}->{$ip} = 1;
+		}
 	}
 }
 close $ipsets;
@@ -152,4 +163,5 @@ $dbh->do("UPDATE config SET value = ? WHERE name = 'version' AND plugin = 'flow'
 my $mod = $dbh->prepare("INSERT INTO flow_filters (filter, epoch, version, add, address) VALUES ('addresses', ?, ?, ?, ?)");
 $mod->execute($max_epoch, $version, 1, $_) for keys %to_add;
 $mod->execute($max_epoch, $version, 0, $_) for keys %to_delete;
+warn "Addresses with ranges\n" if %ranges;
 $dbh->commit;
