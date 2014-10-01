@@ -431,7 +431,7 @@ static void handle_buffer(struct uplink *uplink) {
 				switch (command) {
 					case 'R': { // Route data to given plugin
 							  uplink->login_failure_count = 0; // If we got data, we know the login was successful
-							  const char *plugin_name = uplink_parse_string(uplink->buffer_pool, &uplink->buffer, &uplink->buffer_size);
+							  const char *plugin_name = uplink_parse_string(temp_pool, &uplink->buffer, &uplink->buffer_size);
 							  /*
 							   * The loop_plugin_send_data contains call to plugin callback.
 							   * Such callback can fail and we would like to recover. That is done
