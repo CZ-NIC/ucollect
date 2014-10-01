@@ -197,6 +197,7 @@ CREATE TABLE flows (
 );
 CREATE SEQUENCE flow_ids OWNED BY flows.id;
 ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flow_ids');
+CREATE INDEX ON flows (tag);
 
 INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat');
 CREATE TABLE starttls_protos (
@@ -330,7 +331,7 @@ GRANT INSERT ON nats TO $DBUPDATER;
 GRANT SELECT (batch) ON nats TO $DBUPDATER;
 GRANT SELECT ON config TO $DBUPDATER;
 GRANT SELECT ON flow_filters to $DBUPDATER;
-GRANT SELECT ON spoof (batch) TO $DBUPDATER;
+GRANT SELECT (batch) ON spoof TO $DBUPDATER;
 GRANT INSERT ON spoof TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
