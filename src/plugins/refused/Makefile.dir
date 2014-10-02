@@ -1,0 +1,2 @@
+LIBRARIES += src/plugins/refused/libplugin_refused
+libplugin_refused_MODULES := refused
