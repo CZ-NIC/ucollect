@@ -39,6 +39,11 @@ struct user_data {
 	size_t send_v4, send_v6; // How many records would be sent
 	struct trie_data *timeout_head, *timeout_tail; // Link list sorted by the timeouts
 	uint64_t timeout; // How long before a packet is timed out
+	uint64_t max_age; // When to send data and consolidate
+	uint32_t finished_limit, send_limit, undecided_limit;
+	bool timeout_scheduled;
+	size_t timeout_id;
+	uint32_t config_version;
 };
 
 enum event_type {
@@ -71,17 +76,38 @@ struct trie_data {
 #define LIST_INSERT_AFTER
 #include "../../core/link_list.h"
 
+static void transmit(struct context *context);
+static void consolidate(struct context *context);
 
+static void send_timeout(struct context *context, void *data, size_t id) {
+	(void)data;
+	(void)id;
+	struct user_data *u = context->user_data;
+	if (!u->send_v4 && !u->send_v6) {
+		ulog(LLOG_DEBUG, "Refused connections timed out, but none to send\n");
+		u->timeout_id = loop_timeout_add(context->loop, u->max_age, context, NULL, send_timeout);
+		return;
+	}
+	ulog(LLOG_DEBUG, "Sending refused data because of timeout\n");
+	u->timeout_scheduled = false;
+	transmit(context);
+	consolidate(context);
+}
 
 static void init(struct context *context) {
 	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *u);
 	*u = (struct user_data) {
-		.active = true, // TODO: Load configuration from the server
+		.active = false,
 		.active_pool = loop_pool_create(context->loop, context, "Refuse pool 1"),
 		.standby_pool = loop_pool_create(context->loop, context, "Refuse pool 2"),
 		.timeout = 30000
 	};
 	u->connections = trie_alloc(u->active_pool);
+}
+
+static void connected(struct context *context) {
+	// Ask for configuration
+	uplink_plugin_send_message(context, "C", 1);
 }
 
 struct conn_record {
@@ -123,7 +149,7 @@ static void serialize_callback(const uint8_t *key, size_t key_size, struct trie_
 	memcpy(&loc_port, key + addr_len, sizeof loc_port);
 	memcpy(&rem_port, key + addr_len + sizeof rem_port, sizeof rem_port);
 	*record = (struct conn_record) {
-		.time = data->time,
+		.time = htobe64(data->time),
 		.reason = data->events[EVENT_NAK] ? 'N' : 'T',
 		.family = data->v6 ? 6 : 4,
 		.loc_port = htons(loc_port),
@@ -137,6 +163,7 @@ static void serialize_callback(const uint8_t *key, size_t key_size, struct trie_
 
 static void transmit(struct context *context) {
 	struct user_data *u = context->user_data;
+	ulog(LLOG_INFO, "Sending %zu IPv4 refused connections and %zu IPv6 ones\n", u->send_v4, u->send_v6);
 	size_t msg_size = 1 + sizeof(uint64_t) + u->send_v4 * (sizeof(struct conn_record) + 4) + u->send_v6 * (sizeof(struct conn_record) + 16);
 	uint8_t *msg = mem_pool_alloc(context->temp_pool, msg_size);
 	*msg = (uint8_t)'D';
@@ -153,6 +180,10 @@ static void transmit(struct context *context) {
 	// Reset the counters to send data
 	u->send_v4 = 0;
 	u->send_v6 = 0;
+	if (u->timeout_scheduled)
+		loop_timeout_cancel(context->loop, u->timeout_id);
+	u->timeout_scheduled = true;
+	u->timeout_id = loop_timeout_add(context->loop, u->max_age, context, NULL, send_timeout);
 }
 
 struct consolidate_params {
@@ -192,6 +223,7 @@ static void consolidate_callback(const uint8_t *key, size_t key_size, struct tri
 
 // Go through the trie of connections and copy the ones that are still useful to a new one, dropping the old
 static void consolidate(struct context *context) {
+	ulog(LLOG_DEBUG, "Consolidating refused connection store\n");
 	struct user_data *u = context->user_data;
 	struct consolidate_params params = {
 		.dest = trie_alloc(u->standby_pool),
@@ -221,6 +253,7 @@ static void consolidate(struct context *context) {
 }
 
 static void handle_event_found(struct context *context, enum event_type type, struct trie_data *d) {
+	ulog(LLOG_DEBUG_VERBOSE, "Connection event %d on %p\n", (int)type, (void*)d);
 	assert(d);
 	struct user_data *u = context->user_data;
 	d->events[type] = true;
@@ -252,6 +285,10 @@ static void handle_event(struct context *context, enum event_type type, bool v6,
 	struct trie_data **node = trie_index(u->connections, key, key_len);
 	if (!*node) { // First access to that thing, create it
 		assert(type != EVENT_TIMEOUT); // Only existing items may time out
+		if (u->undecided >= u->undecided_limit) {
+			ulog(LLOG_ERROR, "Too many undecided connections, droping\n");
+			return;
+		}
 		struct trie_data *d = *node = timeout_append_pool(u, u->active_pool);
 		d->time = loop_now(context->loop);
 		d->completed = false;
@@ -275,6 +312,18 @@ static void timeouts_evaluate(struct context *context) {
 		struct trie_data *d = u->timeout_head;
 		handle_event_found(context, EVENT_TIMEOUT, d);
 		assert(d != u->timeout_head);
+	}
+}
+
+static void limits_check(struct context *context) {
+	struct user_data *u = context->user_data;
+	if (u->send_limit < u->send_v4 + u->send_v6) {
+		// Too many things to send
+		transmit(context);
+		consolidate(context);
+	} else if (u->finished_limit < u->finished) {
+		// Not enough to send, but there are still many finished things in the memory, so drop some
+		consolidate(context);
 	}
 }
 
@@ -303,6 +352,55 @@ static void packet(struct context *context, const struct packet_info *info) {
 		// TODO: Examine ICMP packets and find all the destination unreachable messages
 	}
 	timeouts_evaluate(context);
+	limits_check(context);
+}
+
+struct config_packet {
+	uint32_t version;
+	uint32_t finished_limit;
+	uint32_t send_limit;
+	uint32_t undecided_limit;
+	uint64_t timeout;
+	uint64_t max_age;
+} __attribute__((packed));
+
+static void uplink_data(struct context *context, const uint8_t *data, size_t length) {
+	if (!length) {
+		ulog(LLOG_ERROR, "Empty message for the Refused plugin\n");
+		abort();
+	}
+	switch (*data) {
+		case 'C': {
+			struct config_packet *packet = (struct config_packet *)(data + 1);
+			if (length - 1 < sizeof *packet) {
+				ulog(LLOG_ERROR, "Config data too short for Refused plugin, need %zu, have only %zu\n", sizeof *packet, length - 1);
+				abort();
+			}
+			if (length - 1 > sizeof *packet)
+				ulog(LLOG_ERROR, "Too much data for Refused config, need only %zu, have %zu (ignorig for forward compatibility)\n", sizeof *packet, length - 1);
+			struct user_data *u = context->user_data;
+			if (u->config_version == ntohl(packet->version)) {
+				ulog(LLOG_INFO, "Refused config version not changed from %u\n", (unsigned)u->config_version);
+				return;
+			}
+			u->config_version = ntohl(packet->version);
+			u->finished_limit = ntohl(packet->finished_limit);
+			u->send_limit = ntohl(packet->send_limit);
+			u->undecided_limit = ntohl(packet->undecided_limit);
+			u->timeout = be64toh(packet->timeout);
+			u->max_age = be64toh(packet->max_age);
+			ulog(LLOG_INFO, "Received Refused config version %u\n", (unsigned)u->config_version);
+			if (u->timeout_scheduled)
+				loop_timeout_cancel(context->loop, u->timeout_id);
+			u->active = true;
+			u->timeout_id = loop_timeout_add(context->loop, u->max_age, context, NULL, send_timeout);
+			u->timeout_scheduled = true;
+			break;
+		}
+		default:
+			ulog(LLOG_ERROR, "Invalid opcode for Refused plugin (ignoring for forward compatibility): %c\n", (char)*data);
+			return;
+	}
 }
 
 #ifdef STATIC
@@ -314,6 +412,8 @@ struct plugin *plugin_info(void) {
 		.name = "Refused",
 		.init_callback = init,
 		.packet_callback = packet,
+		.uplink_connected_callback = connected,
+		.uplink_data_callback = uplink_data,
 		.version = 1
 	};
 	return &plugin;
