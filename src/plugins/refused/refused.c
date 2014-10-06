@@ -36,7 +36,7 @@ struct user_data {
 	struct mem_pool *active_pool, *standby_pool; // One pool to allocate the trie from, another to be able to copy some data to when cleaning the first one
 	struct trie *connections; // We store the connections here
 	size_t undecided, finished; // Number of yet undecided connections and number of decided ones
-	size_t send_size_v4, send_size_v6; // How many records would be sent
+	size_t send_v4, send_v6; // How many records would be sent
 	struct trie_data *timeout_head, *timeout_tail; // Link list sorted by the timeouts
 	uint64_t timeout; // How long before a packet is timed out
 };
@@ -56,6 +56,7 @@ struct trie_data {
 	bool completed; // The thing has decided which kind it is.
 	bool transmitted;
 	struct trie_data *next, *prev; // Link list sorted by timeouts
+	struct trie_data *new_instance; // A friend allocated from new pool
 };
 
 #define LIST_NODE struct trie_data
@@ -66,6 +67,8 @@ struct trie_data {
 #define LIST_NAME(X) timeout_##X
 #define LIST_WANT_APPEND_POOL
 #define LIST_WANT_REMOVE
+#define LIST_WANT_LFOR
+#define LIST_INSERT_AFTER
 #include "../../core/link_list.h"
 
 
@@ -134,7 +137,7 @@ static void serialize_callback(const uint8_t *key, size_t key_size, struct trie_
 
 static void transmit(struct context *context) {
 	struct user_data *u = context->user_data;
-	size_t msg_size = 1 + sizeof(uint64_t) + u->send_size_v4 * (sizeof(struct conn_record) + 4) + u->send_size_v6 * (sizeof(struct conn_record) + 16);
+	size_t msg_size = 1 + sizeof(uint64_t) + u->send_v4 * (sizeof(struct conn_record) + 4) + u->send_v6 * (sizeof(struct conn_record) + 16);
 	uint8_t *msg = mem_pool_alloc(context->temp_pool, msg_size);
 	*msg = (uint8_t)'D';
 	uint64_t now = htobe64(loop_now(context->loop));
@@ -147,6 +150,74 @@ static void transmit(struct context *context) {
 	trie_walk(u->connections, serialize_callback, &params, context->temp_pool);
 	assert(params.size == 0);
 	uplink_plugin_send_message(context, msg, msg_size);
+	// Reset the counters to send data
+	u->send_v4 = 0;
+	u->send_v6 = 0;
+}
+
+struct consolidate_params {
+	struct trie *dest;
+	struct mem_pool *pool, *tmp;
+	size_t undecided, finished, send_v4, send_v6;
+};
+
+static void consolidate_callback(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
+	if (data->transmitted)
+		// Drop this one, we already sent it
+		return;
+	if (data->completed && data->events[EVENT_ACK])
+		// This one is not going to be sent. Ever.
+		return;
+	if (data->completed && !data->events[EVENT_SYN])
+		// There was no attempt
+		return;
+	// Create a copy of the node and put it into the other trie
+	struct consolidate_params *params = userdata;
+	struct trie_data *new = mem_pool_alloc(params->pool, sizeof *new);
+	memcpy(new, data, sizeof *new);
+	*trie_index(params->dest, key, key_size) = new;
+	// Link to the new one, so it can be found in the linked list
+	data->new_instance = new;
+	// Update stats
+	if (data->completed) {
+		params->finished ++;
+		if (data->v6)
+			params->send_v6 ++;
+		else
+			params->send_v4 ++;
+	} else {
+		params->undecided ++;
+	}
+}
+
+// Go through the trie of connections and copy the ones that are still useful to a new one, dropping the old
+static void consolidate(struct context *context) {
+	struct user_data *u = context->user_data;
+	struct consolidate_params params = {
+		.dest = trie_alloc(u->standby_pool),
+		.pool = u->standby_pool,
+		.tmp = context->temp_pool
+	};
+	// Copy relevant nodes
+	trie_walk(u->connections, consolidate_callback, &params, context->temp_pool);
+	// Create a new linked list for timeouts
+	struct user_data tmp_data = { .timeout_head = NULL };
+	LFOR(timeout, old, u)
+		timeout_insert_after(&tmp_data, old->new_instance, tmp_data.timeout_tail);
+	u->timeout_head = tmp_data.timeout_head;
+	u->timeout_tail = tmp_data.timeout_tail;
+	// Drop the old data
+	mem_pool_reset(u->active_pool);
+	// Use the new values
+	u->standby_pool = u->active_pool;
+	u->active_pool = params.pool;
+	u->connections = params.dest;
+	assert(u->undecided == params.undecided);
+	// We may lose some finished here
+	assert(u->finished >= params.finished);
+	u->finished = params.finished;
+	assert(u->send_v4 == params.send_v4);
+	assert(u->send_v6 == params.send_v6);
 }
 
 static void handle_event_found(struct context *context, enum event_type type, struct trie_data *d) {
@@ -157,9 +228,9 @@ static void handle_event_found(struct context *context, enum event_type type, st
 	if (d->events[EVENT_TIMEOUT] || (d->events[EVENT_SYN] && (d->events[EVENT_ACK] || d->events[EVENT_NAK]))) {
 		if (d->events[EVENT_SYN] && !d->events[EVENT_ACK]) { // Started but was not accepted - report
 			if (d->v6)
-				u->send_size_v6 ++;
+				u->send_v6 ++;
 			else
-				u->send_size_v4 ++;
+				u->send_v4 ++;
 		}
 		u->undecided --;
 		u->finished ++;
