@@ -200,7 +200,7 @@ CREATE SEQUENCE flow_ids OWNED BY flows.id;
 ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flow_ids');
 CREATE INDEX ON flows (tag);
 
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat');
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat'), ('spoof');
 CREATE TABLE starttls_protos (
 	id SMALLINT NOT NULL PRIMARY KEY,
 	name TEXT NOT NULL,
