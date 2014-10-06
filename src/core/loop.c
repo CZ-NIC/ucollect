@@ -455,7 +455,7 @@ static void loop_get_now(struct loop *loop) {
 	 */
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
 		die("Couldn't get time (%s)\n", strerror(errno));
-	loop->now = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+	loop->now = (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 }
 
 struct loop *loop_create(void) {
