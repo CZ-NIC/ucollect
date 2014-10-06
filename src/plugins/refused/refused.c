@@ -24,9 +24,12 @@
 #include "../../core/trie.h"
 #include "../../core/util.h"
 #include "../../core/packet.h"
+#include "../../core/uplink.h"
 
 #include <string.h>
 #include <assert.h>
+#include <endian.h>
+#include <arpa/inet.h>
 
 struct user_data {
 	bool active;
@@ -48,9 +51,10 @@ enum event_type {
 
 struct trie_data {
 	uint64_t time; // Time of the first access (first packet seen)
-	bool completed; // The thing has decided which kind it is.
 	bool events[EVENT_MAX];
 	bool v6;
+	bool completed; // The thing has decided which kind it is.
+	bool transmitted;
 	struct trie_data *next, *prev; // Link list sorted by timeouts
 };
 
@@ -64,6 +68,8 @@ struct trie_data {
 #define LIST_WANT_REMOVE
 #include "../../core/link_list.h"
 
+
+
 static void init(struct context *context) {
 	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *u);
 	*u = (struct user_data) {
@@ -73,6 +79,74 @@ static void init(struct context *context) {
 		.timeout = 30000
 	};
 	u->connections = trie_alloc(u->active_pool);
+}
+
+struct conn_record {
+	uint64_t time;
+	char reason;
+	uint8_t family;
+	uint16_t loc_port;
+	uint16_t rem_port;
+	uint8_t address[];
+} __attribute__((packed));
+
+struct serialize_params {
+	uint8_t *msg;
+	size_t size;
+};
+
+static void serialize_callback(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
+	if (!data->completed)
+		return; // Not completed yet, so don't send it.
+	if (data->transmitted)
+		return; // Leftover in data from sometime before.
+	if (!data->events[EVENT_SYN] || data->events[EVENT_ACK]) {
+		/*
+		 * These are either incomplete scraps or successfull connection attempts.
+		 * We don't send these. But we mark them as sent so they are removed on
+		 * the next consolidation.
+		 */
+		data->transmitted = true;
+		return;
+	}
+	// OK, the connection passed all criteria, really serialize it to the message.
+	struct serialize_params *params = userdata;
+	struct conn_record *record = (struct conn_record *)params->msg;
+	size_t addr_len = data->v6 ? 16 : 4;
+	assert(key_size == addr_len + 4);
+	size_t serialized_len = sizeof(struct conn_record) + addr_len;
+	assert(serialized_len >= params->size);
+	uint16_t loc_port, rem_port;
+	memcpy(&loc_port, key + addr_len, sizeof loc_port);
+	memcpy(&rem_port, key + addr_len + sizeof rem_port, sizeof rem_port);
+	*record = (struct conn_record) {
+		.time = data->time,
+		.reason = data->events[EVENT_NAK] ? 'N' : 'T',
+		.family = data->v6 ? 6 : 4,
+		.loc_port = htons(loc_port),
+		.rem_port = htons(rem_port)
+	};
+	memcpy(record->address, key, addr_len);
+	data->transmitted = true;
+	params->msg += serialized_len;
+	params->size -= serialized_len;
+}
+
+static void transmit(struct context *context) {
+	struct user_data *u = context->user_data;
+	size_t msg_size = 1 + sizeof(uint64_t) + u->send_size_v4 * (sizeof(struct conn_record) + 4) + u->send_size_v6 * (sizeof(struct conn_record) + 16);
+	uint8_t *msg = mem_pool_alloc(context->temp_pool, msg_size);
+	*msg = (uint8_t)'D';
+	uint64_t now = htobe64(loop_now(context->loop));
+	memcpy(msg + 1, &now, sizeof now);
+	size_t start_offset = 1 + sizeof now;
+	struct serialize_params params = {
+		.msg = msg + start_offset,
+		.size = msg_size - start_offset
+	};
+	trie_walk(u->connections, serialize_callback, &params, context->temp_pool);
+	assert(params.size == 0);
+	uplink_plugin_send_message(context, msg, msg_size);
 }
 
 static void handle_event_found(struct context *context, enum event_type type, struct trie_data *d) {
@@ -90,6 +164,7 @@ static void handle_event_found(struct context *context, enum event_type type, st
 		u->undecided --;
 		u->finished ++;
 		timeout_remove(u, d);
+		d->completed = true;
 	}
 }
 
@@ -109,6 +184,7 @@ static void handle_event(struct context *context, enum event_type type, bool v6,
 		struct trie_data *d = *node = timeout_append_pool(u, u->active_pool);
 		d->time = loop_now(context->loop);
 		d->completed = false;
+		d->transmitted = false;
 		d->v6 = v6;
 		memset(d->events, 0, sizeof d->events);
 	}
