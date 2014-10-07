@@ -43,8 +43,8 @@ struct udp {
 	uint16_t check;
 } __attribute__((packed));
 
-#define MLEN 128
-#define MESSAGE "This is a testing packet from the turris project. Contact us at info@turris.cz if you have questions."
+#define MLEN 192
+#define MESSAGE "This is a testing packet from project Turris. More info at http://blackhole.turris.cz. Contact us at info@turris.cz if you have questions."
 #define MAGIC 0x17ACEE43
 
 struct packet_v4 {
