@@ -22,6 +22,7 @@ from twisted.internet import reactor
 import twisted.internet.protocol
 import plugin
 import database
+import activity
 import logging
 import socket
 import struct
@@ -77,6 +78,7 @@ class UDPReceiver(twisted.internet.protocol.DatagramProtocol):
 		if not tok.expect_spoofed and not tok.expect_ordinary:
 			self.__spoof.drop_token(token)
 		reactor.callInThread(store_packet, tok, spoofed)
+		activity.log_activity(tok.client(), 'spoof')
 
 class SpoofPlugin(plugin.Plugin):
 	"""
