@@ -144,7 +144,7 @@ static void serialize_callback(const uint8_t *key, size_t key_size, struct trie_
 	size_t addr_len = data->v6 ? 16 : 4;
 	assert(key_size == addr_len + 4);
 	size_t serialized_len = sizeof(struct conn_record) + addr_len;
-	assert(serialized_len >= params->size);
+	assert(serialized_len <= params->size);
 	uint16_t loc_port, rem_port;
 	memcpy(&loc_port, key + addr_len, sizeof loc_port);
 	memcpy(&rem_port, key + addr_len + sizeof rem_port, sizeof rem_port);
@@ -289,6 +289,7 @@ static void handle_event(struct context *context, enum event_type type, bool v6,
 			ulog(LLOG_ERROR, "Too many undecided connections, droping\n");
 			return;
 		}
+		u->undecided ++;
 		struct trie_data *d = *node = timeout_append_pool(u, u->active_pool);
 		d->time = loop_now(context->loop);
 		d->completed = false;
