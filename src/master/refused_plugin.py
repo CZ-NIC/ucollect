@@ -18,7 +18,9 @@
 #
 
 from twisted.internet import reactor
+import database
 import plugin
+import activity
 import logging
 import struct
 import socket
@@ -28,15 +30,26 @@ logger = logging.getLogger(name='refused')
 def store_connections(message, client):
 	(basetime,) = struct.unpack('!Q', message[:8])
 	message = message[8:]
+	values = []
+	count = 0
 	while message:
 		(time, reason, family, loc_port, rem_port) = struct.unpack('!QcBHH', message[:14])
 		addr_len = 4 if family == 4 else 16
 		address = message[14:14 + addr_len]
 		address = socket.inet_ntop(socket.AF_INET if family == 4 else socket.AF_INET6, address)
 		message = message[14 + addr_len:]
+		if basetime - time > 86400000:
+			logger.error("Refused time difference is out of range for client %s: %s", client, basetime - time)
+			continue
+		values.append((basetime - time, address, loc_port, rem_port, reason, client))
+		count += 1
+	with database.transaction() as t:
+		t.executemany("INSERT INTO refused (client, timestamp, address, local_port, remote_port, reason) SELECT clients.id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
+	logger.debug("Stored %s refused connections for client %s", count, client)
 
 class RefusedPlugin(plugin.Plugin):
 	def __init__(self, plugins, config):
+		plugin.Plugin.__init__(self, plugins)
 		self.__config = config
 
 	def name(self):
@@ -45,9 +58,9 @@ class RefusedPlugin(plugin.Plugin):
 	def message_from_client(self, message, client):
 		if message == 'C':
 			logger.debug("Sending config %s to client %s", self.__config['version'], client)
-			config = struct.pack('!IIIIQQ', self.__config['version'], self.__config['finished_limit'], self.__config['send_limit'], self.__config['undecided_limit'], self.__config['timeout'], self.__config['max_age'])
+			config = struct.pack('!IIIIQQ', *map(lambda name: int(self.__config[name]), ['version', 'finished_limit', 'send_limit', 'undecided_limit', 'timeout', 'max_age']))
 			self.send('C' + config, client)
-		if message[0] == 'D':
+		elif message[0] == 'D':
 			activity.log_activity(client, 'refused')
 			reactor.callInThread(store_connections, message[1:], client)
 		else:
