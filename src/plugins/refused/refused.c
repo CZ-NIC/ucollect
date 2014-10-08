@@ -318,11 +318,11 @@ static void timeouts_evaluate(struct context *context) {
 
 static void limits_check(struct context *context) {
 	struct user_data *u = context->user_data;
-	if (u->send_limit < u->send_v4 + u->send_v6) {
+	if (u->send_limit <= u->send_v4 + u->send_v6) {
 		// Too many things to send
 		transmit(context);
 		consolidate(context);
-	} else if (u->finished_limit < u->finished) {
+	} else if (u->finished_limit <= u->finished) {
 		// Not enough to send, but there are still many finished things in the memory, so drop some
 		consolidate(context);
 	}
