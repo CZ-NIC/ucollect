@@ -60,6 +60,7 @@ struct trie_data {
 	bool v6;
 	bool completed; // The thing has decided which kind it is.
 	bool transmitted;
+	char nak_type;
 	struct trie_data *next, *prev; // Link list sorted by timeouts
 	struct trie_data *new_instance; // A friend allocated from new pool
 };
@@ -150,7 +151,7 @@ static void serialize_callback(const uint8_t *key, size_t key_size, struct trie_
 	memcpy(&rem_port, key + addr_len + sizeof rem_port, sizeof rem_port);
 	*record = (struct conn_record) {
 		.time = htobe64(data->time),
-		.reason = data->events[EVENT_NAK] ? 'N' : 'T',
+		.reason = data->events[EVENT_NAK] ? data->nak_type : 'T',
 		.family = data->v6 ? 6 : 4,
 		.loc_port = htons(loc_port),
 		.rem_port = htons(rem_port)
@@ -252,11 +253,13 @@ static void consolidate(struct context *context) {
 	assert(u->send_v6 == params.send_v6);
 }
 
-static void handle_event_found(struct context *context, enum event_type type, struct trie_data *d) {
+static void handle_event_found(struct context *context, enum event_type type, char nak_type, struct trie_data *d) {
 	ulog(LLOG_DEBUG_VERBOSE, "Connection event %d on %p\n", (int)type, (void*)d);
 	assert(d);
 	struct user_data *u = context->user_data;
 	d->events[type] = true;
+	if (type == EVENT_NAK)
+		d->nak_type = nak_type;
 	// Check if the thing should be decided
 	if (d->events[EVENT_TIMEOUT] || (d->events[EVENT_SYN] && (d->events[EVENT_ACK] || d->events[EVENT_NAK]))) {
 		if (d->events[EVENT_SYN] && !d->events[EVENT_ACK]) { // Started but was not accepted - report
@@ -272,7 +275,7 @@ static void handle_event_found(struct context *context, enum event_type type, st
 	}
 }
 
-static void handle_event(struct context *context, enum event_type type, bool v6, const uint8_t *addr, uint16_t loc_port, uint16_t rem_port) {
+static void handle_event(struct context *context, enum event_type type, char nak_type, bool v6, const uint8_t *addr, uint16_t loc_port, uint16_t rem_port) {
 	struct user_data *u = context->user_data;
 	// Prepare the key
 	size_t addr_len = v6 ? 16 : 4;
@@ -302,7 +305,7 @@ static void handle_event(struct context *context, enum event_type type, bool v6,
 		ulog(LLOG_DEBUG, "Seen event on decided packet %u->(%s):%u\n", (unsigned)loc_port, mem_pool_hex(context->temp_pool, addr, addr_len), (unsigned)rem_port);
 		return;
 	}
-	handle_event_found(context, type, d);
+	handle_event_found(context, type, nak_type, d);
 }
 
 // Timeout all the events that are too old and not yet decided
@@ -311,7 +314,7 @@ static void timeouts_evaluate(struct context *context) {
 	struct user_data *u = context->user_data;
 	while (u->timeout_head && u->timeout_head->time + u->timeout < now) {
 		struct trie_data *d = u->timeout_head;
-		handle_event_found(context, EVENT_TIMEOUT, d);
+		handle_event_found(context, EVENT_TIMEOUT, 0, d);
 		assert(d != u->timeout_head);
 	}
 }
@@ -340,13 +343,13 @@ static void packet(struct context *context, const struct packet_info *info) {
 	if (info->app_protocol == 'T') { // A TCP packet. We are very interested in some of them.
 		if (info->direction == DIR_OUT && (info->tcp_flags & TCP_SYN) && !(info->tcp_flags & TCP_ACK))
 			// Outbound initial SYN packet ‒ initialization of the connection
-			handle_event(context, EVENT_SYN, info->ip_protocol == 6, info->addresses[END_DST], info->ports[END_SRC], info->ports[END_DST]);
+			handle_event(context, EVENT_SYN, 0, info->ip_protocol == 6, info->addresses[END_DST], info->ports[END_SRC], info->ports[END_DST]);
 		if (info->direction == DIR_IN && (info->tcp_flags & TCP_SYN) && (info->tcp_flags & TCP_ACK))
 			// The server accepts the connection
-			handle_event(context, EVENT_ACK, info->ip_protocol == 6, info->addresses[END_SRC], info->ports[END_DST], info->ports[END_SRC]);
+			handle_event(context, EVENT_ACK, 0, info->ip_protocol == 6, info->addresses[END_SRC], info->ports[END_DST], info->ports[END_SRC]);
 		if (info->direction == DIR_IN && (info->tcp_flags & TCP_RESET))
 			// This could be NAK. Or it can be termination, but then, the SYN+ACK must have come before and this one would get ignored
-			handle_event(context, EVENT_NAK, info->ip_protocol == 6, info->addresses[END_SRC], info->ports[END_DST], info->ports[END_SRC]);
+			handle_event(context, EVENT_NAK, 'P', info->ip_protocol == 6, info->addresses[END_SRC], info->ports[END_DST], info->ports[END_SRC]);
 		// Other TCP packets are somewhere in the middle of the stream and are not interesting at all
 	}
 	if (info->app_protocol == 'i' || info->app_protocol == 'I') {
