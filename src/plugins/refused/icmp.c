@@ -19,7 +19,72 @@
 
 #include "icmp.h"
 
-char nak_parse(const struct packet_info *packet, size_t *addr_len, const uint8_t **addr, uint16_t *src_port, uint16_t *dest_port) {
-	// TODO: Implement
+#include "../../core/packet.h"
+
+#include <assert.h>
+#include <netinet/ip.h>
+
+struct header_v4 {
+	uint8_t type;
+	uint8_t code;
+	uint16_t checksum;
+	uint32_t unused;
+	uint8_t iphdr[];
+} __attribute__((packed));
+
+struct ports {
+	uint16_t source;
+	uint16_t destination;
+} __attribute__((packed));
+
+char nak_parse(const struct packet_info *packet, size_t *addr_len, const uint8_t **addr, uint16_t *loc_port, uint16_t *dest_port) {
+	assert(packet->layer == 'I');
+	assert(packet->app_protocol == 'I' || packet->app_protocol == 'i');
+	size_t data_len = packet->length - packet->hdr_length;
+	const uint8_t *data = (const uint8_t *)packet->data + packet->hdr_length;
+	if (packet->ip_protocol == '4') {
+		if (packet->app_protocol != 'i')
+			return '\0'; // ICMPv6 sent over IPv4?!
+		if (data_len < sizeof(struct header_v4))
+			return '\0'; // Too short to contain ICMP
+		const struct header_v4 *header = (const struct header_v4 *) data;
+		if (header->type != 3)
+			return '\0'; // Some uninteresting ICMP type.
+		const struct iphdr *ip = (const struct iphdr *)header->iphdr;
+		if (data_len < sizeof *header + sizeof *ip)
+			return '\0'; // We don't have the complete IP header here
+		if (ip->version != 4)
+			return '\0'; // Some strange mismatch.
+		if (ip->frag_off != 0)
+			return '\0'; // Fragmented packet inside.
+		if (ip->protocol != 6)
+			return '\0'; // Not TCP
+		*addr_len = 4;
+		*addr = (const uint8_t *)&ip->daddr; // The remote end is the destination, because the encapsulated packet is the one going out from us.
+		if (data_len < sizeof *header - 4 * ip->ihl + 8)
+			return '\0'; // We were promised to have 8 bytes of the TCP header, but they are not here
+		data_len -= sizeof *header - 4 * ip->ihl;
+		const struct ports *ports = (const struct ports *)(header->iphdr + 4 * ip->ihl);
+		*loc_port = ntohs(ports->source);
+		*dest_port = ntohs(ports->destination);
+		switch (header->code) {
+			case 0:
+			case 6:
+				return 'N';
+			case 1:
+			case 7:
+				return 'H';
+			case 3:
+				return 'P';
+			case 9:
+			case 10:
+			case 13:
+				return 'A';
+			default:
+				return 'O';
+		}
+	} else if (packet->ip_protocol == '6') {
+
+	}
 	return '\0';
 }

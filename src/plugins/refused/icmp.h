@@ -34,12 +34,13 @@ struct packet_info *info;
  * If it is, return the type by the return value and provide info about the
  * connection it belongs to. The types are:
  * - 'N': Network unreachable.
- * - 'D': Destination unreachable.
+ * - 'H': Host unreachable.
  * - 'P': Port unreachable.
  * - 'O': Some other reasone.
+ * - 'A': Administratively prohibited.
  *
  * In case it is not such NAK packet, it returns '\0'.
  */
-char nak_parse(const struct packet_info *packet, size_t *addr_len, const uint8_t **addr, uint16_t *src_port, uint16_t *dest_port);
+char nak_parse(const struct packet_info *packet, size_t *addr_len, const uint8_t **addr, uint16_t *loc_port, uint16_t *dest_port);
 
 #endif
