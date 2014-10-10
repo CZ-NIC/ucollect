@@ -181,7 +181,6 @@ static void postprocess(struct packet_info *packet) {
 	bool has_ports = (packet->app_protocol == 'T' || packet->app_protocol == 'U');
 	if (!has_ports) {
 		memset(&packet->ports, 0, sizeof packet->ports);
-		packet->hdr_length = 0;
 	}
 	bool is_encapsulation = (packet->app_protocol == '4' || packet->app_protocol == '6');
 	if (!is_encapsulation) {
