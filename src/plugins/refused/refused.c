@@ -354,7 +354,7 @@ static void packet(struct context *context, const struct packet_info *info) {
 			handle_event(context, EVENT_NAK, 'P', info->ip_protocol == 6, info->addresses[END_SRC], info->ports[END_DST], info->ports[END_SRC]);
 		// Other TCP packets are somewhere in the middle of the stream and are not interesting at all
 	}
-	if (info->app_protocol == 'i' || info->app_protocol == 'I') {
+	if ((info->app_protocol == 'i' || info->app_protocol == 'I') && info->direction == DIR_IN) {
 		size_t addr_len;
 		const uint8_t *addr;
 		uint16_t loc_port, rem_port;
