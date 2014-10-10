@@ -17,6 +17,8 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#include "icmp.h"
+
 #include "../../core/plugin.h"
 #include "../../core/context.h"
 #include "../../core/mem_pool.h"
@@ -353,7 +355,12 @@ static void packet(struct context *context, const struct packet_info *info) {
 		// Other TCP packets are somewhere in the middle of the stream and are not interesting at all
 	}
 	if (info->app_protocol == 'i' || info->app_protocol == 'I') {
-		// TODO: Examine ICMP packets and find all the destination unreachable messages
+		size_t addr_len;
+		const uint8_t *addr;
+		uint16_t loc_port, rem_port;
+		char nak_type = nak_parse(info, &addr_len, &addr, &loc_port, &rem_port);
+		if (nak_type)
+			handle_event(context, EVENT_NAK, nak_type, info->ip_protocol == 6, addr, loc_port, rem_port);
 	}
 	timeouts_evaluate(context);
 	limits_check(context);
