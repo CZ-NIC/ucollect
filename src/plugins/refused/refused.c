@@ -97,6 +97,11 @@ static void send_timeout(struct context *context, void *data, size_t id) {
 	consolidate(context);
 }
 
+static void connected(struct context *context) {
+	// Ask for configuration
+	uplink_plugin_send_message(context, "C", 1);
+}
+
 static void init(struct context *context) {
 	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *u);
 	*u = (struct user_data) {
@@ -106,11 +111,16 @@ static void init(struct context *context) {
 		.timeout = 30000
 	};
 	u->connections = trie_alloc(u->active_pool);
-}
-
-static void connected(struct context *context) {
-	// Ask for configuration
-	uplink_plugin_send_message(context, "C", 1);
+	/*
+	 * Try asking for the config right away. This may be needed in case
+	 * we were reloaded (due to a crash of the plugin, for example) and
+	 * we are already connected ‒ in such case, the connected would never
+	 * be called.
+	 *
+	 * On the other hand, if we are not connected, the message will just
+	 * get blackholed, so there's no problem with that either.
+	 */
+	connected(context);
 }
 
 struct conn_record {
