@@ -195,6 +195,11 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 		f->seen_flow_start[info->direction] = true;
 }
 
+static void connected(struct context *context) {
+	// Ask for config.
+	uplink_plugin_send_message(context, "C", 1);
+}
+
 static void initialize(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 	struct mem_pool *flow_pool = loop_pool_create(context->loop, context, "Flow pool");
@@ -203,11 +208,14 @@ static void initialize(struct context *context) {
 		.flow_pool = flow_pool,
 		.trie = trie_alloc(flow_pool)
 	};
-}
-
-static void connected(struct context *context) {
-	// Ask for config.
-	uplink_plugin_send_message(context, "C", 1);
+	/*
+	 * Ask for config right away. In case we get reloaded, we won't
+	 * get the connected callback, because we are already connected.
+	 *
+	 * On the other hand, if we are not connected, this message gets
+	 * blackholed, but we get the callback later.
+	 */
+	connected(context);
 }
 
 struct config {
