@@ -23,8 +23,9 @@
 
 #include <assert.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 
-struct header_v4 {
+struct header {
 	uint8_t type;
 	uint8_t code;
 	uint16_t checksum;
@@ -42,31 +43,43 @@ char nak_parse(const struct packet_info *packet, size_t *addr_len, const uint8_t
 	assert(packet->app_protocol == 'I' || packet->app_protocol == 'i');
 	size_t data_len = packet->length - packet->hdr_length;
 	const uint8_t *data = (const uint8_t *)packet->data + packet->hdr_length;
-	if (packet->ip_protocol == 4) {
-		if (packet->app_protocol != 'i')
-			return '\0'; // ICMPv6 sent over IPv4?!
-		if (data_len < sizeof(struct header_v4))
-			return '\0'; // Too short to contain ICMP
-		const struct header_v4 *header = (const struct header_v4 *) data;
-		if (header->type != 3)
-			return '\0'; // Some uninteresting ICMP type.
-		const struct iphdr *ip = (const struct iphdr *)header->iphdr;
-		if (data_len < sizeof *header + sizeof *ip)
-			return '\0'; // We don't have the complete IP header here
-		if (ip->version != 4)
-			return '\0'; // Some strange mismatch.
+	if (data_len < sizeof(struct header))
+		return '\0'; // Too short to contain ICMP
+	const struct header *header = (const struct header *)data;
+	uint8_t expected = packet->app_protocol == 'i' ? 3 : 1;
+	if (header->type != expected)
+		return '\0'; // Some uninteresting ICMP type.
+	const struct iphdr *ip = (const struct iphdr *)header->iphdr;
+	if (data_len < sizeof *header + sizeof *ip)
+		return '\0'; // We don't have the complete IP header here
+	size_t ip_len;
+	if (ip->version == 4) { // What version of IP is inside?
 		if ((ntohs(ip->frag_off) & IP_OFFMASK) != 0)
 			return '\0'; // Fragmented packet inside.
 		if (ip->protocol != 6)
 			return '\0'; // Not TCP
 		*addr_len = 4;
 		*addr = (const uint8_t *)&ip->daddr; // The remote end is the destination, because the encapsulated packet is the one going out from us.
-		if (data_len < sizeof *header + 4 * ip->ihl + 8)
-			return '\0'; // We were promised to have 8 bytes of the TCP header, but they are not here
-		data_len -= sizeof *header + 4 * ip->ihl;
-		const struct ports *ports = (const struct ports *)(header->iphdr + 4 * ip->ihl);
-		*loc_port = ntohs(ports->source);
-		*dest_port = ntohs(ports->destination);
+		ip_len = 4 * ip->ihl;
+	} else if (ip->version == 6) { // It is in the same place for IPv4 and IPv6, so it's acceptable abuse
+		const struct ip6_hdr *ip6 = (const struct ip6_hdr *)header->iphdr;
+		if (data_len < sizeof *ip6)
+			return '\0'; // Not complete IPv6 address
+		if (ip6->ip6_ctlun.ip6_un1.ip6_un1_nxt != 6)
+			return '\0'; // Not TCP
+		*addr_len = 16;
+		*addr = ip6->ip6_dst.s6_addr;
+		ip_len = sizeof *ip6;
+	} else {
+		return '\0';
+	}
+	if (data_len < sizeof *header + ip_len + 8)
+		return '\0'; // We were promised to have 8 bytes of the TCP header, but they are not here
+	data_len -= sizeof *header + ip_len;
+	const struct ports *ports = (const struct ports *)(header->iphdr + ip_len);
+	*loc_port = ntohs(ports->source);
+	*dest_port = ntohs(ports->destination);
+	if (packet->app_protocol == 'i')
 		switch (header->code) {
 			case 0:
 			case 6:
@@ -83,8 +96,17 @@ char nak_parse(const struct packet_info *packet, size_t *addr_len, const uint8_t
 			default:
 				return 'O';
 		}
-	} else if (packet->ip_protocol == 6) {
-
-	}
-	return '\0';
+	else
+		switch (header->code) {
+			case 0:
+				return 'N';
+			case 1:
+				return 'A';
+			case 3:
+				return 'H';
+			case 4:
+				return 'P';
+			default:
+				return 'O';
+		}
 }
