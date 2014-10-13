@@ -93,6 +93,8 @@ char nak_parse(const struct packet_info *packet, size_t *addr_len, const uint8_t
 			case 10:
 			case 13:
 				return 'A';
+			case 4: // Fragmentation is OK, the source will retry. This is a soft-NAK.
+				return '\0';
 			default:
 				return 'O';
 		}
