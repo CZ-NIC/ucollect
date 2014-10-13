@@ -17,6 +17,8 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#include "icmp.h"
+
 #include "../../core/plugin.h"
 #include "../../core/context.h"
 #include "../../core/mem_pool.h"
@@ -60,6 +62,7 @@ struct trie_data {
 	bool v6;
 	bool completed; // The thing has decided which kind it is.
 	bool transmitted;
+	char nak_type;
 	struct trie_data *next, *prev; // Link list sorted by timeouts
 	struct trie_data *new_instance; // A friend allocated from new pool
 };
@@ -94,6 +97,11 @@ static void send_timeout(struct context *context, void *data, size_t id) {
 	consolidate(context);
 }
 
+static void connected(struct context *context) {
+	// Ask for configuration
+	uplink_plugin_send_message(context, "C", 1);
+}
+
 static void init(struct context *context) {
 	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *u);
 	*u = (struct user_data) {
@@ -103,11 +111,16 @@ static void init(struct context *context) {
 		.timeout = 30000
 	};
 	u->connections = trie_alloc(u->active_pool);
-}
-
-static void connected(struct context *context) {
-	// Ask for configuration
-	uplink_plugin_send_message(context, "C", 1);
+	/*
+	 * Try asking for the config right away. This may be needed in case
+	 * we were reloaded (due to a crash of the plugin, for example) and
+	 * we are already connected ‒ in such case, the connected would never
+	 * be called.
+	 *
+	 * On the other hand, if we are not connected, the message will just
+	 * get blackholed, so there's no problem with that either.
+	 */
+	connected(context);
 }
 
 struct conn_record {
@@ -150,7 +163,7 @@ static void serialize_callback(const uint8_t *key, size_t key_size, struct trie_
 	memcpy(&rem_port, key + addr_len + sizeof rem_port, sizeof rem_port);
 	*record = (struct conn_record) {
 		.time = htobe64(data->time),
-		.reason = data->events[EVENT_NAK] ? 'N' : 'T',
+		.reason = data->events[EVENT_NAK] ? data->nak_type : 'T',
 		.family = data->v6 ? 6 : 4,
 		.loc_port = htons(loc_port),
 		.rem_port = htons(rem_port)
@@ -252,11 +265,13 @@ static void consolidate(struct context *context) {
 	assert(u->send_v6 == params.send_v6);
 }
 
-static void handle_event_found(struct context *context, enum event_type type, struct trie_data *d) {
+static void handle_event_found(struct context *context, enum event_type type, char nak_type, struct trie_data *d) {
 	ulog(LLOG_DEBUG_VERBOSE, "Connection event %d on %p\n", (int)type, (void*)d);
 	assert(d);
 	struct user_data *u = context->user_data;
 	d->events[type] = true;
+	if (type == EVENT_NAK)
+		d->nak_type = nak_type;
 	// Check if the thing should be decided
 	if (d->events[EVENT_TIMEOUT] || (d->events[EVENT_SYN] && (d->events[EVENT_ACK] || d->events[EVENT_NAK]))) {
 		if (d->events[EVENT_SYN] && !d->events[EVENT_ACK]) { // Started but was not accepted - report
@@ -272,7 +287,7 @@ static void handle_event_found(struct context *context, enum event_type type, st
 	}
 }
 
-static void handle_event(struct context *context, enum event_type type, bool v6, const uint8_t *addr, uint16_t loc_port, uint16_t rem_port) {
+static void handle_event(struct context *context, enum event_type type, char nak_type, bool v6, const uint8_t *addr, uint16_t loc_port, uint16_t rem_port) {
 	struct user_data *u = context->user_data;
 	// Prepare the key
 	size_t addr_len = v6 ? 16 : 4;
@@ -302,7 +317,7 @@ static void handle_event(struct context *context, enum event_type type, bool v6,
 		ulog(LLOG_DEBUG, "Seen event on decided packet %u->(%s):%u\n", (unsigned)loc_port, mem_pool_hex(context->temp_pool, addr, addr_len), (unsigned)rem_port);
 		return;
 	}
-	handle_event_found(context, type, d);
+	handle_event_found(context, type, nak_type, d);
 }
 
 // Timeout all the events that are too old and not yet decided
@@ -311,7 +326,7 @@ static void timeouts_evaluate(struct context *context) {
 	struct user_data *u = context->user_data;
 	while (u->timeout_head && u->timeout_head->time + u->timeout < now) {
 		struct trie_data *d = u->timeout_head;
-		handle_event_found(context, EVENT_TIMEOUT, d);
+		handle_event_found(context, EVENT_TIMEOUT, 0, d);
 		assert(d != u->timeout_head);
 	}
 }
@@ -340,17 +355,22 @@ static void packet(struct context *context, const struct packet_info *info) {
 	if (info->app_protocol == 'T') { // A TCP packet. We are very interested in some of them.
 		if (info->direction == DIR_OUT && (info->tcp_flags & TCP_SYN) && !(info->tcp_flags & TCP_ACK))
 			// Outbound initial SYN packet ‒ initialization of the connection
-			handle_event(context, EVENT_SYN, info->ip_protocol == 6, info->addresses[END_DST], info->ports[END_SRC], info->ports[END_DST]);
+			handle_event(context, EVENT_SYN, 0, info->ip_protocol == 6, info->addresses[END_DST], info->ports[END_SRC], info->ports[END_DST]);
 		if (info->direction == DIR_IN && (info->tcp_flags & TCP_SYN) && (info->tcp_flags & TCP_ACK))
 			// The server accepts the connection
-			handle_event(context, EVENT_ACK, info->ip_protocol == 6, info->addresses[END_SRC], info->ports[END_DST], info->ports[END_SRC]);
+			handle_event(context, EVENT_ACK, 0, info->ip_protocol == 6, info->addresses[END_SRC], info->ports[END_DST], info->ports[END_SRC]);
 		if (info->direction == DIR_IN && (info->tcp_flags & TCP_RESET))
 			// This could be NAK. Or it can be termination, but then, the SYN+ACK must have come before and this one would get ignored
-			handle_event(context, EVENT_NAK, info->ip_protocol == 6, info->addresses[END_SRC], info->ports[END_DST], info->ports[END_SRC]);
+			handle_event(context, EVENT_NAK, 'P', info->ip_protocol == 6, info->addresses[END_SRC], info->ports[END_DST], info->ports[END_SRC]);
 		// Other TCP packets are somewhere in the middle of the stream and are not interesting at all
 	}
-	if (info->app_protocol == 'i' || info->app_protocol == 'I') {
-		// TODO: Examine ICMP packets and find all the destination unreachable messages
+	if ((info->app_protocol == 'i' || info->app_protocol == 'I') && info->direction == DIR_IN) {
+		size_t addr_len;
+		const uint8_t *addr;
+		uint16_t loc_port, rem_port;
+		char nak_type = nak_parse(info, &addr_len, &addr, &loc_port, &rem_port);
+		if (nak_type)
+			handle_event(context, EVENT_NAK, nak_type, info->ip_protocol == 6, addr, loc_port, rem_port);
 	}
 	timeouts_evaluate(context);
 	limits_check(context);
