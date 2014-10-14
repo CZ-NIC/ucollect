@@ -8,7 +8,7 @@ Build options are customized to installation on the developer's station.
 
 Our projects are compiled with flag NO_DOC=1. If you want documentation you
 have to run 'apt-get install asciidoc' command first. Note: 'asciidoc' includes
-latex and circa 700MB of dependencies.
+latex therefore about 700MB of dependencies.
 
 Ucollect client
 ===============
