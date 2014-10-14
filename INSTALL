@@ -90,9 +90,11 @@ Ucollect uses our own build system that is included as a git submodule:
 	git submodule init
 	git submodule update
 
-Build and install:
+Build:
 	make NO_DOC=1
-	make install
+
+There is no "install" target in Makefile. You can inspire in ucollect-*
+packages in our openwrt repository.
 
 Ucollect server
 ===============
