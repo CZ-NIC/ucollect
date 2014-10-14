@@ -1,2 +1,4 @@
 LIBRARIES += src/plugins/refused/libplugin_refused
 libplugin_refused_MODULES := refused icmp
+
+DOCS += src/plugins/refused/refused
