@@ -133,3 +133,72 @@ Go to subdirectory src/master/soxy and build it:
 
 5) Install necessary python packages:
 	apt-get install python-twisted python-pygresql python-dateutil
+
+Setup ucollect client and server communication
+==============================================
+
+apt-get install postgresql
+
+
+CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG
+
+vim pg_hba.conf
+# Database administrative login by Unix domain socket
+local   all             postgres                                peer
+
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+# "local" is for Unix domain socket connections only
+local   all             all                                     trust
+# IPv4 local connections:
+host    all             all             127.0.0.1/32            trust
+# IPv6 local connections:
+host    all             all             ::1/128                 trust
+
+CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG
+
+
+[16:05:55] root@ucollect-server:~# su postgres 
+postgres@ucollect-server:/root$ cd
+postgres@ucollect-server:~$ createdb ucollect
+
+postgres@ucollect-server:~$ createuser ucollect
+postgres@ucollect-server:~$ createuser authenticator
+postgres@ucollect-server:~$ createuser updater
+postgres@ucollect-server:~$ createuser jenkins
+postgres@ucollect-server:~$ createuser cleaner
+postgres@ucollect-server:~$ createuser archivist
+
+Go to src/master/dbscripts and run
+	./initdb debug
+
+openssl req -new -x509 -keyout /etc/ucollect-dev.pem -out /etc/ucollect-dev.pem -days 1825 -nodes -subj "/C=CZ/ST=Prague/L=Prague/O=Ucollect"
+
+vim collect-master.conf
+
+; The SSL certificate
+cert = /etc/ucollect-dev.pem
+key = /etc/ucollect-dev.pem
+
+Copy self-signed certificate to client
+
+Get serial-number of emulated ATSHA204 crypto chip:
+	atsha204cmd serial-number
+
+cat /etc/config/ucollect
+config interface
+	option ifname 'eth0'
+
+config uplink
+	option name localhost
+	option service 5678
+	option cert "/etc/ssl/ucollect-dev.pem"
+
+config plugin
+	option libname 'libplugin_count.so'
+
+config plugin
+	option libname 'libplugin_bandwidth.so'
+
+config plugin
+	option libname 'libplugin_buckets.so'
