@@ -361,7 +361,7 @@ if (fork == 0) {
 		return $get_addr->fetchrow_arrayref;
 	});
 	my $store_client = $destination->prepare('INSERT INTO refused_clients (client, since, until, count) VALUES (?, ?, ?, ?)');
-	my $get_client = $source->prepare("SELECT client, DATE_TRUNC('hour', timestamp) AS since, DATE_TRUNC('hour', timestamp) + INTERVAL '1 hour' AS until, COUNT(1) AS count FROM refused GROUP BY client, DATE_TRUNC('hour', timestamp)");
+	my $get_client = $source->prepare("SELECT client, DATE_TRUNC('hour', timestamp) AS since, DATE_TRUNC('hour', timestamp) + INTERVAL '1 hour' AS until, COUNT(1) AS count FROM refused WHERE timestamp >= ? GROUP BY client, DATE_TRUNC('hour', timestamp)");
 	my $client_count = -1;
 	$get_client->execute($max_since);
 	$store_client->execute_for_fetch(sub {
