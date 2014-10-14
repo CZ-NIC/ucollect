@@ -21,7 +21,7 @@ apt-get install gcc g++ git qt4-qmake pkg-config cmake
 2) Install ucollect dependencies
 --------------------------------
 
-apt-get install zlib1g-dev libpcap-dev libssl-dev python-dev libqt4-dev
+apt-get install zlib1g-dev libpcap-dev libqt4-dev
 
 3) Build the rest of dependencies from source code
 --------------------------------------------------
@@ -58,7 +58,7 @@ This tutorial is primary targeted to installation ucollect on the developer's
 station so we will use the SW emulation of the chip.
 
 Install some specific libatsha204 dependencies:
-	apt-get install libunbound-dev
+	apt-get install libunbound-dev libssl-dev
 
 Clone repository with libatsha204:
 	git clone https://gitlab.labs.nic.cz/turris/libatsha204.git
