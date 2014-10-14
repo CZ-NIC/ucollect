@@ -94,11 +94,32 @@ Build and install:
 	make NO_DOC=1
 	make install
 
-
 Ucollect server
 ===============
-apt-get install python-twisted
-apt-get install python-pygresql
-apt-get install python-dateutil
 
+1) Install developmnet tools
+----------------------------
 
+apt-get install gcc g++ git qt4-qmake pkg-config
+
+2) Install ucollect server dependencies
+---------------------------------------
+
+apt-get install zlib1g-dev libqt4-dev
+
+3) Build the rest of dependencies from source code
+--------------------------------------------------
+
+Build and install(!) libatsha204 as is described in Ucollect client, part 3.B.
+
+No, install additional dependency:
+	apt-get install python-dev
+
+Go to subdirectory src/python and build with command:
+	make NO_DOC=1 USE_LAYER=USE_LAYER_EMULATION PYTHON=1
+
+Go back to root of repository and run command:
+	make install PYTHON=1
+
+4) Install necessary python packages:
+	apt-get install python-twisted python-pygresql python-dateutil
