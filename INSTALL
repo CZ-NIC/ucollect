@@ -117,11 +117,9 @@ Build and install(!) libatsha204 as is described in Ucollect client, part 3.B.
 No, install additional dependency:
 	apt-get install python-dev
 
-Go to subdirectory src/python and build with command:
+Go to subdirectory src/python and run commands:
 	make NO_DOC=1 USE_LAYER=USE_LAYER_EMULATION PYTHON=1
-
-Go back to root of repository and run command:
-	make install PYTHON=1
+	python setup.py install
 
 4) Build soxy
 -------------
