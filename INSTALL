@@ -21,7 +21,7 @@ apt-get install gcc g++ git qt4-qmake pkg-config cmake
 2) Install ucollect dependencies
 --------------------------------
 
-apt-get install zlib1g-dev libpcap-dev libqt4-dev python-dev
+apt-get install zlib1g-dev libpcap-dev libqt4-dev python-dev socat
 
 3) Build the rest of dependencies from source code
 --------------------------------------------------
