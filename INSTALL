@@ -21,7 +21,7 @@ apt-get install gcc g++ git qt4-qmake pkg-config cmake
 2) Install ucollect dependencies
 --------------------------------
 
-apt-get install zlib1g-dev libpcap-dev libqt4-dev
+apt-get install zlib1g-dev libpcap-dev libqt4-dev python-dev
 
 3) Build the rest of dependencies from source code
 --------------------------------------------------
@@ -121,5 +121,15 @@ Go to subdirectory src/python and build with command:
 Go back to root of repository and run command:
 	make install PYTHON=1
 
-4) Install necessary python packages:
+4) Build soxy
+-------------
+
+Clone repository with ucollect:
+	git clone https://gitlab.labs.nic.cz/turris/ucollect.git
+
+Go to subdirectory src/master/soxy and build it:
+	qmake
+	make
+
+5) Install necessary python packages:
 	apt-get install python-twisted python-pygresql python-dateutil
