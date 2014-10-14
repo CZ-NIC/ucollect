@@ -1,0 +1,128 @@
+The `refused` plugin
+====================
+
+The purpose of this plugin is to track outbound refused connection.
+Whenever a connection is attempted from inside the network and it
+fails for whatever reason, it is stored. Sometimes (either when too
+many connections are stored or when a timeout is reached), the stored
+connections are sent to the server.
+
+The original motivation is to detect malware that tries to connect to
+bunch of masters on startup. Many of the centers might be dead and
+refuse the connections, generating hits here.
+
+Detection algorithm
+-------------------
+
+Because we have separate PCAPs for inbound and outbound directions and
+the asynchronous nature of PCAP, the initializing SYN packet and the
+answer may arrive in reverse order. Also, there may be more copies of
+single packet due to retransmits.
+
+Therefore, on the first interesting event, a record is created. When
+enough events to decide if the connection was successful or not
+arrive, the connection is marked as decided and is never modified
+again.
+
+The interesting events are:
+
+ * A SYN packet without ACK came (the initialization of the
+   connection).
+ * A SYN+ACK packet came (acceptance of the connection).
+ * An RST packet came (if the connection is not yet established, it is
+   refusal of the connection).
+ * ICMP packet with some kind of destination unreachable (except for
+   fragmentation needed).
+ * A timeout passed.
+
+A connection with SYN and SYN+ACK packet is considered successful. A
+connection with SYN+RST, SYN+ICMP or SYN+timeout are considered
+unsuccessful. Anything with timeout is finished (even when not
+categorized as successful or unsuccessful).
+
+From time to time, connections that are finished are pruned.
+
+The records are distinguished by remote IP address and both ports.
+
+This doesn't expect to be 100% accurate, there may be
+misclasifications (for example, a connection that is created
+successfully, then there's a pruning and then a stray initializing SYN
+packet that got retransmitted arrives, it'll start a new connection
+and this one will likely time out). However, the accuracy should be
+good enough.
+
+Communication protocol
+----------------------
+
+Communication is usually initiated by the client, but server may send
+some notifications unasked. There are these messages the client may
+send:
+
+`C`:: This message has no parameters and asks the server for
+  configuration. Usually sent at startup.
+`D`:: This submits the refused connections to the server. First
+  parameter is `uint64_t` time -- number of milliseconds since some
+  client-specific origin. This is used by the server to calibrate the
+  times in the connection records and convert them to real time.
+  Records describing the connections follow. Each record consists of:
+  time;; An `uint64_t` number, in milliseconds since the same origin
+    as the one in the preamble.
+  reason;; A `char` specifying the reason for considering this
+    connection refused. See below for list of possible values.
+  family;; An `uint8_t` being either 4 or 6. It specifies the IP
+    version this connection was made over.
+  local port;; An `uint16_t`, the port number on the local end of the
+    desired connection.
+  remote port;; Similar, but remote end.
+  remote address;; Binary representation of the address, either 4 or
+    16 bytes, depending on the value of `family`. This is the remote
+    address.
+
+The server currently sends only one message, prefixed with `C` ‒ the
+configuration for the client. It should send it as a response to
+client's `C` and it may send it unilaterally, when it things the
+config may have changed. It is followed by these fields:
+
+  version:: `uint32_t`. This field must change whenever any
+    configuration changes. The client uses it to know when to apply
+    new configuration.
+  finished_limit:: `uint32_t`. Limit on number of finished connections
+    kept in memory. If this is exceeded, consolidation is run and the
+    finished connections that are not to be sent to the server are
+    cleared.
+  send_limit:: `uint32_t`. Limit on how many connections may be sent
+    to the server at once. When this is exceeded, the client sends the
+    connections and performs consolidation, to remove them from memory.
+  undecided_limit: `uint32_t`. Limit on the number of connections that
+    are not yet decided if they succeeded or not. If more connections
+    come, the new ones are ignored until the number drops. This should
+    be set high enough so this doesn't occur under normal
+    circumstances.
+  timeout:: `uint64_t`. Maximum number of milliseconds a connection is
+    kept in the undecided state. When the time out passes, the
+    connection is put into decided state.
+  max_age:: `uint64_t`. This is the maximum age of connection to
+    allowed to be sent to the server. If the connection would get
+    older, whole batch is sent. Currently, it is implemented by
+    setting interval from the last sent batch to this value.
+
+All numbers are in network byte order.
+
+Types of refused connections
+----------------------------
+
+The `reason` is set to following values, depending on the reason the
+connection was considered refused.
+
+  `T`:: The SYN was sent out, but nothing came back during the
+    timeout.
+  `P`:: Port refused. The host appears to be reachable, but it is not
+    accepting connections on this port. This is signaled by an RST
+    packet as an answer to a SYN packet. Also, ICMP port unreachable
+    message is considered this, but this is not commonly used on the
+    internet.
+  `H`:: Host unreachable. This is signaled by ICMP packet. It seems
+    the host is down or not connected to the Internet for some reason.
+  `N`:: Network unreachable. Like above, but for a whole network.
+  `A`:: Administratively filtered. A firewall blocks the connection.
+  `O`:: Some other, unknown, reason.
