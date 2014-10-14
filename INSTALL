@@ -47,7 +47,7 @@ Build and install:
 	make install
 
 3.B) libatsha204
----------------
+----------------
 
 Libatsha204 is library for communication with Atmel ATSHA204 crypto chip. This
 library supports several ways how the chip could be installed. Native I2C
@@ -68,7 +68,7 @@ Libatsha204 uses our own build system that is included as a git submodule:
 	git submodule update
 
 Build and install libtsha204 with emulation layer:
-	make USE_LAYER=USE_LAYER_EMULATION NO_DOC=1
+	make USE_LAYER=USE_LAYER_EMULATION NO_DOC=1 CONFIG_PATH="/etc/atsha204.sw"
 	make install
 
 Note: For another layers you have to own some device with Atmel ATSHA204 crypto
