@@ -46,7 +46,7 @@ typedef void (*server_ready)(struct context *context, struct server_data *server
  *
  * In the unconnected mode, single conn structure is allocated, the main FD is set into
  * it and then the server_ready is called with it whenever it is readable. This mode
- * is enabled by setting max_conn to 0.
+ * is enabled by setting max_conn to 0. The conn_set_fd callback is never used here.
  *
  * Note that even the main FD can change during the lifetime of the server.
  *
@@ -55,6 +55,7 @@ typedef void (*server_ready)(struct context *context, struct server_data *server
 struct server_desc {
 	const char *name;
 	int sock_type; // like SOCK_STREAM or SOCK_DGRAM
+	uint16_t default_port;
 	server_alloc server_alloc_cb;
 	server_set_fd server_set_fd_cb;
 	conn_alloc conn_alloc_cb;

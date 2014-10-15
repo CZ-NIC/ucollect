@@ -29,6 +29,10 @@
 #include <errno.h>
 #include <assert.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 struct fd_tag {
 	const struct server_desc *desc;
@@ -85,6 +89,92 @@ static void initialize(struct context *context) {
 	u->tag_count = tag_count;
 }
 
+static bool config(struct context *context) {
+	struct user_data *u = context->user_data;
+	for (size_t i = 0; i < u->server_count; i ++) {
+		struct fd_tag *t = &u->tags[u->tag_indices[i]];
+		char *opt_name = mem_pool_printf(context->temp_pool, "%s_port", t->desc->name);
+		const struct config_node *opt = loop_plugin_option_get(context, opt_name);
+		uint16_t port;
+		if (opt) {
+			if (opt->value_count != 1) {
+				ulog(LLOG_ERROR, "Option %s must have single value, not %zu\n", opt_name, opt->value_count);
+				return false;
+			}
+			if (!*opt->values[0]) {
+				ulog(LLOG_ERROR, "Option %s is empty\n", opt_name);
+				return false;
+			}
+			char *end;
+			long p = strtol(opt->values[0], &end, 10);
+			if (end && *end) {
+				ulog(LLOG_ERROR, "Option %s must be integer\n", opt_name);
+				return false;
+			}
+			if (!p || p >= 65536) {
+				ulog(LLOG_ERROR, "Option %s of value %ld out of range (valid ports are 1-65535)\n", opt_name, p);
+				return false;
+			}
+			port = p;
+		} else {
+			port = t->desc->default_port;
+			ulog(LLOG_WARN, "Option %s not present, using default %u\n", opt_name, (unsigned)port);
+		}
+		t->port_candidate = port;
+		if (port == t->port) {
+			t->candidate = t->fd;
+		} else if (port) {
+			int sock = socket(AF_INET6, t->desc->sock_type, 0);
+			if (sock == -1) {
+				ulog(LLOG_ERROR, "Error allocating socket for fake server %s: %s\n", t->desc->name, strerror(errno));
+				return false;
+			}
+			// Register it right away, so it is closed in case of plugin crash
+			loop_plugin_register_fd(context, sock, t);
+			struct sockaddr_in6 addr = {
+				.sin6_family = AF_INET6,
+				.sin6_port = htons(port),
+				.sin6_addr = IN6ADDR_ANY_INIT
+			};
+			if (bind(sock, (const struct sockaddr *)&addr, sizeof addr) == -1) {
+				ulog(LLOG_ERROR, "Couldn't bind fake server %s socket %d to port %u: %s\n", t->desc->name, sock, (unsigned)port, strerror(errno));
+				loop_plugin_unregister_fd(context, sock);
+				if (close(sock) == -1)
+					ulog(LLOG_ERROR, "Error closing fake server %s socket %d after unsuccessful bind to port %u: %s\n", t->desc->name, sock, (unsigned)port, strerror(errno));
+				return false;
+			}
+			t->candidate = sock;
+		} // Otherwise, the port is different than before, but 0 ‒ means desable this service ‒ nothing allocated
+	}
+	return true;
+}
+
+static void config_finish(struct context *context, bool activate) {
+	struct user_data *u = context->user_data;
+	for (size_t i = 0; i < u->server_count; i ++) {
+		struct fd_tag *t = &u->tags[u->tag_indices[i]];
+		if (activate) {
+			if (t->fd != t->candidate) {
+				if (t->desc->server_set_fd_cb)
+					t->desc->server_set_fd_cb(context, t->server, t->candidate, t->port_candidate);
+				if (t->fd) {
+					loop_plugin_unregister_fd(context, t->fd);
+					if (close(t->fd) == -1)
+						ulog(LLOG_ERROR, "Error closing old server FD %d of %s: %s\n", t->fd, t->desc->name, strerror(errno));
+				}
+				t->port = t->port_candidate;
+				t->fd = t->candidate;
+			}
+		} else if (t->candidate) {
+			loop_plugin_unregister_fd(context, t->candidate);
+			if (close(t->candidate) == -1)
+				ulog(LLOG_ERROR, "Error closing candidate FD %d of server %s: %s\n", t->candidate, t->desc->name, strerror(errno));
+		}
+		t->port_candidate = 0;
+		t->candidate = 0;
+	}
+}
+
 #ifdef STATIC
 struct plugin *plugin_info_fake(void) {
 #else
@@ -93,7 +183,9 @@ struct plugin *plugin_info(void) {
 	static struct plugin plugin = {
 		.name = "Fake",
 		.version = 1,
-		.init_callback = initialize
+		.init_callback = initialize,
+		.config_check_callback = config,
+		.config_finish_callback = config_finish
 	};
 	return &plugin;
 }
