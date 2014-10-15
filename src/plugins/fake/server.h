@@ -20,29 +20,48 @@
 #ifndef UCOLLECT_FAKE_SERVER_H
 #define UCOLLECT_FAKE_SERVER_H
 
+#include <stdint.h>
+
 struct server_data;
 struct server_desc;
 struct conn_data;
 struct context;
+struct mem_pool;
 
-typedef struct server_data *(*server_init)(struct context *context, struct server_desc *desc, int fd);
-typedef void (*server_teardown)(struct context *context, struct server_data *data);
-typedef struct conn_data *(*server_accept)(struct context *context, struct server_data *data, int new_fd);
-typedef void (*conn_teardown)(struct context *context, struct server_data *data, struct conn_data *conn);
-typedef void (*server_ready)(struct context *context, struct server_data *data, struct conn_data *conn);
+typedef struct server_data *(*server_alloc)(struct context *context, struct mem_pool *pool, const struct server_desc *desc);
+typedef void (*server_set_fd)(struct context *context, struct server_data *server, int fd, uint16_t port);
+typedef struct conn_data *(*conn_alloc)(struct context *context, struct mem_pool *pool, struct server_data *server);
+// Also accept...
+typedef void (*conn_set_fd)(struct context *context, struct server_data *server, struct conn_data *conn, int fd);
+typedef void (*server_ready)(struct context *context, struct server_data *server, struct conn_data *conn);
 
+/*
+ * There are two modes in which this may operate. A connected mode and unconnected one.
+ *
+ * In the connected mode, certain number of simultaneous connections can be accepted
+ * (specifid by max_conn). A main FD is allocated in the beginning and set with
+ * server_set_fd. Bunch of conn structures is allocated and whenever new connection
+ * is accepted, the conn_set_fd is called on one of the conn structures with the new
+ * fd. The server_ready is called on it every time data is available.
+ *
+ * In the unconnected mode, single conn structure is allocated, the main FD is set into
+ * it and then the server_ready is called with it whenever it is readable. This mode
+ * is enabled by setting max_conn to 0.
+ *
+ * Note that even the main FD can change during the lifetime of the server.
+ *
+ * Only the server_ready is mandatory.
+ */
 struct server_desc {
 	const char *name;
 	int sock_type; // like SOCK_STREAM or SOCK_DGRAM
-	server_init init_cb;
-	server_teardown teardown_cb;
-	// If the callback is set, it'll automatically accept new connections, up to some limit
-	server_accept accept_cb;
-	conn_teardown close_cb;
-	// Called when the file descriptor is ready (either accepted one if accept_cb is set, or the global one, if accept_cb is not set).
-	server_ready ready_cb;
+	server_alloc server_alloc_cb;
+	server_set_fd server_set_fd_cb;
+	conn_alloc conn_alloc_cb;
+	conn_set_fd conn_set_fd_cb;
+	server_ready server_ready_cb;
 	unsigned max_conn; // Maximum number of parallel connections. If more are to be opened, new ones are immediatelly closed after accepting.
-	unsigned conn_timeout; // Timeout in milliseconds
+	unsigned conn_timeout; // Timeout in milliseconds ‒ if nothing comes over the socket in this time, it is dropped
 };
 
 extern const struct server_desc *server_descs;
