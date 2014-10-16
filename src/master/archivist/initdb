@@ -281,7 +281,7 @@ CREATE TABLE refused_addrs (
 	client_count INT NOT NULL,
 	UNIQUE(addr, port, reason, since),
 	CHECK(port < 65536),
-	CHECK(port > 0),
+	CHECK(port >= 0),
 	CHECK(client_count <= conn_count)
 );
 
