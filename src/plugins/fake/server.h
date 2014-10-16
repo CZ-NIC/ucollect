@@ -27,13 +27,14 @@ struct server_desc;
 struct conn_data;
 struct context;
 struct mem_pool;
+struct fd_tag;
 
-typedef struct server_data *(*server_alloc)(struct context *context, struct mem_pool *pool, const struct server_desc *desc);
-typedef void (*server_set_fd)(struct context *context, struct server_data *server, int fd, uint16_t port);
-typedef struct conn_data *(*conn_alloc)(struct context *context, struct mem_pool *pool, struct server_data *server);
+typedef struct server_data *(*server_alloc)(struct context *context, struct fd_tag *tag, struct mem_pool *pool, const struct server_desc *desc);
+typedef void (*server_set_fd)(struct context *context, struct fd_tag *tag, struct server_data *server, int fd, uint16_t port);
+typedef struct conn_data *(*conn_alloc)(struct context *context, struct fd_tag *tag, struct mem_pool *pool, struct server_data *server);
 // Also accept...
-typedef void (*conn_set_fd)(struct context *context, struct server_data *server, struct conn_data *conn, int fd);
-typedef void (*server_ready)(struct context *context, struct server_data *server, struct conn_data *conn);
+typedef void (*conn_set_fd)(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn, int fd);
+typedef void (*server_ready)(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn);
 
 /*
  * There are two modes in which this may operate. A connected mode and unconnected one.

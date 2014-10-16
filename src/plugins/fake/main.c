@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 
 struct fd_tag {
 	const struct server_desc *desc;
@@ -41,6 +42,10 @@ struct fd_tag {
 	int fd, candidate;
 	uint16_t port, port_candidate;
 	bool accept_here; // When the thing is readable, call accept here instead of server_ready
+	bool ignore_inactivity; // Don't close due to inactivity
+	size_t server_index;
+	struct sockaddr_in6 addr;
+	socklen_t addr_len;
 };
 
 struct user_data {
@@ -66,21 +71,24 @@ static void initialize(struct context *context) {
 	size_t pos = 0, i = 0;
 	for (const struct server_desc *desc = server_descs; desc->name; desc++) {
 		u->tags[pos].desc = desc;
+		u->tags[pos].server_index = i;
+		u->tags[pos].ignore_inactivity = true;
 		u->tag_indices[i ++] = pos;
 		if (desc->server_alloc_cb)
-			u->tags[pos].server = desc->server_alloc_cb(context, u->pool, desc);
+			u->tags[pos].server = desc->server_alloc_cb(context, &u->tags[pos], u->pool, desc);
 		if (desc->max_conn) {
 			for (size_t j = pos; j < pos + 1 + desc->max_conn; j ++) {
 				// The description and server are shared between all the connections
 				u->tags[j].desc = desc;
+				u->tags[j].server_index = u->tags[pos].server_index;
 				u->tags[j].server = u->tags[pos].server;
 				// But a connection structure is for each of them
 				if (desc->conn_alloc_cb)
-					u->tags[j].conn = desc->conn_alloc_cb(context, u->pool, u->tags[pos].server);
+					u->tags[j].conn = desc->conn_alloc_cb(context, &u->tags[j], u->pool, u->tags[pos].server);
 			}
 			u->tags[pos].accept_here = true;
 		} else if (desc->conn_alloc_cb)
-			u->tags[pos].conn = desc->conn_alloc_cb(context, u->pool, u->tags[pos].server);
+			u->tags[pos].conn = desc->conn_alloc_cb(context, &u->tags[pos], u->pool, u->tags[pos].server);
 		pos += 1 + desc->max_conn;
 	}
 	// Bumper
@@ -156,7 +164,7 @@ static void config_finish(struct context *context, bool activate) {
 		if (activate) {
 			if (t->fd != t->candidate) {
 				if (t->desc->server_set_fd_cb)
-					t->desc->server_set_fd_cb(context, t->server, t->candidate, t->port_candidate);
+					t->desc->server_set_fd_cb(context, t, t->server, t->candidate, t->port_candidate);
 				if (t->fd) {
 					loop_plugin_unregister_fd(context, t->fd);
 					if (close(t->fd) == -1)
@@ -175,6 +183,73 @@ static void config_finish(struct context *context, bool activate) {
 	}
 }
 
+static char *addr2str(struct mem_pool *pool, struct sockaddr *addr, socklen_t addr_len) {
+	const size_t addr_max_len = 40; // 32 hex digits, 7 colons and one NULL byte
+	char *result = mem_pool_alloc(pool, addr_max_len);
+	const size_t port_max_len = 10;
+	char *port = mem_pool_alloc(pool, port_max_len);
+	int error = getnameinfo(addr, addr_len, result, addr_max_len, port, port_max_len, NI_NUMERICHOST | NI_NUMERICSERV);
+	if (error) {
+		ulog(LLOG_ERROR, "Error translating to address: %s\n", gai_strerror(error));
+		strcpy(result, "<error>");
+	}
+	return mem_pool_printf(pool, "[%s]:%s", result, port);
+}
+
+static void activity(struct fd_tag *tag) {
+	// TODO: Track activity
+}
+
+static void fd_ready(struct context *context, int fd, void *tag) {
+	struct user_data *u = context->user_data;
+	struct fd_tag *t = tag;
+	if (t->accept_here) {
+		size_t si = t->server_index;
+		size_t ti = u->tag_indices[si], te = u->tag_indices[si+1];
+		struct fd_tag *empty = NULL;
+		for (size_t i = ti + 1; i < te; i ++)
+			if (!u->tags[i].fd) {
+				empty = &u->tags[i];
+				break;
+			}
+		if (empty) {
+			assert(empty->desc == t->desc);
+			assert(empty->server == t->server);
+			empty->addr_len = sizeof empty->addr;
+			struct sockaddr *addr_p = (struct sockaddr *)&empty->addr;
+			int new = accept(fd, addr_p, &empty->addr_len);
+			if (new == -1) {
+				ulog(LLOG_ERROR, "Failed to accept connection on FD %d for fake server %s: %s\n", fd, t->desc->name, strerror(errno));
+			}
+			ulog(LLOG_DEBUG, "Accepted connecion %d from %s on FD %d for fake server %s\n", new, addr2str(context->temp_pool, addr_p, empty->addr_len), fd, t->desc->name);
+			empty->fd = new;
+			if (empty->desc->conn_set_fd_cb)
+				empty->desc->conn_set_fd_cb(context, empty, empty->server, empty->conn, new);
+			activity(empty);
+		} else {
+			// No place to put it into.
+			struct sockaddr_in6 addr;
+			struct sockaddr *addr_p = (struct sockaddr *)&addr;
+			socklen_t addr_len = sizeof addr;
+			int new = accept(fd, addr_p, &addr_len);
+			if (new == -1) {
+				ulog(LLOG_ERROR, "Failed to accept extra connection on FD %d for fake server %s: %s\n", fd, t->desc->name, strerror(errno));
+				return;
+			}
+			ulog(LLOG_WARN, "Throwing out connection %d from %s accepted on %d of fake server %s, too many opened ones\n", fd, addr2str(context->temp_pool, addr_p, addr_len), fd, t->desc->name);
+			if (close(new) == -1) {
+				ulog(LLOG_ERROR, "Error throwing newly accepted connection %d from %s accepted on %d of fake server %s: %s\n", new, addr2str(context->temp_pool, addr_p, addr_len), fd, t->desc->name, strerror(errno));
+				return;
+			}
+			// TODO: Store the event?
+		}
+	} else {
+		if (t->desc->server_ready_cb)
+			t->desc->server_ready_cb(context, t, t->server, t->conn);
+		activity(t);
+	}
+}
+
 #ifdef STATIC
 struct plugin *plugin_info_fake(void) {
 #else
@@ -185,7 +260,8 @@ struct plugin *plugin_info(void) {
 		.version = 1,
 		.init_callback = initialize,
 		.config_check_callback = config,
-		.config_finish_callback = config_finish
+		.config_finish_callback = config_finish,
+		.fd_callback = fd_ready
 	};
 	return &plugin;
 }
