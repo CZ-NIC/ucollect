@@ -137,12 +137,58 @@ Go to subdirectory src/master/soxy and build it:
 Setup ucollect client and server communication and environment
 ==============================================================
 
-apt-get install postgresql
+1) Environment requirements
+---------------------------
 
+There is one unusual requirement. Ucollect is using libatsha204 and ATSHA204
+crypto-chip to authentication. ATSHA204 has 16 key slots and is neccessary to
+pick one. ID of slot is combination of one record in chip's OTP memory and one
+TXT record in specific DNS zone.
 
-CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG
+me of TXT DNS record is defined in libatsha204 repository in
+src/libatsha204/configuration.h file. You're looking for
+DEFAULT_DNS_RECORD_FIND_KEY constant.
 
-vim pg_hba.conf
+Theoretically, for development purposes, you can use our DNS record. For
+production environment you need zone that is signed with DNSSEC. Libatsha204
+checks validity of DNS signature and checks if signature exists.
+
+2) SSL certificate
+------------------
+
+Communication between client and server is naturally encrypted. Identities are
+checked with SSL certificate. Self-signed certificate is sufficient. Generate it
+with command like this one:
+
+openssl req -new -x509 -keyout /etc/ucollect-dev.pem -out /etc/ucollect-dev.pem -days 1825 -nodes -subj "/C=CZ/ST=Prague/L=Prague/O=Ucollect"
+
+3) Configure server
+-------------------
+
+Ucollect server uses PostgreSQL as backend. So, install PostgreSQL:
+	apt-get install postgresql
+
+Log-in as postgres user and create users for ucollect server. No user needs to
+be supersuser. You can answer "no" to all questions.
+	root@ucollect-server:~# su postgres 
+	postgres@ucollect-server:/root$ cd
+	postgres@ucollect-server:~$ createdb ucollect
+	postgres@ucollect-server:~$ createuser ucollect
+	postgres@ucollect-server:~$ createuser authenticator
+	postgres@ucollect-server:~$ createuser updater
+	postgres@ucollect-server:~$ createuser jenkins
+	postgres@ucollect-server:~$ createuser cleaner
+	postgres@ucollect-server:~$ createuser archivist
+
+Some users need password, some users are using system-user based authentication.
+Password is necessary for: updater (set name/password in
+src/master/collect-master.conf), authenticator (set name/password in
+src/master/authenticator/authenticator.conf).
+
+Anyway, on developer's station is the easiest to disable authentication. Go to
+postgresql configuration directory /etc/postgresql/VERSION/main and edit file
+pg_hba.conf. Set "trust" method to all authentication types. Example:
+
 # Database administrative login by Unix domain socket
 local   all             postgres                                peer
 
@@ -155,44 +201,46 @@ host    all             all             127.0.0.1/32            trust
 # IPv6 local connections:
 host    all             all             ::1/128                 trust
 
-CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG CONFIG
 
-
-[16:05:55] root@ucollect-server:~# su postgres 
-postgres@ucollect-server:/root$ cd
-postgres@ucollect-server:~$ createdb ucollect
-
-postgres@ucollect-server:~$ createuser ucollect
-postgres@ucollect-server:~$ createuser authenticator
-postgres@ucollect-server:~$ createuser updater
-postgres@ucollect-server:~$ createuser jenkins
-postgres@ucollect-server:~$ createuser cleaner
-postgres@ucollect-server:~$ createuser archivist
-
-Go to src/master/dbscripts and run
+Now you should be able to initialize the database. Go to src/master/dbscripts
+and run:
 	./initdb debug
 
-openssl req -new -x509 -keyout /etc/ucollect-dev.pem -out /etc/ucollect-dev.pem -days 1825 -nodes -subj "/C=CZ/ST=Prague/L=Prague/O=Ucollect"
+Change setting of collect-master - at least "certificate" and "key" options.
+Open  src/master/collect-master.conf and change these:
+	; The SSL certificate
+	cert = /etc/ucollect-dev.pem
+	key = /etc/ucollect-dev.pem
 
-vim collect-master.conf
+Run authenticator:
+	cd src/master/authenticator
+	./authenticator.py authenticator.conf
 
-; The SSL certificate
-cert = /etc/ucollect-dev.pem
-key = /etc/ucollect-dev.pem
+Run ucollect server:
+	cd src/master
+	./collect-master.py collect-master.conf
 
-Copy self-signed certificate to client
+4) Configure client
+-------------------
 
-Get serial-number of emulated ATSHA204 crypto chip:
-	atsha204cmd serial-number
+Get root trust anchor for unbound/libunbound:
+	apt-get install unbound-anchor
+	mkdir /etc/unbound
+	unbound-anchor -u http://data.iana.org -x /root-anchors/root-anchors.xml -v
 
-cat /etc/config/ucollect
+Create configuration for ucollect client:
+	mkdir /etc/config
+	vim /etc/config/ucollect
+
+Example config:
+--------------------------------------------------
 config interface
 	option ifname 'eth0'
 
 config uplink
 	option name localhost
-	option service 5678
-	option cert "/etc/ssl/ucollect-dev.pem"
+	option service 5679
+	option cert "/etc/ucollect-dev.pem"
 
 config plugin
 	option libname 'libplugin_count.so'
@@ -202,13 +250,7 @@ config plugin
 
 config plugin
 	option libname 'libplugin_buckets.so'
+--------------------------------------------------
 
-apt-get install unbound-anchor
-mkdir /etc/unbound
-unbound-anchor -u http://data.iana.org -x /root-anchors/root-anchors.xml -v
-
-
-server select * from clients.... mechanism:
-	- A atsha
-	- N totalne vypnout
-	- Y vzdy pustit
+And run ucollect client:
+	./bin/ucollect
