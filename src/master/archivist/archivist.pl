@@ -352,16 +352,16 @@ if (fork == 0) {
 	print "Dropping refused connections since $max_since\n";
 	$destination->do('DELETE FROM refused_addrs WHERE since >= ?', undef, $max_since);
 	$destination->do('DELETE FROM refused_clients WHERE since >= ?', undef, $max_since);
-	my $store_addr = $destination->prepare('INSERT INTO refused_addrs (addr, port, since, until, conn_count, client_count) VALUES (?, ?, ?, ?, ?, ?)');
-	my $get_addr = $source->prepare("SELECT address, remote_port, DATE_TRUNC('hour', timestamp) AS since, DATE_TRUNC('hour', timestamp) + INTERVAL '1 hour' AS until, COUNT(1) AS conn_count, COUNT(DISTINCT client) AS client_count FROM refused WHERE timestamp >= ? GROUP BY address, remote_port, DATE_TRUNC('hour', timestamp)");
+	my $store_addr = $destination->prepare('INSERT INTO refused_addrs (addr, port, reason, since, until, conn_count, client_count) VALUES (?, ?, ?, ?, ?, ?, ?)');
+	my $get_addr = $source->prepare("SELECT address, remote_port, reason, DATE_TRUNC('hour', timestamp) AS since, DATE_TRUNC('hour', timestamp) + INTERVAL '1 hour' AS until, COUNT(1) AS conn_count, COUNT(DISTINCT client) AS client_count FROM refused WHERE timestamp >= ? GROUP BY address, remote_port, reason, DATE_TRUNC('hour', timestamp)");
 	my $addr_count = -1;
 	$get_addr->execute($max_since);
 	$store_addr->execute_for_fetch(sub {
 		$addr_count ++;
 		return $get_addr->fetchrow_arrayref;
 	});
-	my $store_client = $destination->prepare('INSERT INTO refused_clients (client, since, until, count) VALUES (?, ?, ?, ?)');
-	my $get_client = $source->prepare("SELECT client, DATE_TRUNC('hour', timestamp) AS since, DATE_TRUNC('hour', timestamp) + INTERVAL '1 hour' AS until, COUNT(1) AS count FROM refused WHERE timestamp >= ? GROUP BY client, DATE_TRUNC('hour', timestamp)");
+	my $store_client = $destination->prepare('INSERT INTO refused_clients (client, reason, since, until, count) VALUES (?, ?, ?, ?, ?)');
+	my $get_client = $source->prepare("SELECT client, reason, DATE_TRUNC('hour', timestamp) AS since, DATE_TRUNC('hour', timestamp) + INTERVAL '1 hour' AS until, COUNT(1) AS count FROM refused WHERE timestamp >= ? GROUP BY client, reason, DATE_TRUNC('hour', timestamp)");
 	my $client_count = -1;
 	$get_client->execute($max_since);
 	$store_client->execute_for_fetch(sub {

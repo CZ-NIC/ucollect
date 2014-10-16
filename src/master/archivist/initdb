@@ -262,22 +262,24 @@ CREATE TABLE spoof_counts (
 
 CREATE TABLE refused_clients (
 	client INT NOT NULL,
+	reason CHAR NOT NULL,
 	since TIMESTAMP NOT NULL,
 	until TIMESTAMP NOT NULL,
 	count INT NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
 	CHECK(since < until),
-	UNIQUE(client, since)
+	UNIQUE(client, reason, since)
 );
 
 CREATE TABLE refused_addrs (
 	addr INET NOT NULL,
 	port INT NOT NULL,
+	reason CHAR NOT NULL,
 	since TIMESTAMP NOT NULL,
 	until TIMESTAMP NOT NULL,
 	conn_count INT NOT NULL,
 	client_count INT NOT NULL,
-	UNIQUE(addr, port, since),
+	UNIQUE(addr, port, reason, since),
 	CHECK(port < 65536),
 	CHECK(port > 0),
 	CHECK(client_count <= conn_count)
