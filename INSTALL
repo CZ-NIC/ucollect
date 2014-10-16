@@ -134,8 +134,8 @@ Go to subdirectory src/master/soxy and build it:
 5) Install necessary python packages:
 	apt-get install python-twisted python-pygresql python-dateutil
 
-Setup ucollect client and server communication
-==============================================
+Setup ucollect client and server communication and environment
+==============================================================
 
 apt-get install postgresql
 
@@ -202,3 +202,13 @@ config plugin
 
 config plugin
 	option libname 'libplugin_buckets.so'
+
+apt-get install unbound-anchor
+mkdir /etc/unbound
+unbound-anchor -u http://data.iana.org -x /root-anchors/root-anchors.xml -v
+
+
+server select * from clients.... mechanism:
+	- A atsha
+	- N totalne vypnout
+	- Y vzdy pustit
