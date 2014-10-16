@@ -145,7 +145,7 @@ crypto-chip to authentication. ATSHA204 has 16 key slots and is neccessary to
 pick one. ID of slot is combination of one record in chip's OTP memory and one
 TXT record in specific DNS zone.
 
-me of TXT DNS record is defined in libatsha204 repository in
+Address of TXT DNS record is defined in libatsha204 repository in
 src/libatsha204/configuration.h file. You're looking for
 DEFAULT_DNS_RECORD_FIND_KEY constant.
 
@@ -254,3 +254,16 @@ config plugin
 
 And run ucollect client:
 	./bin/ucollect
+
+5) Add clients
+--------------
+
+All clients are identified by ID. ID is sequence of numbers stored in 2 OTP
+slots in ATSHA204 chripto-chip.
+
+Get ID of emulated ATSHA204 crypto chip with tool in libatsha204 repository:
+	atsha204cmd serial-number
+
+ID must be stored in DB in table "clients". The field "mechanism" is important
+for development. It's value "Y" means: Don't check credentials and enable this
+client.
