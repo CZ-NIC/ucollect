@@ -1,1 +1,14 @@
-include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,count buckets crash badconf sniff bandwidth flow majordomo cfgtest)
+UCOLLECT_PLUGINS:= \
+	count \
+	buckets \
+	crash \
+	badconf \
+	sniff \
+	bandwidth \
+	flow \
+	majordomo \
+	cfgtest \
+	spoof \
+	refused
+
+include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,$(UCOLLECT_PLUGINS))

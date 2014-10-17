@@ -116,6 +116,13 @@ The types are:
   string, which is name of the filter by which it the other commands
   can refer to it.
 `D`:: Remote version of `d`.
+'r':: Local address range ‒ the filter matches if the local address is
+  in given address range (eg. address and netmask). It is encoded as
+  address family (byte having either value of 4 or 6). Then there's
+  the netmask as single byte. The address follows, but only the prefix
+  ‒ only as many bytes as to cover the whole netmask (trailing zero
+  bytes are not sent).
+`R`:: Remote address range ‒ remote version of `r`.
 
 There may be more filter types in future.
 

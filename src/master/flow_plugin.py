@@ -139,6 +139,25 @@ class FilterDifferential(Filter):
 	def __str__(self):
 		return self._code + '(' + self._name + ')'
 
+class FilterRange(Filter):
+	def serialize(self):
+		try:
+			addr = socket.inet_pton(socket.AF_INET, self._addr)
+			v6 = False
+		except Exception:
+			addr = socket.inet_pton(socket.AF_INET6, self._addr)
+			v6 = True
+		return self._code + struct.pack('!BB', 6 if v6 else 4, self._mask) + addr[:(self._mask + 7) / 8]
+
+	def parse(self, code, param):
+		self._code = code
+		([self._addr, self._mask], param) = self.get_values(param)
+		self._mask = int(self._mask)
+		return param
+
+	def __str__(self):
+		return self._code + '(' + self._addr + ',' + str(self._mask) + ')'
+
 filter_index = {
 	'T': Filter,
 	'F': Filter,
@@ -150,7 +169,9 @@ filter_index = {
 	'p': FilterPort,
 	'P': FilterPort,
 	'd': FilterDifferential,
-	'D': FilterDifferential
+	'D': FilterDifferential,
+	'r': FilterRange,
+	'R': FilterRange
 }
 
 def store_flows(client, message, expect_conf_id):

@@ -251,7 +251,7 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 		 * We could do something more clever, but this is simple and works.
 		 * See ticket #3106.
 		 */
-		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=%s,cipher=HIGH:!LOW:!MEDIUM:!SSLv2:!aNULL:!eNULL:!DES:!3DES:!AES128:!CAMELLIA128,compress=auto,method=TLS,pf=ip%d", uplink->remote_name, uplink->service, uplink->cert, uplink->last_ipv6 ? 6 : 4);
+		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=%s,cipher=HIGH:!LOW:!MEDIUM:!SSLv2:!aNULL:!eNULL:!DES:!3DES:!AES128:!CAMELLIA128,method=TLS,pf=ip%d", uplink->remote_name, uplink->service, uplink->cert, uplink->last_ipv6 ? 6 : 4);
 		ulog(LLOG_DEBUG, "Starting socat with %s\n", remote);
 		execlp("socat", "socat", "STDIO", remote, (char *) NULL);
 		die("Exec should never exit but it did: %s\n", strerror(errno));
@@ -431,7 +431,7 @@ static void handle_buffer(struct uplink *uplink) {
 				switch (command) {
 					case 'R': { // Route data to given plugin
 							  uplink->login_failure_count = 0; // If we got data, we know the login was successful
-							  const char *plugin_name = uplink_parse_string(uplink->buffer_pool, &uplink->buffer, &uplink->buffer_size);
+							  const char *plugin_name = uplink_parse_string(temp_pool, &uplink->buffer, &uplink->buffer_size);
 							  /*
 							   * The loop_plugin_send_data contains call to plugin callback.
 							   * Such callback can fail and we would like to recover. That is done

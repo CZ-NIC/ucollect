@@ -32,13 +32,24 @@ close $black_open;
 # Read the IPset rules and extract addresses
 open my $ipsets, '-|', 'wget', 'https://api.turris.cz/firewall/turris-ipsets', '-q', '-O', '-' or die "Couldn't download ip set rules: $!\n";
 my %data;
+my %ranges;
 while (<$ipsets>) {
 	next if /^\s*(#.*|)$/; # Skip comments and empty lines
 	next if /^create /; # Creations of sets are not interesting for us
 	if (/^add\s+\S+\s+(\S+)/) {
-		my ($ip, $port) = ($1, '');
+		my ($ip, $port, $range) = ($1, '', '');
 		($ip, $port) = ($1, "P$3") if $ip =~ /(.*),(udp|tcp):(\d+)/;
-		$data{$port}->{$ip} = 1;
+		($ip, $range) = ($1, $2) if $ip =~ /(.*)\/(\d+)/;
+		if ($ip =~ /:/) {
+			$range = '' if $range == 128;
+		} else {
+			$range = '' if $range == 32;
+		}
+		if (length $range) {
+			$ranges{"$ip,$range"} = 1;
+		} else {
+			$data{$port}->{$ip} = 1;
+		}
 	}
 }
 close $ipsets;
@@ -90,6 +101,14 @@ for my $port (sort keys %data) {
 }
 $filter .= ')';
 
+my $range_filter;
+if (%ranges) {
+	$range_filter = '|(D(addresses),' . join ',', map "R($_)", sort keys %ranges;
+	$range_filter .= ')';
+} else {
+	$range_filter = 'D(addresses)';
+}
+
 my %flattened;
 while (my ($port, $ips) = each %data) {
 	$port =~ s/^P//;
@@ -139,17 +158,18 @@ delete @to_delete{keys %flattened}; # Delete everything that was except the thin
 my %to_add = %flattened;
 delete @to_add{keys %existing}; # Add everything that shall be but didn't exist before
 
-# Check if the filter is different. If not, just keep the old one.
-my ($cur_filter) = $dbh->selectrow_array("SELECT value FROM config WHERE name = 'filter' AND plugin = 'flow'");
-if ($cur_filter eq $filter) {
-	$dbh->rollback;
-	exit;
-}
-$dbh->do("UPDATE config SET value = ? WHERE name = 'filter' AND plugin = 'flow'", undef, $filter);
 my $version = (time / 30) % (2**32); # We won't run it more often than once a minute. Half a minute resolution should be enough to provide security that'll never generate two same versions.
-# TODO: Once we migrate to the new filters completely, drop changing version here. That provokes propagating version to the poor clients, and, while we don't send the whole filter, it produces needless clutter.
-$dbh->do("UPDATE config SET value = ? WHERE name = 'version' AND plugin = 'flow'", undef, $version);
+
 my $mod = $dbh->prepare("INSERT INTO flow_filters (filter, epoch, version, add, address) VALUES ('addresses', ?, ?, ?, ?)");
 $mod->execute($max_epoch, $version, 1, $_) for keys %to_add;
 $mod->execute($max_epoch, $version, 0, $_) for keys %to_delete;
+
+# Check if the filter is different. If not, just keep the old one.
+my ($cur_filter) = $dbh->selectrow_array("SELECT value FROM config WHERE name = 'filter-diff' AND plugin = 'flow'");
+if ($cur_filter eq $range_filter) {
+	$dbh->rollback;
+	exit;
+}
+$dbh->do("UPDATE config SET value = ? WHERE name = 'filter-diff' AND plugin = 'flow'", undef, $range_filter);
+$dbh->do("UPDATE config SET value = ? WHERE name = 'version' AND plugin = 'flow'", undef, $version);
 $dbh->commit;

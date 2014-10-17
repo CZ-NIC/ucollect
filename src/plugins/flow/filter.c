@@ -51,6 +51,8 @@ struct filter {
 	const char *name;
 	uint32_t epoch, version;
 	size_t added, deleted; // Statistics, to know when to re-requested the whole filter config
+	const uint8_t *address, *mask; // For range filters
+	bool v6;
 };
 
 static bool filter_true(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
@@ -129,6 +131,27 @@ static bool filter_differential(struct mem_pool *tmp_pool, const struct filter *
 	uint16_t port_net = htons(packet->ports[endpoint]);
 	memcpy(compound + packet->addr_len, &port_net, sizeof port_net);
 	return trie_lookup(filter->trie, compound, packet->addr_len + sizeof port_net);
+}
+
+static bool filter_range(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
+	enum endpoint endpoint = filter->type->code == 'r' ? local_endpoint(packet->direction) : remote_endpoint(packet->direction);
+	if ((filter->v6 && packet->ip_protocol != 6) || (!filter->v6 && packet->ip_protocol != 4))
+		return false;
+	size_t addr_len = filter->v6 ? 16 : 4;
+	assert(packet->addr_len == addr_len);
+	if (MAX_LOG_LEVEL >= LLOG_DEBUG_VERBOSE)
+		ulog(LLOG_DEBUG_VERBOSE, "Comparing address %s with %s/%s\n", mem_pool_hex(tmp_pool, packet->addresses[endpoint], addr_len), mem_pool_hex(tmp_pool, filter->address, addr_len), mem_pool_hex(tmp_pool, filter->mask, addr_len));
+	// Examine the address in 4-byte blocks
+	const uint32_t *addr = (const uint32_t *)packet->addresses[endpoint];
+	const uint32_t *expected = (const uint32_t *)filter->address;
+	const uint32_t *mask = (const uint32_t *)filter->mask;
+	addr_len /= 4;
+	for (size_t i = 0; i < addr_len; i ++) {
+		uint32_t masked = *(addr + i) & *(mask + i);
+		if (masked != *(expected + i))
+			return false;
+	}
+	return true;
 }
 
 static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size);
@@ -212,6 +235,38 @@ static void parse_differential(struct mem_pool *pool, struct filter *dest, const
 	dest->name = uplink_parse_string(pool, desc, size);
 }
 
+static void parse_range(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
+	// The header is one byte, either 4 or 6 ‒ the address family, then one byte of the netmask. Then there's as many bytes of the address as needed to hold the whole prefix (eg. ceil(netmask/8.0))
+	if (*size < 2)
+		D("Short data to hold address range header for filter %c, need 2 bytes, have only %zu\n", type->code, *size);
+	dest->v6 = (**desc == 6);
+	(*desc) ++;
+	(*size) --;
+	uint8_t netmask = **desc;
+	(*desc) ++;
+	(*size) --;
+	size_t addr_len = dest->v6 ? 16 : 4;
+	size_t prefix_len = (netmask + 7) / 8;
+	if (prefix_len > addr_len)
+		D("Can't have prefix of %hhu biths in an address of length %zu bytes on filter %c\n", netmask, addr_len, type->code);
+	if (prefix_len > *size)
+		D("Not enough data to hold the address prefix on filter %c (need %zu, have %zu)\n", type->code, prefix_len, *size);
+	if (!netmask)
+		D("Empty netmask. I won't pretend being very complex T, I'm %c", type->code);
+	uint8_t *mask = mem_pool_alloc(pool, addr_len), *address = mem_pool_alloc(pool, addr_len);
+	dest->mask = mask;
+	dest->address = address;
+	memcpy(address, *desc, prefix_len);
+	(*desc) += prefix_len;
+	(*size) -= prefix_len;
+	memset(address + prefix_len, 0, addr_len - prefix_len);
+	memset(mask, 0xFF, prefix_len - 1);
+	memset(mask + prefix_len, 0, addr_len - prefix_len);
+	uint8_t middle = 0xFF << ((8 - netmask % 8) % 8);
+	*(mask + prefix_len - 1) = middle;
+	*(address + prefix_len - 1) &= middle;
+}
+
 static const struct filter_type types[] = {
 	{ // "const true"
 		.function = filter_true,
@@ -265,6 +320,16 @@ static const struct filter_type types[] = {
 		.function = filter_differential,
 		.code = 'D',
 		.parser = parse_differential
+	},
+	{ // An address range (for the local address)
+		.function = filter_range,
+		.code = 'r',
+		.parser = parse_range
+	},
+	{ // An address range on the remote end
+		.function = filter_range,
+		.code = 'R',
+		.parser = parse_range
 	}
 };
 

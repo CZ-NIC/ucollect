@@ -3,6 +3,9 @@
 psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
 BEGIN;
 
+DROP TABLE IF EXISTS refused_clients;
+DROP TABLE IF EXISTS refused_addrs;
+DROP TABLE IF EXISTS spoof_counts;
 DROP TABLE IF EXISTS nat_counts;
 DROP TABLE IF EXISTS flow_groups;
 DROP TABLE IF EXISTS flows;
@@ -223,6 +226,7 @@ CREATE TABLE flows (
 	inbound BOOL NOT NULL,
 	tag TEXT NOT NULL,
 	tagged_on TIMESTAMP NOT NULL,
+	seen_start BOOL NOT NULL,
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start <= stop)
 );
@@ -245,6 +249,40 @@ CREATE TABLE nat_counts (
 	total SMALLINT NOT NULL,
 	UNIQUE(from_group, batch),
 	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
+);
+
+CREATE TABLE spoof_counts (
+	from_group INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	reachable SMALLINT NOT NULL,
+	spoofable SMALLINT NOT NULL,
+	UNIQUE(from_group, batch),
+	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
+);
+
+CREATE TABLE refused_clients (
+	client INT NOT NULL,
+	reason CHAR NOT NULL,
+	since TIMESTAMP NOT NULL,
+	until TIMESTAMP NOT NULL,
+	count INT NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
+	CHECK(since < until),
+	UNIQUE(client, reason, since)
+);
+
+CREATE TABLE refused_addrs (
+	addr INET NOT NULL,
+	port INT NOT NULL,
+	reason CHAR NOT NULL,
+	since TIMESTAMP NOT NULL,
+	until TIMESTAMP NOT NULL,
+	conn_count INT NOT NULL,
+	client_count INT NOT NULL,
+	UNIQUE(addr, port, reason, since),
+	CHECK(port < 65536),
+	CHECK(port >= 0),
+	CHECK(client_count <= conn_count)
 );
 
 GRANT INSERT ON anomalies TO archivist;
@@ -290,5 +328,14 @@ GRANT ALL ON flows_id TO archivist;
 GRANT SELECT (batch) ON nat_counts TO archivist;
 GRANT INSERT ON nat_counts TO archivist;
 GRANT DELETE ON nat_counts TO archivist;
+GRANT SELECT (batch) ON spoof_counts TO archivist;
+GRANT DELETE ON spoof_counts TO archivist;
+GRANT INSERT ON spoof_counts TO archivist;
+GRANT INSERT ON refused_addrs TO archivist;
+GRANT INSERT ON refused_clients TO archivist;
+GRANT DELETE ON refused_addrs TO archivist;
+GRANT DELETE ON refused_clients TO archivist;
+GRANT SELECT (since) ON refused_addrs TO archivist;
+GRANT SELECT (since) ON refused_clients TO archivist;
 COMMIT;
 END_SQL
