@@ -1,14 +1,14 @@
-This file documents installation and compilation process of ucollect on clean
+This file documents installation and compilation process of ucollect on a clean
 linux operating system.
 
-In the tutorial there is clean installation of Debian. In the other
-distributions should be names of packages similar.
+We use a clean installation of Debian 7 Wheezy. The names of packages in other
+distributions shoud be similar.
 
-Build options are customized to installation on the developer's station.
+Build options are customized for installation on the developer's station.
 
 Our projects are compiled with flag NO_DOC=1. If you want documentation you
 have to run 'apt-get install asciidoc' command first. Note: 'asciidoc' includes
-latex therefore about 700MB of dependencies.
+latex and about 700MB of dependencies.
 
 Ucollect client
 ===============
@@ -54,7 +54,7 @@ library supports several ways how the chip could be installed. Native I2C
 driver of Linux kernel, some USB sticks and SW emulation of chip features are
 supported.
 
-This tutorial is primary targeted to installation ucollect on the developer's
+This tutorial is primary targeted on installation of ucollect on the developer's
 station so we will use the SW emulation of the chip.
 
 Install some specific libatsha204 dependencies:
@@ -71,7 +71,7 @@ Build and install libtsha204 with emulation layer:
 	make USE_LAYER=USE_LAYER_EMULATION NO_DOC=1 CONFIG_PATH="/etc/atsha204.sw"
 	make install
 
-Note: For another layers you have to own some device with Atmel ATSHA204 crypto
+Note: For other layers you have to own a device with Atmel ATSHA204 crypto
 chip.
 
 Copy configuration file to expected location:
@@ -93,7 +93,7 @@ Ucollect uses our own build system that is included as a git submodule:
 Build:
 	make NO_DOC=1
 
-There is no "install" target in Makefile. You can inspire in ucollect-*
+There is no "install" target in Makefile. You can get inspired in ucollect-*
 packages in our openwrt repository.
 
 Ucollect server
@@ -145,19 +145,19 @@ crypto-chip to authentication. ATSHA204 has 16 key slots and is neccessary to
 pick one. ID of slot is combination of one record in chip's OTP memory and one
 TXT record in specific DNS zone.
 
-Address of TXT DNS record is defined in libatsha204 repository in
+The address of the TXT DNS record is defined in libatsha204 repository in
 src/libatsha204/configuration.h file. You're looking for
 DEFAULT_DNS_RECORD_FIND_KEY constant.
 
 Theoretically, for development purposes, you can use our DNS record. For
-production environment you need zone that is signed with DNSSEC. Libatsha204
+production environment you need a zone that is signed with DNSSEC. Libatsha204
 checks validity of DNS signature and checks if signature exists.
 
 2) SSL certificate
 ------------------
 
 Communication between client and server is naturally encrypted. Identities are
-checked with SSL certificate. Self-signed certificate is sufficient. Generate it
+checked with SSL certificates. Self-signed certificate is sufficient. Generate it
 with command like this one:
 
 openssl req -new -x509 -keyout /etc/ucollect-dev.pem -out /etc/ucollect-dev.pem -days 1825 -nodes -subj "/C=CZ/ST=Prague/L=Prague/O=Ucollect"
