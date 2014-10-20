@@ -203,6 +203,14 @@ static char *addr2str(struct mem_pool *pool, struct sockaddr *addr, socklen_t ad
 	return mem_pool_printf(pool, "[%s]:%s", result, port);
 }
 
+void conn_closed(struct context *context, struct fd_tag *tag) {
+	// TODO: Log some event to the server? Is it interesting?
+	loop_plugin_unregister_fd(context, tag->fd);
+	if (close(tag->fd) == -1)
+		ulog(LLOG_ERROR, "Failed to close FD %d of connection %p/%p of fake server %s: %s\n", tag->fd, (void *)tag->conn, (void *)tag, tag->desc->name, strerror(errno));
+	tag->fd = 0;
+}
+
 static void activity(struct fd_tag *tag) {
 	// TODO: Track activity
 }
@@ -228,6 +236,7 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			if (new == -1) {
 				ulog(LLOG_ERROR, "Failed to accept connection on FD %d for fake server %s: %s\n", fd, t->desc->name, strerror(errno));
 			}
+			loop_plugin_register_fd(context, new, empty);
 			ulog(LLOG_DEBUG, "Accepted connecion %d from %s on FD %d for fake server %s\n", new, addr2str(context->temp_pool, addr_p, empty->addr_len), fd, t->desc->name);
 			empty->fd = new;
 			if (empty->desc->conn_set_fd_cb)
