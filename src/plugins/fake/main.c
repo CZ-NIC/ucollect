@@ -151,6 +151,13 @@ static bool config(struct context *context) {
 					ulog(LLOG_ERROR, "Error closing fake server %s socket %d after unsuccessful bind to port %u: %s\n", t->desc->name, sock, (unsigned)port, strerror(errno));
 				return false;
 			}
+			if (listen(sock, 20) == -1) {
+				ulog(LLOG_ERROR, "Could't listen on socket %d of fake server %s: %s\n", sock, t->desc->name, strerror(errno));
+				loop_plugin_unregister_fd(context, sock);
+				if (close(sock) == -1)
+					ulog(LLOG_ERROR, "Error closing fake server %s socket %d after unsuccessful listen: %s\n", t->desc->name, sock, strerror(errno));
+				return false;
+			}
 			t->candidate = sock;
 		} // Otherwise, the port is different than before, but 0 ‒ means desable this service ‒ nothing allocated
 	}
