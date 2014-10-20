@@ -36,3 +36,10 @@ struct conn_data *telnet_conn_alloc(struct context *context, struct fd_tag *tag,
 	memset(result, 0, sizeof *result);
 	return result;
 }
+
+void telnet_conn_set_fd(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn, int fd) {
+	(void)context;
+	(void)server;
+	// TODO: Reset the internal data structures in conn once there's something inside
+	ulog(LLOG_DEBUG, "Accepted to telnet connection %p on tag %p, fd %d\n", (void *)conn, (void *)tag, fd);
+}
