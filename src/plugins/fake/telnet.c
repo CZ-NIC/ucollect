@@ -17,30 +17,22 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include "server.h"
-
 #include "telnet.h"
 
-#include <stdlib.h>
-#include <sys/socket.h>
+#include "../../core/mem_pool.h"
+#include "../../core/util.h"
 
-#define SECOND (1000)
+#include <string.h>
 
-const struct server_desc server_descs_intern[] = {
-	{
-		.name = "telnet",
-		.sock_type = SOCK_STREAM,
-		.default_port = 23,
-		// No server-scope data, so skip server_alloc and server_set_fd
-		.conn_alloc_cb = telnet_conn_alloc,
-
-		.max_conn = 20,
-		.conn_timeout = 30 * SECOND
-		// TODO: The internals
-	},
-	{
-		.name = NULL
-	}
+struct conn_data {
+	int dummy; // Just so it's not empty. It'll be replaced by real data later on.
 };
 
-const struct server_desc *server_descs = server_descs_intern;
+struct conn_data *telnet_conn_alloc(struct context *context, struct fd_tag *tag, struct mem_pool *pool, struct server_data *server) {
+	(void)context;
+	(void)server;
+	struct conn_data *result = mem_pool_alloc(pool, sizeof *result);
+	ulog(LLOG_DEBUG, "Allocated telnet connection %p for tag %p\n", (void *)result, (void *)tag);
+	memset(result, 0, sizeof *result);
+	return result;
+}
