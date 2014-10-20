@@ -34,7 +34,7 @@ const struct server_desc server_descs_intern[] = {
 		// No server-scope data, so skip server_alloc and server_set_fd
 		.conn_alloc_cb = telnet_conn_alloc,
 		.conn_set_fd_cb = telnet_conn_set_fd,
-
+		.server_ready_cb = telnet_data,
 		.max_conn = 20,
 		.conn_timeout = 30 * SECOND
 		// TODO: The internals

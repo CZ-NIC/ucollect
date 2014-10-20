@@ -29,5 +29,6 @@ struct fd_tag;
 
 struct conn_data *telnet_conn_alloc(struct context *context, struct fd_tag *tag, struct mem_pool *pool, struct server_data *server);
 void telnet_conn_set_fd(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn, int fd);
+void telnet_data(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn);
 
 #endif
