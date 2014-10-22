@@ -52,22 +52,20 @@ struct user_data {
 	struct fd_tag *tags;
 	size_t *tag_indices;
 	size_t server_count, tag_count;
-	struct mem_pool *pool;
 };
 
 static void initialize(struct context *context) {
 	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
-	*u = (struct user_data) {
-		.pool = loop_pool_create(context->loop, context, "Fake pool")
-	};
 	size_t server_count = 0, tag_count = 0;
 	for (const struct server_desc *desc = server_descs; desc->name; desc++) {
 		server_count ++;
 		tag_count += 1 + desc->max_conn;
 	}
-	u->tags = mem_pool_alloc(context->permanent_pool, tag_count * sizeof *u->tags);
+	*u = (struct user_data) {
+		.tags = mem_pool_alloc(context->permanent_pool, tag_count * sizeof *u->tags),
+		.tag_indices = mem_pool_alloc(context->permanent_pool, (server_count + 1) * sizeof *u->tag_indices)
+	};
 	memset(u->tags, 0, tag_count * sizeof * u->tags);
-	u->tag_indices = mem_pool_alloc(context->permanent_pool, (server_count + 1) * sizeof *u->tag_indices);
 	size_t pos = 0, i = 0;
 	for (const struct server_desc *desc = server_descs; desc->name; desc++) {
 		u->tags[pos].desc = desc;
@@ -75,7 +73,7 @@ static void initialize(struct context *context) {
 		u->tags[pos].ignore_inactivity = true;
 		u->tag_indices[i ++] = pos;
 		if (desc->server_alloc_cb)
-			u->tags[pos].server = desc->server_alloc_cb(context, &u->tags[pos], u->pool, desc);
+			u->tags[pos].server = desc->server_alloc_cb(context, &u->tags[pos], context->permanent_pool, desc);
 		if (desc->max_conn) {
 			for (size_t j = pos; j < pos + 1 + desc->max_conn; j ++) {
 				// The description and server are shared between all the connections
@@ -84,11 +82,11 @@ static void initialize(struct context *context) {
 				u->tags[j].server = u->tags[pos].server;
 				// But a connection structure is for each of them
 				if (desc->conn_alloc_cb)
-					u->tags[j].conn = desc->conn_alloc_cb(context, &u->tags[j], u->pool, u->tags[pos].server);
+					u->tags[j].conn = desc->conn_alloc_cb(context, &u->tags[j], context->permanent_pool, u->tags[pos].server);
 			}
 			u->tags[pos].accept_here = true;
 		} else if (desc->conn_alloc_cb)
-			u->tags[pos].conn = desc->conn_alloc_cb(context, &u->tags[pos], u->pool, u->tags[pos].server);
+			u->tags[pos].conn = desc->conn_alloc_cb(context, &u->tags[pos], context->permanent_pool, u->tags[pos].server);
 		pos += 1 + desc->max_conn;
 	}
 	// Bumper
