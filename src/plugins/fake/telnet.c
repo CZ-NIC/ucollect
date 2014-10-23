@@ -23,6 +23,7 @@
 #include "../../core/mem_pool.h"
 #include "../../core/util.h"
 #include "../../core/context.h"
+#include "../../core/loop.h"
 
 #include <string.h>
 #include <stdbool.h>
@@ -61,8 +62,11 @@ enum command {
 
 enum position {
 	WANT_LOGIN,
-	WANT_PASSWORD
+	WANT_PASSWORD,
+	WAIT_DENIAL
 };
+
+const size_t denial_timeout = 1000;
 
 struct conn_data {
 	int fd;
@@ -70,6 +74,8 @@ struct conn_data {
 	enum command neg_verb; // What was the last verb used for option negotiation
 	enum position position; // Global state
 	bool protocol_error; // Was there error in the protocol, causing it to close?
+	size_t denial_timeout;
+	struct fd_tag *tag;
 };
 
 struct conn_data *telnet_conn_alloc(struct context *context, struct fd_tag *tag, struct mem_pool *pool, struct server_data *server) {
@@ -107,6 +113,12 @@ static bool ask_for(struct context *context, struct conn_data *conn, const char 
 	return send_all(conn, msg, len + 4);
 }
 
+static void do_close(struct context *context, struct conn_data *conn, bool error) {
+	if (conn->position == WAIT_DENIAL)
+		loop_timeout_cancel(context->loop, conn->denial_timeout);
+	conn_closed(context, conn->tag, error);
+}
+
 void telnet_conn_set_fd(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn, int fd) {
 	(void)context;
 	(void)server;
@@ -116,7 +128,8 @@ void telnet_conn_set_fd(struct context *context, struct fd_tag *tag, struct serv
 	conn->fd = fd;
 	ulog(LLOG_DEBUG, "Accepted to telnet connection %p on tag %p, fd %d\n", (void *)conn, (void *)tag, fd);
 	if (!ask_for(context, conn, "login"))
-		conn_closed(context, tag, true);
+		do_close(context, conn, true);
+	conn->tag = tag;
 }
 
 static bool protocol_error(struct context *context, struct conn_data *conn, const char *message) {
@@ -133,17 +146,24 @@ static bool protocol_error(struct context *context, struct conn_data *conn, cons
 	return false;
 }
 
+static void send_denial(struct context *context, void *data, size_t id) {
+	(void)id;
+	struct conn_data *conn = data;
+	conn->position = WANT_LOGIN;
+	const char *wrong = "Login incorrect\n";
+	if (!send_all(conn, (const uint8_t *)wrong, strlen(wrong)) || !ask_for(context, conn, "login"))
+		do_close(context, conn, true);
+}
+
 static bool process_line(struct context *context, struct fd_tag *tag, struct conn_data *conn) {
+	(void)tag;
 	if (conn->position == WANT_LOGIN) {
 		if (!ask_for(context, conn, "password"))
 			return false;
 		conn->position = WANT_PASSWORD;
 	} else {
-		// TODO: Implement a delay
-		const char *wrong = "Login incorrect\n";
-		if (!send_all(conn, (const uint8_t *)wrong, strlen(wrong)) || !ask_for(context, conn, "login"))
-			return false;
-		conn->position = WANT_LOGIN;
+		conn->position = WAIT_DENIAL;
+		conn->denial_timeout = loop_timeout_add(context->loop, denial_timeout, context, conn, send_denial);
 		// TODO: Count the attempt
 	}
 	return true;
@@ -244,7 +264,7 @@ void telnet_data(struct context *context, struct fd_tag *tag, struct server_data
 			// No break - fall through
 		case 0: // Close
 			ulog(LLOG_DEBUG, "Closed telnet connection %p/%p/%d\n", (void *)conn, (void *)tag, conn->fd);
-			conn_closed(context, tag, error);
+			do_close(context, conn, error);
 			return;
 		default:
 			break;
@@ -254,7 +274,7 @@ void telnet_data(struct context *context, struct fd_tag *tag, struct server_data
 	const uint8_t *data = buffer;
 	for (ssize_t i = 0; i < amount; i ++)
 		if (!char_handle(context, tag, conn, data[i])) {
-			conn_closed(context, tag, conn->protocol_error);
+			do_close(context, conn, conn->protocol_error);
 			return;
 		}
 }
