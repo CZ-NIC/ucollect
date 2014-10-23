@@ -163,7 +163,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 			cwindow->timestamp = delayed_timestamp(current_timestamp(), cwindow->len, cwindow->cnt);
 			memset(cwindow->frames, 0, cwindow->cnt * sizeof(struct frame));
 			cwindow->current_frame = 0;
-			ulog(LLOG_DEBUG_VERBOSE, "Dropping window - time changed?\n");
+			ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: Dropping window - time changed?\n");
 		}
 
 		// "Rewind tape" to matching point
