@@ -24,6 +24,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <errno.h>
+#include <assert.h>
 
 #include "../../core/plugin.h"
 #include "../../core/context.h"
@@ -34,6 +35,8 @@
 #include "../../core/loop.h"
 
 #define WINDOW_GROUPS_CNT 5
+#define STATS_BUCKETS_CNT (20+8+9+1)
+#define STATS_FROM_WINDOW 2000000
 
 // Settings for communication protocol
 #define PROTO_ITEMS_PER_WINDOW 3
@@ -60,8 +63,16 @@ struct window {
 	struct frame *frames;
 };
 
+struct bucket {
+	uint64_t key;
+	uint64_t time; // In the same value as window.len ==> us
+	uint64_t bytes;
+};
+
 struct user_data {
 	struct window windows[WINDOW_GROUPS_CNT];
+	struct bucket in_buckets[STATS_BUCKETS_CNT];
+	struct bucket out_buckets[STATS_BUCKETS_CNT];
 	uint64_t timestamp;
 	size_t dbg_dump_timeout;
 };
@@ -100,6 +111,44 @@ static struct window init_window(struct mem_pool *pool, uint64_t length, size_t 
 	};
 }
 
+static inline uint64_t bytes_to_mbits(uint64_t bytes) {
+	return bytes * 8 / 1024 / 1024;
+}
+
+static inline uint64_t mbits_to_bytes(uint64_t mbits) {
+	return mbits * 1024 * 1024 / 8;
+}
+
+// Compute key of bucket and init values to 0
+static struct bucket init_bucket(int mega_bits_per_second) {
+	return (struct bucket) {
+		.key = mbits_to_bytes(mega_bits_per_second)
+	};
+}
+
+void update_buckets(struct context *context, uint64_t in, uint64_t out, uint64_t winlen) {
+	struct user_data *d = context->user_data;
+	// Do not enable statistics for windows less than 1 second
+	assert(winlen >= SEC);
+	char seconds = winlen / SEC;
+	uint64_t in_bucket = in / seconds;
+	uint64_t out_bucket = out / seconds;
+	for (size_t i = 1; i < STATS_BUCKETS_CNT; i++) {
+		if (d->in_buckets[i-1].key <= in_bucket && in_bucket <= d->in_buckets[i].key) {
+			d->in_buckets[i].time += seconds;
+			d->in_buckets[i].bytes += in;
+			break;
+		}
+	}
+	for (size_t i = 1; i < STATS_BUCKETS_CNT; i++) {
+		if (d->out_buckets[i-1].key <= out_bucket && out_bucket <= d->out_buckets[i].key) {
+			d->out_buckets[i].time += seconds;
+			d->out_buckets[i].bytes += out;
+			break;
+		}
+	}
+}
+
 void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
 
@@ -134,6 +183,15 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 			}
 			if (cwindow->frames[cwindow->current_frame].out_sum > cwindow->dbg_dump_out_max) {
 				cwindow->dbg_dump_out_max = cwindow->frames[cwindow->current_frame].out_sum;
+			}
+
+			// Compute statistics
+			if (cwindow->len == STATS_FROM_WINDOW) {
+				update_buckets(context,
+					cwindow->frames[cwindow->current_frame].in_sum,
+					cwindow->frames[cwindow->current_frame].out_sum,
+					cwindow->len
+				);
 			}
 
 			// Move current frame pointer and update timestamp!!
@@ -265,6 +323,24 @@ void dbg_dump(struct context *context, void *data, size_t id) {
 		);
 	}
 
+	//Report buckets
+	fprintf(ofile,
+		"\n%6s%20s%20s%20s%20s%20s\n",
+		"type", "bucket (Mbps)", "download (time)", "download (MB)", "upload (time)", "upload (MB)"
+	);
+
+	for (size_t i = 0; i < STATS_BUCKETS_CNT; i++) {
+		fprintf(ofile,
+			"%6s%20" PRIu64 "%20" PRIu64 "%20.3f%20" PRIu64 "%20.3f\n",
+			"bucket",
+			bytes_to_mbits(d->in_buckets[i].key),
+			d->in_buckets[i].time,
+			d->in_buckets[i].bytes/(float) 1024 /  1024,
+			d->out_buckets[i].time,
+			d->out_buckets[i].bytes/(float) 1024 / 1024
+		);
+	}
+
 	fclose(ofile);
 
 	if (rename(DBG_DUMP_PREP_FILE, DBG_DUMP_FILE) != 0) {
@@ -292,12 +368,29 @@ void init(struct context *context) {
 
 	// Windows settings
 	// Parameter count should be number that windows_count*window_length is at least 1 second
-	size_t i = 0;
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 500000, 4, common_start_timestamp);
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 1000000, 1, common_start_timestamp);
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 2000000, 1, common_start_timestamp);
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 5000000, 1, common_start_timestamp);
-	context->user_data->windows[i++] = init_window(context->permanent_pool, 10000000, 1, common_start_timestamp);
+	size_t init = 0;
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 500000, 4, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 1000000, 1, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 2000000, 1, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 5000000, 1, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 10000000, 1, common_start_timestamp);
+
+	init = 0;
+	for (size_t i = 0; i <= 20; i++) {
+		context->user_data->in_buckets[init] = init_bucket(i);
+		context->user_data->out_buckets[init] = init_bucket(i);
+		init++;
+	}
+	for (size_t i = 30; i <= 100; i += 10) {
+		context->user_data->in_buckets[init] = init_bucket(i);
+		context->user_data->out_buckets[init] = init_bucket(i);
+		init++;
+	}
+	for (size_t i = 200; i <= 1000; i += 100) {
+		context->user_data->in_buckets[init] = init_bucket(i);
+		context->user_data->out_buckets[init] = init_bucket(i);
+		init++;
+	}
 }
 
 #ifdef STATIC
