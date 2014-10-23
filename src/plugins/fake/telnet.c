@@ -191,8 +191,8 @@ static bool cmd_handle(struct context *context, struct conn_data *conn, uint8_t 
 		case CMD_BREAK: // Break - just strange character
 		case CMD_AO: // Abort output - not implemented
 		case CMD_AYT: // Are You There - not implemented
-		case CMD_EC: // Erase character - TODO: Implement when we store the password and name
-		case CMD_EL: // Erase Line - TODO: Implement
+		case CMD_EC: // Erase character - ignored
+		case CMD_EL: // Erase Line - ignored
 		case CMD_GA: // Go Ahead - not interesting to us
 			conn->expect = EXPECT_NONE;
 			return true;
