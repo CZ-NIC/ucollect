@@ -47,6 +47,8 @@ struct fd_tag {
 	size_t server_index;
 	struct sockaddr_in6 addr;
 	socklen_t addr_len;
+	size_t inactivity_timeout;
+	bool inactivity_timeout_active;
 };
 
 struct user_data {
@@ -205,6 +207,10 @@ static char *addr2str(struct mem_pool *pool, struct sockaddr *addr, socklen_t ad
 void conn_closed(struct context *context, struct fd_tag *tag, bool error) {
 	// TODO: Log some event to the server? Is it interesting?
 	loop_plugin_unregister_fd(context, tag->fd);
+	if (tag->inactivity_timeout_active) {
+		tag->inactivity_timeout_active = false;
+		loop_timeout_cancel(context->loop, tag->inactivity_timeout);
+	}
 	if (close(tag->fd) == -1)
 		ulog(LLOG_ERROR, "Failed to close FD %d of connection %p/%p of fake server %s: %s\n", tag->fd, (void *)tag->conn, (void *)tag, tag->desc->name, strerror(errno));
 	tag->fd = 0;
@@ -214,8 +220,21 @@ void conn_log_attempt(struct context *context, struct fd_tag *tag) {
 	// TODO
 }
 
-static void activity(struct fd_tag *tag) {
-	// TODO: Track activity
+static void conn_inactive(struct context *context, void *data, size_t id) {
+	struct fd_tag *tag = data;
+	assert(tag->inactivity_timeout == id);
+	ulog(LLOG_DEBUG, "Connection %p/%p with FD %d of fake server %s timed out after %u ms\n", (void *)tag->conn, (void *)tag, tag->fd, tag->desc->name, tag->desc->conn_timeout);
+	tag->inactivity_timeout_active = false; // It fired, no longer active.
+	conn_closed(context, tag, false);
+}
+
+static void activity(struct context *context, struct fd_tag *tag) {
+	if (tag->ignore_inactivity)
+		return;
+	if (tag->inactivity_timeout_active)
+		loop_timeout_cancel(context->loop, tag->inactivity_timeout);
+	tag->inactivity_timeout = loop_timeout_add(context->loop, tag->desc->conn_timeout, context, tag, conn_inactive);
+	tag->inactivity_timeout_active = true;
 }
 
 static void fd_ready(struct context *context, int fd, void *tag) {
@@ -244,7 +263,7 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			empty->fd = new;
 			if (empty->desc->conn_set_fd_cb)
 				empty->desc->conn_set_fd_cb(context, empty, empty->server, empty->conn, new);
-			activity(empty);
+			activity(context, empty);
 		} else {
 			// No place to put it into.
 			struct sockaddr_in6 addr;
@@ -265,7 +284,7 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 	} else {
 		if (t->desc->server_ready_cb)
 			t->desc->server_ready_cb(context, t, t->server, t->conn);
-		activity(t);
+		activity(context, t);
 	}
 }
 
