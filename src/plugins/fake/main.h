@@ -25,6 +25,16 @@
 struct context *context;
 struct fd_tag *tag;
 
+/*
+ * Report that the connection was closed by either side.
+ *
+ * The error indicates if it was in some error (no matter what) or
+ * if it was clean shutdown.
+ */
 void conn_closed(struct context *context, struct fd_tag *tag, bool error);
+/*
+ * Log that the other side attemted connection.
+ */
+void conn_log_attempt(struct context *context, struct fd_tag *tag);
 
 #endif

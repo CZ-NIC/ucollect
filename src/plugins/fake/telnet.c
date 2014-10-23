@@ -67,6 +67,7 @@ enum position {
 };
 
 const size_t denial_timeout = 1000;
+const size_t max_attempts = 3;
 
 struct conn_data {
 	int fd;
@@ -75,6 +76,7 @@ struct conn_data {
 	enum position position; // Global state
 	bool protocol_error; // Was there error in the protocol, causing it to close?
 	size_t denial_timeout;
+	size_t attempts; // Number of attempts the other side tried
 	struct fd_tag *tag;
 };
 
@@ -130,6 +132,7 @@ void telnet_conn_set_fd(struct context *context, struct fd_tag *tag, struct serv
 	if (!ask_for(context, conn, "login"))
 		do_close(context, conn, true);
 	conn->tag = tag;
+	conn->attempts = 0;
 }
 
 static bool protocol_error(struct context *context, struct conn_data *conn, const char *message) {
@@ -151,8 +154,18 @@ static void send_denial(struct context *context, void *data, size_t id) {
 	struct conn_data *conn = data;
 	conn->position = WANT_LOGIN;
 	const char *wrong = "Login incorrect\n";
-	if (!send_all(conn, (const uint8_t *)wrong, strlen(wrong)) || !ask_for(context, conn, "login"))
+	if (!send_all(conn, (const uint8_t *)wrong, strlen(wrong))) {
 		do_close(context, conn, true);
+		return;
+	}
+	if (++ conn->attempts == max_attempts) {
+		do_close(context, conn, false);
+		return;
+	}
+	if (!ask_for(context, conn, "login")) {
+		do_close(context, conn, true);
+		return;
+	}
 }
 
 static bool process_line(struct context *context, struct fd_tag *tag, struct conn_data *conn) {
@@ -164,7 +177,7 @@ static bool process_line(struct context *context, struct fd_tag *tag, struct con
 	} else {
 		conn->position = WAIT_DENIAL;
 		conn->denial_timeout = loop_timeout_add(context->loop, denial_timeout, context, conn, send_denial);
-		// TODO: Count the attempt
+		conn_log_attempt(context, tag);
 	}
 	return true;
 }

@@ -18,6 +18,7 @@
 */
 
 #include "server.h"
+#include "main.h"
 
 #include "../../core/plugin.h"
 #include "../../core/context.h"
@@ -201,12 +202,16 @@ static char *addr2str(struct mem_pool *pool, struct sockaddr *addr, socklen_t ad
 	return mem_pool_printf(pool, "[%s]:%s", result, port);
 }
 
-void conn_closed(struct context *context, struct fd_tag *tag) {
+void conn_closed(struct context *context, struct fd_tag *tag, bool error) {
 	// TODO: Log some event to the server? Is it interesting?
 	loop_plugin_unregister_fd(context, tag->fd);
 	if (close(tag->fd) == -1)
 		ulog(LLOG_ERROR, "Failed to close FD %d of connection %p/%p of fake server %s: %s\n", tag->fd, (void *)tag->conn, (void *)tag, tag->desc->name, strerror(errno));
 	tag->fd = 0;
+}
+
+void conn_log_attempt(struct context *context, struct fd_tag *tag) {
+	// TODO
 }
 
 static void activity(struct fd_tag *tag) {
