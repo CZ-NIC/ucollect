@@ -206,11 +206,11 @@ static char *addr2str(struct mem_pool *pool, struct sockaddr *addr, socklen_t ad
 
 void conn_closed(struct context *context, struct fd_tag *tag, bool error) {
 	// TODO: Log some event to the server? Is it interesting?
-	loop_plugin_unregister_fd(context, tag->fd);
 	if (tag->inactivity_timeout_active) {
 		tag->inactivity_timeout_active = false;
 		loop_timeout_cancel(context->loop, tag->inactivity_timeout);
 	}
+	loop_plugin_unregister_fd(context, tag->fd);
 	if (close(tag->fd) == -1)
 		ulog(LLOG_ERROR, "Failed to close FD %d of connection %p/%p of fake server %s: %s\n", tag->fd, (void *)tag->conn, (void *)tag, tag->desc->name, strerror(errno));
 	tag->fd = 0;
