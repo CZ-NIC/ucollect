@@ -166,10 +166,8 @@ $mod->execute($max_epoch, $version, 0, $_) for keys %to_delete;
 
 # Check if the filter is different. If not, just keep the old one.
 my ($cur_filter) = $dbh->selectrow_array("SELECT value FROM config WHERE name = 'filter-diff' AND plugin = 'flow'");
-if ($cur_filter eq $range_filter) {
-	$dbh->rollback;
-	exit;
+if ($cur_filter ne $range_filter) {
+	$dbh->do("UPDATE config SET value = ? WHERE name = 'filter-diff' AND plugin = 'flow'", undef, $range_filter);
+	$dbh->do("UPDATE config SET value = ? WHERE name = 'version' AND plugin = 'flow'", undef, $version);
 }
-$dbh->do("UPDATE config SET value = ? WHERE name = 'filter-diff' AND plugin = 'flow'", undef, $range_filter);
-$dbh->do("UPDATE config SET value = ? WHERE name = 'version' AND plugin = 'flow'", undef, $version);
 $dbh->commit;
