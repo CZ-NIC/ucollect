@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS counts;
 DROP TABLE IF EXISTS count_types;
 DROP TABLE IF EXISTS count_snapshots;
 DROP TABLE IF EXISTS bandwidth;
+DROP TABLE IF EXISTS bandwidth_stats;
 DROP TABLE IF EXISTS activities;
 DROP TABLE IF EXISTS activity_types;
 DROP TABLE IF EXISTS anomalies;
@@ -129,6 +130,17 @@ CREATE TABLE bandwidth (
 	out_max BIGINT NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
 	PRIMARY KEY (timestamp, client, win_len)
+);
+CREATE TABLE bandwidth_stats (
+	timestamp TIMESTAMP NOT NULL,
+	client INT NOT NULL,
+	bucket INT NOT NULL,
+	in_time INT NOT NULL,
+	in_bytes INT NOT NULL,
+	out_time INT NOT NULL,
+	out_bytes INT NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
+	PRIMARY KEY (timestamp, client, bucket)
 );
 CREATE TABLE capture_stats (
 	snapshot BIGINT NOT NULL,
@@ -322,6 +334,7 @@ GRANT SELECT ON count_types TO $DBUPDATER;
 GRANT INSERT ON count_snapshots TO $DBUPDATER;
 GRANT SELECT ON count_snapshots TO $DBUPDATER;
 GRANT INSERT ON bandwidth TO $DBUPDATER;
+GRANT INSERT ON bandwidth_stats TO $DBUPDATER;
 GRANT SELECT ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT UPDATE ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT INSERT ON counts TO $DBUPDATER;
