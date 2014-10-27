@@ -30,6 +30,7 @@ logger = logging.getLogger(name='bandwidth')
 
 # Count of items that are send for one window
 PROTO_ITEMS_PER_WINDOW = 3
+PROTO_ITEMS_PER_BUCKET = 5
 
 class Window:
 	"""
@@ -40,6 +41,14 @@ class Window:
 		self.in_max = in_max
 		self.out_max = out_max
 
+class Bucket:
+	def __init__(self, bucket, in_time, in_bytes, out_time, out_bytes):
+		self.bucket = bucket
+		self.in_time = in_time
+		self.in_bytes = in_bytes
+		self.out_time = out_time
+		self.out_bytes = out_bytes
+
 class ClientData:
 	"""
 	Class that stores all windows of client
@@ -47,10 +56,15 @@ class ClientData:
 	def __init__(self):
 		self.cnt = 0
 		self.windows = {}
+		self.buckets = {}
 
 	def add_window(self, window_length, in_max, out_max):
 		self.cnt += 1
 		self.windows[window_length] = Window(window_length, in_max, out_max)
+
+	def add_bucket(self, bucket, in_time, in_bytes, out_time, out_bytes):
+		self.cnt += 1
+		self.buckets[bucket] = Bucket(bucket, in_time, in_bytes, out_time, out_bytes)
 
 def store_bandwidth(data):
 	logger.info('Storing bandwidth snapshot')
@@ -62,6 +76,11 @@ def store_bandwidth(data):
 		for client, cldata in data.items():
 			for window in cldata.windows.itervalues():
 				t.execute("INSERT INTO bandwidth (client, timestamp, win_len, in_max, out_max) SELECT clients.id AS client, %s, %s, %s, %s FROM clients WHERE name = %s;", (now, window.length, window.in_max, window.out_max, client))
+
+		for client, cldata in data.items():
+			for bucket in cldata.buckets.itervalues():
+				t.execute("INSERT INTO bandwidth_stats (client, timestamp, bucket, in_time, in_bytes, out_time, out_bytes) SELECT clients.id AS client, %s, %s, %s, %s, %s, %s FROM clients WHERE name = %s;",
+				(now, bucket.bucket, bucket.in_time, bucket.in_bytes, bucket.out_time, bucket.out_bytes, client))
 
 class BandwidthPlugin(plugin.Plugin):
 	"""
@@ -119,21 +138,26 @@ class BandwidthPlugin(plugin.Plugin):
 
 		# Extract timestamp from message and skip it
 		timestamp = data[0]
-		int_count -= 1
-		data = data[1:]
-
 		if timestamp < self.__last:
 			logger.info("Data of bandwidth snapshot on %s too old, ignoring (%s vs. %s)", client, timestamp, self.__last)
 			return
 
+		win_cnt = data[1]
+		buckets_cnt_pos = 2 + PROTO_ITEMS_PER_WINDOW * win_cnt
+		data_windows = data[2:buckets_cnt_pos]
+		buckets_cnt = data[buckets_cnt_pos]
+		data_buckets = data[(buckets_cnt_pos+1):]
+
 		# Get data from message
-		windows = int_count / PROTO_ITEMS_PER_WINDOW
-		for i in range(0, windows):
-			self.__data[client].add_window(data[i*PROTO_ITEMS_PER_WINDOW], data[i*PROTO_ITEMS_PER_WINDOW+1], data[i*PROTO_ITEMS_PER_WINDOW+2])
+		for i in range(0, win_cnt):
+			self.__data[client].add_window(data_windows[i*PROTO_ITEMS_PER_WINDOW], data_windows[i*PROTO_ITEMS_PER_WINDOW+1], data_windows[i*PROTO_ITEMS_PER_WINDOW+2])
+
+		for i in range(0, buckets_cnt):
+			self.__data[client].add_bucket(data_buckets[i*PROTO_ITEMS_PER_BUCKET], data_buckets[i*PROTO_ITEMS_PER_BUCKET+1], data_buckets[i*PROTO_ITEMS_PER_BUCKET+2],
+				data_buckets[i*PROTO_ITEMS_PER_BUCKET+3], data_buckets[i*PROTO_ITEMS_PER_BUCKET+4])
 
 		# Log client's activity
 		activity.log_activity(client, "bandwidth")
-
 
 	def client_connected(self, client):
 		"""
