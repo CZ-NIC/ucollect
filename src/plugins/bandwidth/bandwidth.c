@@ -40,6 +40,7 @@
 
 // Settings for communication protocol
 #define PROTO_ITEMS_PER_WINDOW 3
+#define PROTO_ITEMS_PER_BUCKET 5
 
 // Settings for debug dumps
 #define DBG_DUMP_INTERVAL 3000 //in ms
@@ -234,6 +235,13 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 		}
 	}
 
+	size_t non_zero_buckets = 0;
+	for (size_t i = 0; i < STATS_BUCKETS_CNT; i++) {
+		if (d->in_buckets[i].time != 0 || d->out_buckets[i].time != 0) {
+			non_zero_buckets++;
+		}
+	}
+
 	/*
 		Prepare message.
 		Message format is:
@@ -242,18 +250,44 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			- window length
 			- in_max
 			- out_max
+		- count of non-empty buckets
+		- for every non-empty bucket
+			- bucket type
+			- in time spend
+			- in bytes transfered
+			- out time spend
+			- out bytes transfered
 	*/
 	uint64_t *msg;
-	size_t msg_size = (PROTO_ITEMS_PER_WINDOW * WINDOW_GROUPS_CNT + 1) * sizeof *msg;
+	size_t msg_size = (
+		// + 1 for timestamp
+		// + 1 for windows count
+		PROTO_ITEMS_PER_WINDOW * WINDOW_GROUPS_CNT + 1 + 1 +
+		// + 1 for non-zero buckets count
+		PROTO_ITEMS_PER_BUCKET * non_zero_buckets + 1) *
+		sizeof *msg;
 	msg = mem_pool_alloc(context->temp_pool, msg_size);
 
 	size_t fill = 0;
 	msg[fill++] = htobe64(d->timestamp);
+	msg[fill++] = htobe64(WINDOW_GROUPS_CNT);
 	ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: Sending timestamp %" PRIu64 "\n", d->timestamp);
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
 		msg[fill++] = htobe64(d->windows[window].len);
 		msg[fill++] = htobe64(d->windows[window].in_max);
 		msg[fill++] = htobe64(d->windows[window].out_max);
+	}
+
+	msg[fill++] = htobe64(non_zero_buckets);
+
+	for (size_t bucket = 0; bucket < STATS_BUCKETS_CNT; bucket++) {
+		if (d->in_buckets[bucket].time != 0 || d->out_buckets[bucket].time != 0) {
+			msg[fill++] = htobe64(bytes_to_mbits(d->in_buckets[bucket].key));
+			msg[fill++] = htobe64(d->in_buckets[bucket].time);
+			msg[fill++] = htobe64(d->in_buckets[bucket].bytes);
+			msg[fill++] = htobe64(d->out_buckets[bucket].time);
+			msg[fill++] = htobe64(d->out_buckets[bucket].bytes);
+		}
 	}
 
 	// Send message. Don't check return code. Server ignores old data anyway.
@@ -272,6 +306,12 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 		cwindow->out_max = 0;
 	}
 
+	for (size_t bucket = 0; bucket < STATS_BUCKETS_CNT; bucket++) {
+		d->in_buckets[bucket].time = 0;
+		d->in_buckets[bucket].bytes = 0;
+		d->out_buckets[bucket].time = 0;
+		d->out_buckets[bucket].bytes = 0;
+	}
 }
 
 void dbg_dump(struct context *context, void *data, size_t id) {
@@ -322,7 +362,7 @@ void dbg_dump(struct context *context, void *data, size_t id) {
 	//Report buckets
 	fprintf(ofile,
 		"\n%6s%20s%20s%20s%20s%20s\n",
-		"type", "bucket (Mbps)", "download (time)", "download (MB)", "upload (time)", "upload (MB)"
+		"type", "bucket (Mbps)", "download time (s)", "download (MB)", "upload time (s)", "upload (MB)"
 	);
 
 	for (size_t i = 0; i < STATS_BUCKETS_CNT; i++) {
