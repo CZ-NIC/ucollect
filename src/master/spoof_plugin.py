@@ -125,7 +125,7 @@ class SpoofPlugin(plugin.Plugin):
 		logger.debug("Sending burst of requests")
 		clients = set(self.plugins().get_clients()) - self.__sent
 		count = 0
-		while count < 10 and clients:
+		while count < 5 and clients:
 			count += 1
 			client = clients.pop()
 			token = Token(client, self.__now)
@@ -134,7 +134,7 @@ class SpoofPlugin(plugin.Plugin):
 			self.send(self.__prefix + struct.pack('!Q', token.value()), client)
 			self.__sent.add(client)
 		if clients:
-			reactor.callLater(2, self.__do_send)
+			reactor.callLater(1, self.__do_send)
 		else:
 			logger.debug("That was the last")
 			# Drop the tokens after some time if they get no answer
