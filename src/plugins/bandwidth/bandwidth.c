@@ -83,7 +83,7 @@ struct user_data {
 // Get MB/s - for debug purposes only
 static float get_speed(uint64_t bytes_in_window, uint64_t window_size) {
 	float windows_in_second = SEC/(float)window_size;
-	return (bytes_in_window*windows_in_second/(float)(1024*1024));
+	return (bytes_in_window*windows_in_second/(float)(1000*1000));
 }
 
 // Get current time in us from epoch
@@ -113,11 +113,11 @@ static struct window init_window(struct mem_pool *pool, uint64_t length, size_t 
 }
 
 static inline uint64_t bytes_to_mbits(uint64_t bytes) {
-	return bytes * 8 / 1024 / 1024;
+	return bytes * 8 / 1000 / 1000;
 }
 
 static inline uint64_t mbits_to_bytes(uint64_t mbits) {
-	return mbits * 1024 * 1024 / 8;
+	return mbits * 1000 * 1000 / 8;
 }
 
 // Compute key of bucket and init values to 0
