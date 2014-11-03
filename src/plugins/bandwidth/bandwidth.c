@@ -81,9 +81,13 @@ struct user_data {
 #define SEC 1000000
 
 // Get MB/s - for debug purposes only
-static float get_speed(uint64_t bytes_in_window, uint64_t window_size) {
+static float get_speed_mega_bytes(uint64_t bytes_in_window, uint64_t window_size) {
 	float windows_in_second = SEC/(float)window_size;
 	return (bytes_in_window*windows_in_second/(float)(1000*1000));
+}
+
+static float get_speed_mega_bits(uint64_t bytes_in_window, uint64_t window_size) {
+	return 8 * get_speed_mega_bytes(bytes_in_window, window_size);
 }
 
 // Get current time in us from epoch
@@ -330,7 +334,7 @@ void dbg_dump(struct context *context, void *data, size_t id) {
 
 	fprintf(ofile,
 		"%6s%20s%20s%20s%20s%20s\n",
-		"type", "win_length", "download (Bpw)", "download (MBps)", "upload (Bpw)", "upload (MBps)"
+		"type", "win_length", "download (Bpw)", "download (Mbps)", "upload (Bpw)", "upload (Mbps)"
 	);
 
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
@@ -340,9 +344,9 @@ void dbg_dump(struct context *context, void *data, size_t id) {
 			"debug",
 			cwindow->len,
 			cwindow->dbg_dump_in_max,
-			get_speed(cwindow->dbg_dump_in_max, cwindow->len),
+			get_speed_mega_bits(cwindow->dbg_dump_in_max, cwindow->len),
 			d->windows[window].dbg_dump_out_max,
-			get_speed(cwindow->dbg_dump_out_max, cwindow->len)
+			get_speed_mega_bits(cwindow->dbg_dump_out_max, cwindow->len)
 		);
 	}
 
@@ -353,9 +357,9 @@ void dbg_dump(struct context *context, void *data, size_t id) {
 			"server",
 			d->windows[window].len,
 			d->windows[window].in_max,
-			get_speed(cwindow->in_max, cwindow->len),
+			get_speed_mega_bits(cwindow->in_max, cwindow->len),
 			d->windows[window].out_max,
-			get_speed(cwindow->out_max, cwindow->len)
+			get_speed_mega_bits(cwindow->out_max, cwindow->len)
 		);
 	}
 
