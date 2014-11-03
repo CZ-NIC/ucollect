@@ -75,7 +75,11 @@ def store_bandwidth(data):
 
 		for client, cldata in data.items():
 			for window in cldata.windows.itervalues():
-				t.execute("INSERT INTO bandwidth (client, timestamp, win_len, in_max, out_max) SELECT clients.id AS client, %s, %s, %s, %s FROM clients WHERE name = %s;", (now, window.length, window.in_max, window.out_max, client))
+				t.execute("""INSERT INTO bandwidth (client, timestamp, win_len, in_max, out_max)
+				SELECT clients.id AS client, %s, %s, %s, %s
+				FROM clients
+				WHERE name = %s
+				""", (now, window.length, window.in_max, window.out_max, client))
 
 		for client, cldata in data.items():
 			for bucket in cldata.buckets.itervalues():
