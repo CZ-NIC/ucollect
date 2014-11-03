@@ -32,6 +32,14 @@ logger = logging.getLogger(name='bandwidth')
 PROTO_ITEMS_PER_WINDOW = 3
 PROTO_ITEMS_PER_BUCKET = 5
 
+BUCKETS_CNT = 37
+BUCKET_MAP = {
+	1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9,
+	11: 10, 12: 11, 13: 12, 14: 13, 15: 14, 16: 15, 17: 16, 18: 17, 19: 18, 20: 19,
+	30: 20, 40: 21, 50: 22, 60: 23, 70: 24, 80: 25, 90: 26, 100: 27, 200: 28,
+	300: 29, 400: 30, 500: 31, 600: 32, 700: 33, 800: 34, 900: 35, 1000: 36
+}
+
 class Window:
 	"""
 	Class desigened to store data of one clients window.
@@ -82,9 +90,52 @@ def store_bandwidth(data):
 				""", (now, window.length, window.in_max, window.out_max, client))
 
 		for client, cldata in data.items():
-			for bucket in cldata.buckets.itervalues():
-				t.execute("INSERT INTO bandwidth_stats (client, timestamp, bucket, in_time, in_bytes, out_time, out_bytes) SELECT clients.id AS client, %s, %s, %s, %s, %s, %s FROM clients WHERE name = %s;",
-				(now, bucket.bucket, bucket.in_time, bucket.in_bytes, bucket.out_time, bucket.out_bytes, client))
+			if not cldata.buckets:
+				continue
+
+			t.execute("""SELECT client, timestamp, in_time, in_bytes, out_time, out_bytes
+			FROM bandwidth_stats
+			JOIN clients ON bandwidth_stats.client = clients.id
+			WHERE name = %s AND timestamp = date_trunc('hour', %s)
+			""", (client, now))
+			result = t.fetchone()
+			if result == None:
+				in_time = [0] * BUCKETS_CNT
+				in_bytes = [0] * BUCKETS_CNT
+				out_time = [0] * BUCKETS_CNT
+				out_bytes = [0] * BUCKETS_CNT
+
+				for bucket in cldata.buckets.itervalues():
+					pos = BUCKET_MAP[bucket.bucket] + 1
+					in_time[pos] = bucket.in_time
+					in_bytes[pos] = bucket.in_bytes
+					out_time[pos] = bucket.out_time
+					out_bytes[pos] = bucket.out_bytes
+
+				t.execute("""INSERT INTO bandwidth_stats (client, timestamp, in_time, in_bytes, out_time, out_bytes)
+				SELECT clients.id AS client, date_trunc('hour', %s) as timestamp, %s, %s, %s, %s
+				FROM clients
+				WHERE name = %s
+				""", (now, in_time, in_bytes, out_time, out_bytes, client))
+			else:
+				client_id = result[0]
+				timestamp = result[1]
+				in_time = result[2]
+				in_bytes = result[3]
+				out_time = result[4]
+				out_bytes = result[5]
+
+				for bucket in cldata.buckets.itervalues():
+					pos = BUCKET_MAP[bucket.bucket] + 1
+					in_time[pos] += bucket.in_time
+					in_bytes[pos] += bucket.in_bytes
+					out_time[pos] += bucket.out_time
+					out_bytes[pos] += bucket.out_bytes
+
+				t.execute("""UPDATE bandwidth_stats
+				SET in_time = %s, in_bytes = %s, out_time = %s, out_bytes = %s
+				WHERE client = %s AND timestamp = %s
+				""", (in_time, in_bytes, out_time, out_bytes, client_id, timestamp))
 
 class BandwidthPlugin(plugin.Plugin):
 	"""
