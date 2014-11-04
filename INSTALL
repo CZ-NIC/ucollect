@@ -132,7 +132,7 @@ Go to subdirectory src/master/soxy and build it:
 	make
 
 5) Install necessary python packages:
-	apt-get install python-twisted python-pygresql python-dateutil
+	apt-get install python-twisted python-dateutil python-psycopg2
 
 Setup ucollect client and server communication and environment
 ==============================================================
