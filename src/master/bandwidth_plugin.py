@@ -197,7 +197,7 @@ class BandwidthPlugin(plugin.Plugin):
 			logger.info("Data of bandwidth snapshot on %s too old, ignoring (%s vs. %s)", client, timestamp, self.__last)
 			return
 
-		if self.version(client) == 1:
+		if self.version(client) <= 1:
 			int_count -= 1
 			data = data[1:]
 			windows = int_count / PROTO_ITEMS_PER_WINDOW
@@ -208,7 +208,7 @@ class BandwidthPlugin(plugin.Plugin):
 					data[i*PROTO_ITEMS_PER_WINDOW+2]
 				)
 
-		elif self.version(client) == 2:
+		elif self.version(client) >= 2:
 			win_cnt = data[1]
 			buckets_cnt_pos = 2 + PROTO_ITEMS_PER_WINDOW * win_cnt
 			data_windows = data[2:buckets_cnt_pos]
@@ -231,10 +231,6 @@ class BandwidthPlugin(plugin.Plugin):
 					data_buckets[i*PROTO_ITEMS_PER_BUCKET+3],
 					data_buckets[i*PROTO_ITEMS_PER_BUCKET+4]
 				)
-
-		else:
-			logger.error("Unsupported protocol version")
-			return
 
 		# Log client's activity
 		activity.log_activity(client, "bandwidth")
