@@ -114,7 +114,7 @@ apt-get install zlib1g-dev libqt4-dev
 
 Build and install(!) libatsha204 as is described in Ucollect client, part 3.B.
 
-No, install additional dependency:
+Now, install additional dependency:
 	apt-get install python-dev
 
 Go to subdirectory src/python and run commands:
