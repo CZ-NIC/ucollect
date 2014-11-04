@@ -443,7 +443,7 @@ struct plugin *plugin_info(void) {
 		.packet_callback = packet_handle,
 		.init_callback = init,
 		.uplink_data_callback = communicate,
-		.version = 1
+		.version = 2
 	};
 	return &plugin;
 }
