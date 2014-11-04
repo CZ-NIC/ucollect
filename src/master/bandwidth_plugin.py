@@ -197,19 +197,44 @@ class BandwidthPlugin(plugin.Plugin):
 			logger.info("Data of bandwidth snapshot on %s too old, ignoring (%s vs. %s)", client, timestamp, self.__last)
 			return
 
-		win_cnt = data[1]
-		buckets_cnt_pos = 2 + PROTO_ITEMS_PER_WINDOW * win_cnt
-		data_windows = data[2:buckets_cnt_pos]
-		buckets_cnt = data[buckets_cnt_pos]
-		data_buckets = data[(buckets_cnt_pos+1):]
+		if self.version(client) == 1:
+			int_count -= 1
+			data = data[1:]
+			windows = int_count / PROTO_ITEMS_PER_WINDOW
+			for i in range(0, windows):
+				self.__data[client].add_window(
+					data[i*PROTO_ITEMS_PER_WINDOW],
+					data[i*PROTO_ITEMS_PER_WINDOW+1],
+					data[i*PROTO_ITEMS_PER_WINDOW+2]
+				)
 
-		# Get data from message
-		for i in range(0, win_cnt):
-			self.__data[client].add_window(data_windows[i*PROTO_ITEMS_PER_WINDOW], data_windows[i*PROTO_ITEMS_PER_WINDOW+1], data_windows[i*PROTO_ITEMS_PER_WINDOW+2])
+		elif self.version(client) == 2:
+			win_cnt = data[1]
+			buckets_cnt_pos = 2 + PROTO_ITEMS_PER_WINDOW * win_cnt
+			data_windows = data[2:buckets_cnt_pos]
+			buckets_cnt = data[buckets_cnt_pos]
+			data_buckets = data[(buckets_cnt_pos+1):]
 
-		for i in range(0, buckets_cnt):
-			self.__data[client].add_bucket(data_buckets[i*PROTO_ITEMS_PER_BUCKET], data_buckets[i*PROTO_ITEMS_PER_BUCKET+1], data_buckets[i*PROTO_ITEMS_PER_BUCKET+2],
-				data_buckets[i*PROTO_ITEMS_PER_BUCKET+3], data_buckets[i*PROTO_ITEMS_PER_BUCKET+4])
+			# Get data from message
+			for i in range(0, win_cnt):
+				self.__data[client].add_window(
+					data_windows[i*PROTO_ITEMS_PER_WINDOW],
+					data_windows[i*PROTO_ITEMS_PER_WINDOW+1],
+					data_windows[i*PROTO_ITEMS_PER_WINDOW+2]
+				)
+
+			for i in range(0, buckets_cnt):
+				self.__data[client].add_bucket(
+					data_buckets[i*PROTO_ITEMS_PER_BUCKET],
+					data_buckets[i*PROTO_ITEMS_PER_BUCKET+1],
+					data_buckets[i*PROTO_ITEMS_PER_BUCKET+2],
+					data_buckets[i*PROTO_ITEMS_PER_BUCKET+3],
+					data_buckets[i*PROTO_ITEMS_PER_BUCKET+4]
+				)
+
+		else:
+			logger.error("Unsupported protocol version")
+			return
 
 		# Log client's activity
 		activity.log_activity(client, "bandwidth")
