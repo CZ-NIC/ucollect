@@ -106,7 +106,7 @@ def store_bandwidth(data):
 				out_bytes = [0] * BUCKETS_CNT
 
 				for bucket in cldata.buckets.itervalues():
-					pos = BUCKET_MAP[bucket.bucket] + 1
+					pos = BUCKET_MAP[bucket.bucket]
 					in_time[pos] = bucket.in_time
 					in_bytes[pos] = bucket.in_bytes
 					out_time[pos] = bucket.out_time
@@ -126,7 +126,7 @@ def store_bandwidth(data):
 				out_bytes = result[5]
 
 				for bucket in cldata.buckets.itervalues():
-					pos = BUCKET_MAP[bucket.bucket] + 1
+					pos = BUCKET_MAP[bucket.bucket]
 					in_time[pos] += bucket.in_time
 					in_bytes[pos] += bucket.in_bytes
 					out_time[pos] += bucket.out_time
