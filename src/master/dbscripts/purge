@@ -4,7 +4,7 @@ set -ex
 
 . ./dbconfig
 
-TABLES='activities anomalies count_snapshots bandwidth refused'
+TABLES='activities anomalies count_snapshots bandwidth bandwidth_stats refused'
 BATCH_TABLES='pings certs nats spoof'
 
 (
