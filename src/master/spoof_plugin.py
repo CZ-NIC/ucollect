@@ -97,6 +97,10 @@ class SpoofPlugin(plugin.Plugin):
 		reactor.listenUDP(self.__port, self.__receiver)
 		self.__check_timer = LoopingCall(self.__check)
 		self.__check_timer.start(300, False)
+		self.__sent = None
+		self.__batch = None
+		self.__prefix = None
+		self.__now = None
 
 	def message_from_client(self, message, client):
 		logger.error("Message from spoof plugin, but none expected: %s, on client %s", message, client)
@@ -117,36 +121,56 @@ class SpoofPlugin(plugin.Plugin):
 		logger.debug("Token %s handled, removing", token)
 		del self.__tokens[token]
 
+	def __do_send(self):
+		logger.debug("Sending burst of requests")
+		clients = set(self.plugins().get_clients()) - self.__sent
+		count = 0
+		while count < 5 and clients:
+			count += 1
+			client = clients.pop()
+			token = Token(client, self.__now)
+			self.__tokens[token.value()] = token
+			self.__batch.add(token.value())
+			self.send(self.__prefix + struct.pack('!Q', token.value()), client)
+			self.__sent.add(client)
+		if clients:
+			reactor.callLater(1, self.__do_send)
+		else:
+			logger.debug("That was the last")
+			# Drop the tokens after some time if they get no answer
+			# (Dropping the already handled ones doesn't matter)
+			batch = self.__batch
+			def cleanup():
+				for tok in batch:
+					try:
+						del self.__tokens[tok]
+					except KeyError:
+						pass # Not there. But we don't care.
+			reactor.callLater(self.__answer_timeout, cleanup)
+			self.__batch = None
+			self.__sent = None
+			self.__prefix = None
+
 	def __check(self):
 		"""
 		Check the DB to see if we should ask for another round of spoofed packets.
 		"""
+		if self.__sent:
+			return # Still sending bursts
 		with database.transaction() as t:
 			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC', COALESCE(MAX(batch) + INTERVAL %s < CURRENT_TIMESTAMP AT TIME ZONE 'UTC', TRUE) FROM spoof", (self.__interval,));
-			(now, run) = t.fetchone()
+			(self.__now, run) = t.fetchone()
 		if not run:
 			logger.debug("Too early to ask for spoofed packets")
 			return
 		logger.info('Asking clients to send spoofed packets')
-		batch = set()
-		prefix = '4' + \
+		self.__batch = set()
+		self.__prefix = '4' + \
 			socket.inet_pton(socket.AF_INET, socket.gethostbyname(self.__src_addr)) + \
 			socket.inet_pton(socket.AF_INET, socket.gethostbyname(self.__dest_addr)) + \
 			struct.pack("!H", self.__port)
-		for client in self.plugins().get_clients():
-			token = Token(client, now)
-			self.__tokens[token.value()] = token
-			batch.add(token.value())
-			self.send(prefix + struct.pack('!Q', token.value()), client)
-		# Drop the tokens after some time if they get no answer
-		# (Dropping the already handled ones doesn't matter)
-		def cleanup():
-			for tok in batch:
-				try:
-					del self.__tokens[tok]
-				except KeyError:
-					pass # Not there. But we don't care.
-		reactor.callLater(self.__answer_timeout, cleanup)
+		self.__sent = set()
+		self.__do_send()
 
 	def src_addr(self):
 		return self.__src_addr
