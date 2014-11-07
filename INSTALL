@@ -194,9 +194,10 @@ Password is necessary for: updater (set name/password in
 src/master/collect-master.conf), authenticator (set name/password in
 src/master/authenticator/authenticator.conf).
 
-Anyway, on developer's station is the easiest to disable authentication. Go to
-postgresql configuration directory /etc/postgresql/VERSION/main and edit file
-pg_hba.conf. Set "trust" method to all authentication types. Example:
+Anyway, disable authentication is the easiest solution on the developer's
+station. Go to postgresql configuration directory /etc/postgresql/VERSION/main
+and edit file pg_hba.conf. Set "trust" method to all authentication types.
+Example:
 
 # Database administrative login by Unix domain socket
 local   all             postgres                                peer
