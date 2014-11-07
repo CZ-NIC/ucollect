@@ -1,8 +1,11 @@
+Ucollect installation guide
+***************************
+
 This file documents installation and compilation process of ucollect on a clean
 linux operating system.
 
 We use a clean installation of Debian 7 Wheezy. The names of packages in other
-distributions shoud be similar.
+distributions should be similar.
 
 Build options are customized for installation on the developer's station.
 
@@ -26,8 +29,8 @@ apt-get install zlib1g-dev libpcap-dev libqt4-dev python-dev socat
 3) Build the rest of dependencies from source code
 --------------------------------------------------
 
-Not all of ucollect's dependencies are packaged in distributions. This projects
-are necessary too:
+Not all of ucollect's dependencies are packaged in distributions. These
+projects are necessary too:
 
 3.A) libuci
 -----------
@@ -156,9 +159,9 @@ checks validity of DNS signature and checks if signature exists.
 2) SSL certificate
 ------------------
 
-Communication between client and server is naturally encrypted. Identities are
-checked with SSL certificates. Self-signed certificate is sufficient. Generate it
-with command like this one:
+Naturally, communication between client and server is encrypted. Identities are
+checked with SSL certificates. Self-signed certificate is sufficient. Generate
+it with command like this one:
 
 openssl req -new -x509 -keyout /etc/ucollect-dev.pem -out /etc/ucollect-dev.pem -days 1825 -nodes -subj "/C=CZ/ST=Prague/L=Prague/O=Ucollect"
 
