@@ -24,7 +24,7 @@ apt-get install gcc g++ git qt4-qmake pkg-config cmake
 2) Install ucollect dependencies
 --------------------------------
 
-apt-get install zlib1g-dev libpcap-dev libqt4-dev python-dev socat
+apt-get install zlib1g-dev libpcap-dev python-dev socat
 
 3) Build the rest of dependencies from source code
 --------------------------------------------------
@@ -88,13 +88,14 @@ of memory slots are needed or valid.
 
 Clone repository with ucollect:
 	git clone https://gitlab.labs.nic.cz/turris/ucollect.git
+	cd ucollect
 
 Ucollect uses our own build system that is included as a git submodule:
 	git submodule init
 	git submodule update
 
 Build:
-	make NO_DOC=1
+	make NO_DOC=1 NO_MASTER=1
 
 There is no "install" target in Makefile. You can get inspired in ucollect-*
 packages in our openwrt repository.
@@ -121,7 +122,7 @@ Now, install additional dependency:
 	apt-get install python-dev
 
 Go to subdirectory src/python and run commands:
-	make NO_DOC=1 USE_LAYER=USE_LAYER_EMULATION PYTHON=1
+	python setup.py build
 	python setup.py install
 
 4) Build soxy
