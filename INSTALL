@@ -40,6 +40,7 @@ with UCI configuration files.
 
 Clone repository with libuci:
 	git clone git://nbd.name/uci.git
+	cd uci
 
 Checkout latest working(!) version:
 	git checkout v0.8.0
@@ -65,6 +66,7 @@ Install some specific libatsha204 dependencies:
 
 Clone repository with libatsha204:
 	git clone https://gitlab.labs.nic.cz/turris/libatsha204.git
+	cd libatsha204
 
 Libatsha204 uses our own build system that is included as a git submodule:
 	git submodule init
@@ -122,6 +124,7 @@ Now, install additional dependency:
 	apt-get install python-dev
 
 Go to subdirectory src/python and run commands:
+	cd src/python
 	python setup.py build
 	python setup.py install
 
@@ -130,8 +133,10 @@ Go to subdirectory src/python and run commands:
 
 Clone repository with ucollect:
 	git clone https://gitlab.labs.nic.cz/turris/ucollect.git
+	cd ucollect
 
 Go to subdirectory src/master/soxy and build it:
+	cd src/master/soxy
 	qmake
 	make
 
