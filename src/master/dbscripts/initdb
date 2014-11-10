@@ -293,7 +293,7 @@ CREATE TABLE config (
 	value TEXT NOT NULL,
 	UNIQUE(plugin, name)
 );
-INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('flow', 'filter-diff', 'D(addresses)'), ('sniff', 'nat-interval', '3 days');
+INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('flow', 'filter-diff', 'D(addresses)'), ('sniff', 'nat-interval', '3 days'), ('spoof', 'answer_timeout', '60'), ('spoof', 'dest_addr', 'api.turris.cz'), ('spoof', 'src_addr', '192.0.2.1'), ('spoof', 'interval', '1 day'), ('spoof', 'port', '5678');
 
 CREATE TABLE flow_filters (
 	filter TEXT NOT NULL,

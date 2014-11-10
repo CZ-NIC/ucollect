@@ -88,11 +88,7 @@ class SpoofPlugin(plugin.Plugin):
 	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
 		self.__tokens = {}
-		self.__answer_timeout = int(config['answer_timeout'])
-		self.__dest_addr = config['dest_addr']
-		self.__src_addr = config['src_addr']
-		self.__port = int(config['port'])
-		self.__interval = config['interval']
+		self.__reload_config()
 		self.__receiver = UDPReceiver(self)
 		reactor.listenUDP(self.__port, self.__receiver)
 		self.__check_timer = LoopingCall(self.__check)
@@ -101,6 +97,16 @@ class SpoofPlugin(plugin.Plugin):
 		self.__batch = None
 		self.__prefix = None
 		self.__now = None
+
+	def __reload_config(self):
+		with database.transaction() as t:
+			t.execute("SELECT name, value FROM config WHERE plugin = 'spoof'")
+			config = dict(t.fetchall())
+		self.__answer_timeout = int(config['answer_timeout'])
+		self.__dest_addr = config['dest_addr']
+		self.__src_addr = config['src_addr']
+		self.__port = int(config['port'])
+		self.__interval = config['interval']
 
 	def message_from_client(self, message, client):
 		logger.error("Message from spoof plugin, but none expected: %s, on client %s", message, client)
@@ -157,6 +163,7 @@ class SpoofPlugin(plugin.Plugin):
 		"""
 		if self.__sent:
 			return # Still sending bursts
+		self.__reload_config()
 		with database.transaction() as t:
 			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC', COALESCE(MAX(batch) + INTERVAL %s < CURRENT_TIMESTAMP AT TIME ZONE 'UTC', TRUE) FROM spoof", (self.__interval,));
 			(self.__now, run) = t.fetchone()
