@@ -8,6 +8,8 @@ ASCIIDOC := asciidoc
 AR := ar
 MAX_LOG_LEVEL := LLOG_DEBUG_VERBOSE
 PAGE_SIZE := $(shell getconf PAGE_SIZE)
+ifneq ($(NO_MASTER),1)
 ENABLE_PYTHON := 1
+endif
 
 include $(S)/Makefile.dir
