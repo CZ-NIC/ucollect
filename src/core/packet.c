@@ -190,18 +190,33 @@ static void postprocess(struct packet_info *packet) {
 	}
 	if (packet->app_protocol != 'T')
 		packet->tcp_flags = 0;
+	if (packet->layer != 'E')
+		packet->vlan_tag = 0;
 }
 
 static void parse_type(struct packet_info *packet, struct mem_pool *pool, const unsigned char *data) {
 	uint16_t type = ntohs(*(uint16_t *) data);
 	// VLAN tagging
-	if (type == 0x8100) // IEEE 802.1q
+	size_t skipped = 0;
+	while (type == 0x88a8 || type == 0x9100) { // IEEE 802.1ed (can be stacked)
 		data += 4;
-	if (type == 0x88a8) // IEEE 802.1ad
-		data += 8;
-	size_t skipped = data - (const unsigned char*) packet->data;
-	if (skipped >= packet->length)
-		return; // Give up. Short packet.
+		skipped += 4;
+		if (skipped >= packet->length)
+			return; // Give up. Short packet.
+		type = ntohs(*(uint16_t *) data);
+	}
+	if (type == 0x8100) {// IEEE 802.1q
+		data += 2;
+		skipped += 2;
+		if (skipped >= packet->length)
+			return; // Give up. Short packet.
+		packet->vlan_tag = ntohs(*(uint16_t *)data);
+		data += 2;
+		skipped += 2;
+		if (skipped >= packet->length)
+			return; // Give up. Short packet.
+	} else
+		packet->vlan_tag = 0;
 	type = ntohs(*(uint16_t *) data);
 	ulog(LLOG_DEBUG_VERBOSE, "Ethernet type %04hX\n", type);
 	// Skip over the type
@@ -223,7 +238,7 @@ static void parse_type(struct packet_info *packet, struct mem_pool *pool, const 
 	switch (type) {
 		case 0x0800: // IPv4
 		case 0x86DD: // IPv6
-			IP:
+		IP:
 			packet->app_protocol = 'I';
 			// Parse the IP part
 			uc_parse_packet(next, pool, DLT_RAW);
