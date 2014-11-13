@@ -99,8 +99,9 @@ Ucollect uses our own build system that is included as a git submodule:
 Build:
 	make NO_DOC=1 NO_MASTER=1
 
-There is no "install" target in Makefile. You can get inspired in ucollect-*
-packages in our openwrt repository.
+There is no "install" target in Makefile. You can run ucollect from command
+line, eg. ./bin/ucollect. If you need some installation process you can get
+inspired in ucollect-* packages in our openwrt repository.
 
 Ucollect server
 ===============
@@ -166,10 +167,15 @@ checks validity of DNS signature and checks if signature exists.
 ------------------
 
 Naturally, communication between client and server is encrypted. Identities are
-checked with SSL certificates. Self-signed certificate is sufficient. Generate
-it with command like this one:
+checked with SSL certificates. Self-signed certificate is sufficient. The client
+and the server checks if the certificates are the same. Certificate signed with
+CA hasn't any benefit in this case.
+
+You can generate it with command like this one:
 
 openssl req -new -x509 -keyout /etc/ucollect-dev.pem -out /etc/ucollect-dev.pem -days 1825 -nodes -subj "/C=CZ/ST=Prague/L=Prague/O=Ucollect"
+
+Parameters C, ST, L, O are of course configurable.
 
 3) Configure server
 -------------------
