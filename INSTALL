@@ -169,7 +169,7 @@ checks validity of DNS signature and checks if signature exists.
 Naturally, communication between client and server is encrypted. Identities are
 checked with SSL certificates. Self-signed certificate is sufficient. The client
 and the server checks if the certificates are the same. Certificate signed with
-CA hasn't any benefit in this case.
+CA doesn't have any benefit in this case.
 
 You can generate it with command like this one:
 
