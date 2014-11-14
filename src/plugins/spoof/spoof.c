@@ -136,10 +136,8 @@ static void received(struct context *context, const struct packet_info *info) {
 	struct user_data *u = context->user_data;
 	if (!u->expected)
 		return; // Not looking for a packet now.
-	/*
 	if (info->direction != DIR_OUT)
 		return; // The packet we sent and are looking for went out
-		*/
 	const struct packet_info *ip = info;
 	while (ip->next)
 		ip = ip->next;
