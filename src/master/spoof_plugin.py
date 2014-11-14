@@ -57,6 +57,7 @@ class UDPReceiver(twisted.internet.protocol.DatagramProtocol):
 		self.__spoof = spoof
 
 	def datagramReceived(self, dgram, addr):
+		logger.trace("Packet from %s", addr)
 		if len(dgram) < 13:
 			logger.warn("Spoof packet too short (probably a stray one), only %s bytes", len(dgram))
 			return

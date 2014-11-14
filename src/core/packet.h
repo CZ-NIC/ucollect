@@ -131,6 +131,8 @@ struct packet_info {
 	 * If the packet isn't IP/TCP, it is left zero.
 	 */
 	uint8_t tcp_flags;
+	// If non-zero, it holds the IEEE 802.1Q VLAN tag. The AD tags are not preserved here.
+	uint16_t vlan_tag;
 };
 
 /*
