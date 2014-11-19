@@ -47,10 +47,10 @@ class Token:
 	def time(self):
 		return self.__time
 
-def store_packet(token, spoofed):
+def store_packet(token, spoofed, matches, ip):
 	logger.debug("Storing packet with spoof %s from client %s", spoofed, token.client())
 	with database.transaction() as t:
-		t.execute("INSERT INTO spoof (client, batch, spoofed) SELECT id, %s, %s FROM clients WHERE name = %s", (token.time(), spoofed, token.client()))
+		t.execute("INSERT INTO spoof (client, batch, spoofed, addr_matches, received, ip) SELECT id, %s, %s, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', %s FROM clients WHERE name = %s", (token.time(), spoofed, matches, ip, token.client()))
 
 class UDPReceiver(twisted.internet.protocol.DatagramProtocol):
 	def __init__(self, spoof):
@@ -69,16 +69,13 @@ class UDPReceiver(twisted.internet.protocol.DatagramProtocol):
 		if not tok:
 			logger.warn("Token %s not known", token)
 			return
-		if spoofed and addr[0] != self.__spoof.src_addr():
-			logger.warn("Spoofed packet with wrong spoofed address %s from %s", addr, tok.client())
-			return
 		if spoofed:
 			tok.expect_spoofed = False
 		else:
 			tok.expect_ordinary = False
 		if not tok.expect_spoofed and not tok.expect_ordinary:
 			self.__spoof.drop_token(token)
-		reactor.callInThread(store_packet, tok, spoofed)
+		reactor.callInThread(store_packet, tok, spoofed, (not spoofed) or (addr[0] == self.__spoof.src_addr()), addr[0])
 		activity.log_activity(tok.client(), 'spoof')
 
 class SpoofPlugin(plugin.Plugin):

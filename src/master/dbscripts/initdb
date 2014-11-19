@@ -307,6 +307,9 @@ CREATE TABLE spoof (
 	client INT NOT NULL,
 	batch TIMESTAMP NOT NULL,
 	spoofed BOOLEAN NOT NULL,
+	addr_matches BOOLEAN NOT NULL,
+	received TIMESTAMP,
+	ip INET,
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
 
