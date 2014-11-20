@@ -285,3 +285,14 @@ function get_inst_macdb()
 	return macdb
 end
 
+--[[
+	Iterate over static_name options and return list of defined names
+]]
+function get_static_names_list()
+	local cur = uci.cursor();
+	local list = {};
+
+	cur:foreach("majordomo", "static_name", function(i) list[i.mac] = i.name; end);
+
+	return list;
+end
