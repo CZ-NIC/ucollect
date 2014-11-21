@@ -65,6 +65,7 @@ class ClientData:
 		self.cnt = 0
 		self.windows = {}
 		self.buckets = {}
+		self.timestamp_dbg = None
 
 	def add_window(self, window_length, in_max, out_max):
 		self.cnt += 1
@@ -93,6 +94,25 @@ def store_bandwidth(data):
 			if not cldata.buckets:
 				continue
 
+			##### DBG #####
+			in_time = [0] * BUCKETS_CNT
+			in_bytes = [0] * BUCKETS_CNT
+			out_time = [0] * BUCKETS_CNT
+			out_bytes = [0] * BUCKETS_CNT
+
+			for bucket in cldata.buckets.itervalues():
+				pos = BUCKET_MAP[bucket.bucket]
+				in_time[pos] = bucket.in_time
+				in_bytes[pos] = bucket.in_bytes
+				out_time[pos] = bucket.out_time
+				out_bytes[pos] = bucket.out_bytes
+
+			t.execute("""INSERT INTO bandwidth_stats_dbg (client, timestamp, timestamp_dbg, in_time, in_bytes, out_time, out_bytes)
+			SELECT clients.id AS client, %s as timestamp, %s, %s, %s, %s, %s
+			FROM clients
+			WHERE name = %s
+			""", (now, cldata.timestamp_dbg, in_time, in_bytes, out_time, out_bytes, client))
+			##### /DBG #####
 			t.execute("""SELECT client, timestamp, in_time, in_bytes, out_time, out_bytes
 			FROM bandwidth_stats
 			JOIN clients ON bandwidth_stats.client = clients.id
@@ -196,6 +216,7 @@ class BandwidthPlugin(plugin.Plugin):
 		if timestamp < self.__last:
 			logger.info("Data of bandwidth snapshot on %s too old, ignoring (%s vs. %s)", client, timestamp, self.__last)
 			return
+		self.__data[client].timestamp_dbg = timestamp
 
 		if self.version(client) <= 1:
 			int_count -= 1
