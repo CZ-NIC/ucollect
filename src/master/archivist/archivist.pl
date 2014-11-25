@@ -261,11 +261,11 @@ if (fork == 0) {
 		return $get_band->fetchrow_arrayref;
 	});
 	print "Stored $band_count bandwidth records\n";
-	my ($max_time) = $destination->selectrow_array('SELECT COALESCE(MAX(bandwidth_avg.timestamp), TO_TIMESTAMP(0)) FROM bandwidth_avg');
+	my ($max_time, $cur_time) = $destination->selectrow_array("SELECT COALESCE(MAX(bandwidth_avg.timestamp), TO_TIMESTAMP(0)), CURRENT_TIMESTAMP AT TIME ZONE 'UTC' FROM bandwidth_avg");
 	print "Getting bandwidth stats newer than $max_time\n";
 	my $store_avg = $destination->prepare('INSERT INTO bandwidth_avg (timestamp, client, bps_in, bps_out) VALUES (?, ?, ?, ?)');
-	my $get_avg = $source->prepare("SELECT timestamp, client, in_time, in_bytes, out_time, out_bytes FROM bandwidth_stats WHERE timestamp > ? AND timestamp + INTERVAL '90 minutes' < CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
-	$get_avg->execute($max_time);
+	my $get_avg = $source->prepare("SELECT timestamp, client, in_time, in_bytes, out_time, out_bytes FROM bandwidth_stats WHERE timestamp > ? AND timestamp + INTERVAL '90 minutes' < ?");
+	$get_avg->execute($max_time, $cur_time);
 	my $avg_cnt = 0;
 	while (my ($timestamp, $client, $in_time, $in_bytes, $out_time, $out_bytes) = $get_avg->fetchrow_array) {
 		$_ = sum @$_ for ($in_time, $out_time, $in_bytes, $out_bytes);
@@ -273,6 +273,41 @@ if (fork == 0) {
 		$avg_cnt ++;
 	}
 	print "Stored $avg_cnt bandwidth averages\n";
+	print "Getting bandwidth sums newer than $max_time\n";
+	my $store_sum = $destination->prepare('INSERT INTO bandwidth_sum (timestamp, from_group, client_count, in_time, out_time, in_bytes, out_bytes) VALUES (?, ?, ?, ?, ?, ?, ?)');
+	my $get_sum = $source->prepare("SELECT timestamp, in_group, in_time, out_time, in_bytes, out_bytes FROM bandwidth_stats JOIN group_members ON bandwidth_stats.client = group_members.client WHERE timestamp > ? AND timestamp + '90 minutes' < ? ORDER BY timestamp, in_group");
+	$get_sum->execute($max_time, $cur_time);
+	my (@in_time, @out_time, @in_bytes, @out_bytes, $cur_group, $cur_timestamp, $client_cnt);
+	my ($sum_cnt, $record_cnt) = (0, 0);
+	my $submit = sub {
+		return unless defined $cur_timestamp;
+		$sum_cnt ++;
+		$store_sum->execute($cur_timestamp, $cur_group, $client_cnt, \@in_time, \@out_time, \@in_bytes, \@out_bytes);
+		undef @in_time;
+		undef @out_time;
+		undef @in_bytes;
+		undef @out_bytes;
+		undef $cur_group;
+		undef $cur_timestamp;
+		undef $client_cnt;
+	};
+	my $sum = sub {
+		my ($dest, $src) = @_;
+		$dest->[$_] += $src->[$_] for 0..(scalar @$src - 1);
+	};
+	while (my ($timestamp, $in_group, $in_time, $out_time, $in_bytes, $out_bytes) = $get_sum->fetchrow_array) {
+		$submit->() if ($in_group != $cur_group) or ($timestamp != $cur_timestamp);
+		$cur_group = $in_group;
+		$cur_timestamp = $timestamp;
+		$client_cnt ++;
+		$record_cnt ++;
+		$sum->(\@in_time, $in_time);
+		$sum->(\@out_time, $out_time);
+		$sum->(\@in_bytes, $in_bytes);
+		$sum->(\@out_bytes, $out_bytes);
+	}
+	$submit->();
+	print "Aggregated $record_cnt bandwidth records to $sum_cnt sums\n";
 	$destination->commit;
 	$source->commit;
 	exit;

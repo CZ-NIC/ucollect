@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS flow_groups;
 DROP TABLE IF EXISTS flows;
 DROP TABLE IF EXISTS bandwidth;
 DROP TABLE IF EXISTS bandwidth_avg;
+DROP TABLE IF EXISTS bandwidth_sums;
 DROP TABLE IF EXISTS cert_histograms;
 DROP TABLE IF EXISTS cert_requests;
 DROP TABLE IF EXISTS anomalies;
@@ -224,6 +225,18 @@ CREATE TABLE bandwidth_avg (
 	CHECK(bps_out >= 0)
 );
 
+CREATE TABLE bandwidth_sums (
+	timestamp TIMESTAMP NOT NULL,
+	from_group INT NOT NULL,
+	client_count INT NOT NULL,
+	in_time INT[] NOT NULL,
+	out_time INT[] NOT NULL,
+	in_bytes BIGINT[] NOT NULL,
+	out_bytes BIGINT[] NOT NULL,
+	UNIQUE(timestamp, from_group),
+	FOREIGN KEY (from_group) REFERENCES groups(id)
+);
+
 CREATE TABLE flows (
 	id BIGINT PRIMARY KEY NOT NULL,
 	peer_ip INET NOT NULL,
@@ -335,6 +348,7 @@ GRANT SELECT (timestamp) ON bandwidth TO archivist;
 GRANT INSERT ON bandwidth TO archivist;
 GRANT SELECT (timestamp) ON bandwidth_avg TO archivist;
 GRANT INSERT ON bandwidth_avg TO archivist;
+GRANT INSERT ON bandwidth_sums TO archivist;
 GRANT INSERT ON flows TO archivist;
 GRANT SELECT (id, tagged_on) ON flows TO archivist;
 GRANT INSERT ON flow_groups TO archivist;
