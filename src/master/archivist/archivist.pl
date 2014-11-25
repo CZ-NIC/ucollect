@@ -274,7 +274,7 @@ if (fork == 0) {
 	}
 	print "Stored $avg_cnt bandwidth averages\n";
 	print "Getting bandwidth sums newer than $max_time\n";
-	my $store_sum = $destination->prepare('INSERT INTO bandwidth_sum (timestamp, from_group, client_count, in_time, out_time, in_bytes, out_bytes) VALUES (?, ?, ?, ?, ?, ?, ?)');
+	my $store_sum = $destination->prepare('INSERT INTO bandwidth_sums (timestamp, from_group, client_count, in_time, out_time, in_bytes, out_bytes) VALUES (?, ?, ?, ?, ?, ?, ?)');
 	my $get_sum = $source->prepare("SELECT timestamp, in_group, in_time, out_time, in_bytes, out_bytes FROM bandwidth_stats JOIN group_members ON bandwidth_stats.client = group_members.client WHERE timestamp > ? AND timestamp + '90 minutes' < ? ORDER BY timestamp, in_group");
 	$get_sum->execute($max_time, $cur_time);
 	my (@in_time, @out_time, @in_bytes, @out_bytes, $cur_group, $cur_timestamp, $client_cnt);
