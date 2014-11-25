@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS nat_counts;
 DROP TABLE IF EXISTS flow_groups;
 DROP TABLE IF EXISTS flows;
 DROP TABLE IF EXISTS bandwidth;
+DROP TABLE IF EXISTS bandwidth_avg;
 DROP TABLE IF EXISTS cert_histograms;
 DROP TABLE IF EXISTS cert_requests;
 DROP TABLE IF EXISTS anomalies;
@@ -213,6 +214,16 @@ CREATE TABLE bandwidth (
 	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
 );
 
+CREATE TABLE bandwidth_avg (
+	timestamp TIMESTAMP NOT NULL,
+	client INT NOT NULL,
+	bps_in INT NOT NULL,
+	bps_out INT NOT NULL,
+	UNIQUE(timestamp, client),
+	CHECK(bps_in >= 0),
+	CHECK(bps_out >= 0)
+);
+
 CREATE TABLE flows (
 	id BIGINT PRIMARY KEY NOT NULL,
 	peer_ip INET NOT NULL,
@@ -321,6 +332,8 @@ GRANT DELETE ON cert_histograms TO archivist;
 GRANT SELECT (batch, id) ON cert_histograms TO archivist;
 GRANT SELECT (timestamp) ON bandwidth TO archivist;
 GRANT INSERT ON bandwidth TO archivist;
+GRANT SELECT (timestamp) ON bandwidth_avg TO archivist;
+GRANT INSERT ON bandwidth_avg TO archivist;
 GRANT INSERT ON flows TO archivist;
 GRANT SELECT (id, tagged_on) ON flows TO archivist;
 GRANT INSERT ON flow_groups TO archivist;

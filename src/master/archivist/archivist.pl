@@ -2,6 +2,7 @@
 use common::sense;
 use DBI;
 use Config::IniFiles;
+use List::Util qw(sum);
 
 # First connect to databases
 my $cfg = Config::IniFiles->new(-file => $ARGV[0]);
@@ -260,6 +261,18 @@ if (fork == 0) {
 		return $get_band->fetchrow_arrayref;
 	});
 	print "Stored $band_count bandwidth records\n";
+	my ($max_time) = $destination->selectrow_array('SELECT COALESCE(MAX(bandwidth_avg.timestamp), TO_TIMESTAMP(0)) FROM bandwidth_avg');
+	print "Getting bandwidth stats newer than $max_time\n";
+	my $store_avg = $destination->prepare('INSERT INTO bandwidth_avg (timestamp, client, bps_in, bps_out) VALUES (?, ?, ?, ?)');
+	my $get_avg = $source->prepare("SELECT timestamp, client, in_time, in_bytes, out_time, out_bytes FROM bandwidth_stats WHERE timestamp > ? AND timestamp + INTERVAL '90 minutes' < CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
+	$get_avg->execute($max_time);
+	my $avg_cnt = 0;
+	while (my ($timestamp, $client, $in_time, $in_bytes, $out_time, $out_bytes) = $get_avg->fetchrow_array) {
+		$_ = sum @$_ for ($in_time, $out_time, $in_bytes, $out_bytes);
+		$store_avg->execute($timestamp, $client, $in_bytes / $in_time, $out_bytes / $out_time);
+		$avg_cnt ++;
+	}
+	print "Stored $avg_cnt bandwidth averages\n";
 	$destination->commit;
 	$source->commit;
 	exit;
