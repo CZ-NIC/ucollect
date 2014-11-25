@@ -243,6 +243,7 @@ CREATE TABLE flows (
 );
 CREATE SEQUENCE flows_id OWNED BY flows.id;
 ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flows_id');
+CREATE INDEX flow_tagged_on ON  flows (tagged_on);
 CREATE TABLE flow_groups (
 	flow BIGINT NOT NULL,
 	from_group INT NOT NULL,
