@@ -30,6 +30,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+static void store(struct mem_pool *pool);
+static void drop(struct mem_pool *pool);
+
 #ifdef MEM_POOL_DEBUG
 
 #define POOL_CANARY_BEGIN 0x783A7BF4
@@ -44,6 +47,7 @@ struct pool_chunk {
 
 struct mem_pool {
 	struct pool_chunk *head, *tail;
+	size_t pool_index;
 	char name[];
 };
 
@@ -58,6 +62,7 @@ struct mem_pool *mem_pool_create(const char *name) {
 	*pool = (struct mem_pool) {
 		.head = NULL
 	};
+	store(pool);
 	strcpy(pool->name, name);
 	ulog(LLOG_DEBUG, "Created pool %s\n", name);
 	return pool;
@@ -88,6 +93,7 @@ void mem_pool_reset(struct mem_pool *pool) {
 void mem_pool_destroy(struct mem_pool *pool) {
 	mem_pool_reset(pool);
 	ulog(LLOG_DEBUG, "Destroyed pool %s\n", pool->name);
+	drop(pool);
 	free(pool);
 }
 
@@ -116,6 +122,7 @@ struct mem_pool {
 	unsigned char *pos;
 	// How many bytes there are for allocations.
 	size_t available;
+	size_t pool_index;
 	// The name of this memory pool (for debug and errors).
 	char name[];
 };
@@ -205,8 +212,9 @@ struct mem_pool *mem_pool_create(const char *name) {
 	*pool = (struct mem_pool) {
 		.first = page,
 		.pos = pos,
-		.available = available
+		.available = available,
 	};
+	store(pool);
 	strcpy(pool->name, name); // OK to use strcpy, we allocated enough extra space.
 
 	return pool;
@@ -214,6 +222,7 @@ struct mem_pool *mem_pool_create(const char *name) {
 
 void mem_pool_destroy(struct mem_pool *pool) {
 	ulog(LLOG_DEBUG, "Destroying memory pool '%s'\n", pool->name);
+	drop(pool);
 	/*
 	 * Walk the pages and release each of them. The pool itself is in one of them,
 	 * so there's no need to explicitly delete it.
@@ -271,6 +280,23 @@ void mem_pool_reset(struct mem_pool *pool) {
 }
 
 #endif
+
+static struct mem_pool **pools;
+size_t pool_count;
+
+static void store(struct mem_pool *pool) {
+	pools = realloc(pools, (++ pool_count) * sizeof *pools);
+	pools[pool_count - 1] = pool;
+	pool->pool_index = pool_count - 1;
+}
+
+static void drop(struct mem_pool *pool) {
+	assert(pool_count > pool->pool_index);
+	assert(pool == pools[pool->pool_index]);
+	pools[pool->pool_index] = pools[pool_count - 1];
+	pools[pool->pool_index]->pool_index = pool->pool_index;
+	pools = realloc(pools, (-- pool_count) * sizeof *pools);
+}
 
 char *mem_pool_strdup(struct mem_pool *pool, const char *string) {
 	size_t length = strlen(string);
