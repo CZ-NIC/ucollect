@@ -78,4 +78,7 @@
 // How many attempts to log in before giving up and exiting?
 #define LOGIN_FAILURE_LIMIT 10
 
+// Dump stats every hour
+#define STAT_DUMP_TIMEOUT (3600 * 1000)
+
 #endif

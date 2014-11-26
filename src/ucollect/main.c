@@ -22,8 +22,18 @@
 #include "../core/uplink.h"
 #include "../core/configure.h"
 #include "../core/startup.h"
+#include "../core/tunable.h"
+#include "../core/mem_pool.h"
 
 #include <syslog.h>
+
+static void dump_stats(struct context *context, void *data, size_t id) {
+	(void)context;
+	(void)data;
+	(void)id;
+	ulog(LLOG_INFO, "Mempool stats: %s\n", mem_pool_stats(loop_temp_pool(loop)));
+	loop_timeout_add(loop, STAT_DUMP_TIMEOUT, NULL, NULL, dump_stats);
+}
 
 int main(int argc, const char* argv[]) {
 	(void) argc;
@@ -36,6 +46,8 @@ int main(int argc, const char* argv[]) {
 	config_set_package("ucollect");
 	// Create the loop.
 	loop = loop_create();
+
+	loop_timeout_add(loop, STAT_DUMP_TIMEOUT, NULL, NULL, dump_stats);
 
 	// Connect upstream
 	uplink = uplink_create(loop);
