@@ -55,6 +55,15 @@ while (<$ipsets>) {
 close $ipsets;
 die "Wget failed with $?" if $?;
 
+open my $graylist, '-|', 'wget', 'https://www.turris.cz/greylist-data/greylist-latest.csv', '-q', '-O', '-' or die "Couldn't download graylist: $!\n";
+my $header = <$graylist>;
+while (<$graylist>) {
+	my ($ip) = split /,/;
+	$data{''}->{$ip} = 1;
+}
+close $graylist;
+die "Wget failed with $?" if $?;
+
 # Extract addresses from the anomalies
 my $an_stm = $dbh->prepare('SELECT DISTINCT value, type FROM anomalies WHERE relevance_count >= ?');
 $an_stm->execute($cfg->val('anomalies', 'client_treshold'));
