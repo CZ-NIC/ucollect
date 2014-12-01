@@ -486,7 +486,7 @@ static void packet(struct context *context, const struct packet_info *packet) {
 		struct trie *t = g->criteria[i].trie[key_index];
 		// We store the key in the key of trie, just by indexing it. No need to store more.
 		trie_index(t, key, length);
-		g->criteria[i].overflow = (trie_size(t) == u->max_key_count);
+		g->criteria[i].overflow = (trie_size(t) >= u->max_key_count);
 	}
 }
 
