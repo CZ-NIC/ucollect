@@ -292,7 +292,7 @@ function get_static_names_list()
 	local cur = uci.cursor();
 	local list = {};
 
-	cur:foreach("majordomo", "static_name", function(i) list[i.mac] = i.name; end);
+	cur:foreach("majordomo", "static_name", function(i) if i.mac then list[i.mac] = i.name; end; end);
 
 	return list;
 end
