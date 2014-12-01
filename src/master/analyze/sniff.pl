@@ -56,6 +56,9 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 		'^EU-AKAMAI-\d+$' => 'Akamai',
 		'^TWITTER-NETWORK$' => 'Twitter',
 		'^GOOGLE$' => 'Google',
+		'^MICROSOFT$' => 'Microsoft',
+		'^MSFT-GFS$' => 'Microsoft',
+		'^EBAY-\d+$' => 'Ebay'
 	);
 
 	for my $host (sort keys %reports) {
