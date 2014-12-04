@@ -158,9 +158,12 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 	memcpy(header, data, length);
 	// Extract the elements of the header
 	struct user_data *u = context->user_data;
-	if (u->initialized && u->config_version != ntohl(header->config_version)) {
-		// We can't reload configuration, so we reinitialize the whole plugin.
-		loop_plugin_reinit(context);
+	if (u->initialized) {
+		if (u->config_version != ntohl(header->config_version)) {
+			// We can't reload configuration, so we reinitialize the whole plugin.
+			loop_plugin_reinit(context);
+		} else
+			return; // The config is loaded and is the same. Don't configure anything.
 	}
 	u->bucket_count = ntohl(header->bucket_count);
 	u->hash_count = ntohl(header->hash_count);
