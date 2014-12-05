@@ -147,9 +147,9 @@ CREATE TABLE bandwidth_stats_dbg (
 	timestamp_dbg INT,
 	client INT NOT NULL,
 	in_time INT[] NOT NULL,
-	in_bytes INT[] NOT NULL,
+	in_bytes BIGINT[] NOT NULL,
 	out_time INT[] NOT NULL,
-	out_bytes INT[] NOT NULL,
+	out_bytes BIGINT[] NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
 	PRIMARY KEY (timestamp, client)
 );
