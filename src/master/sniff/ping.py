@@ -36,7 +36,7 @@ def submit_data(client, payload, hosts, batch_time):
 		if slen > 0:
 			(ip, times, payload) = (payload[:slen], payload[slen:slen + 4 * count], payload[slen + 4 * count:])
 			times = struct.unpack('!' + str(count) + 'L', times)
-			times = filter(lambda t: t < 2**32 - 1, times)
+			times = filter(lambda t: t < 2**31 - 1, times)
 		else:
 			times = []
 			ip = None
