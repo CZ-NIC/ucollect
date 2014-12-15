@@ -26,8 +26,6 @@ require("majordomo_lib");
 
 local CMD_INVALIDATE = "invalidate";
 local CMD_PRECACHE = "precache";
-local LOCK_FILE_PATH = "/tmp/majordomo_cache_lock_file";
-local LOCK_MAX_FAILED_ATTEMPS = 24; -- 24 corresponds to 1 day
 
 function invalidate(db_path)
 	os.execute("rm '" .. db_path .. "/majordomo_serialized_'*");
@@ -67,46 +65,6 @@ function precache(db_path, ml_mac, ml_dns)
 	macdb:serialize();
 end
 
-function lock_unlock()
-	os.remove(LOCK_FILE_PATH);
-end
-
-function lock_set(try_number)
-	local lock_file = io.open(LOCK_FILE_PATH, "w");
-	if not lock_file then
-		io.stderr("Failed to set lock file!\n");
-		os.exit(1);
-	end
-
-	lock_file:write(try_number);
-	lock_file:close();
-end
-
-function lock_test_and_set()
-	local LOCK_INIT = 0;
-	local lock_file = io.open(LOCK_FILE_PATH, "r");
-	if not lock_file then
-		lock_set(LOCK_INIT);
-		return true;
-	end
-
-	local try_number = lock_file:read("*number");
-	lock_file:close();
-
-	-- Some protection agains deadlock
-	if try_number >= LOCK_MAX_FAILED_ATTEMPS then
-		lock_unlock();
-		lock_set(LOCK_INIT);
-		return true;
-	end
-
-	try_number = try_number + 1;
-	lock_unlock();
-	lock_set(try_number);
-
-	return false;
-end
-
 function main()
 	local db_path, make_lookup_mac, make_lookup_dns, _ = majordomo_get_configuration();
 
@@ -120,12 +78,7 @@ function main()
 
 	elseif arg[1] == CMD_PRECACHE then
 		if make_lookup_mac or make_lookup_dns then
-			if not lock_test_and_set() then
-				io.stdout:write("Cache is locked\n");
-				os.exit(0);
-			end
 			precache(db_path, make_lookup_mac, make_lookup_dns);
-			lock_unlock();
 		else
 			io.stderr:write("Precache: Lookup is disabled\n");
 			os.exit(0);
