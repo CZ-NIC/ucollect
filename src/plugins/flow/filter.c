@@ -454,7 +454,7 @@ enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct mem_pool
 		bool add = flags & add_mask;
 		if (add) {
 			if (*data) {
-				ulog(LLOG_WARN, "Asked to add an address #%zu of size %hhu to filter %s, but that already exists\n", addr_no, addr_len, name);
+				ulog(LLOG_WARN, "Asked to add an address %s (#%zu) of size %hhu to filter %s, but that already exists\n", mem_pool_hex(tmp_pool, diff, addr_len), addr_no, addr_len, name);
 			} else {
 				*data = &mark;
 				found->added ++;
@@ -464,7 +464,7 @@ enum flow_filter_action filter_diff_apply(struct mem_pool *pool, struct mem_pool
 				*data = NULL;
 				found->deleted ++;
 			} else {
-				ulog(LLOG_WARN, "Asked to delete an address #%zu of size %hhu from filter %s, but that is not there\n", addr_no, addr_len, name);
+				ulog(LLOG_WARN, "Asked to delete an address %s (#%zu) of size %hhu from filter %s, but that is not there\n", mem_pool_hex(tmp_pool, diff, addr_len), addr_no, addr_len, name);
 			}
 		}
 		diff += addr_len;
