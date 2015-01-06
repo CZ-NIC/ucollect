@@ -41,7 +41,7 @@ def store_connections(message, client, now):
 		if basetime - time > 86400000:
 			logger.error("Refused time difference is out of range for client %s: %s", client, basetime - time)
 			continue
-		values.append((basetime - time, address, loc_port, rem_port, reason, client))
+		values.append((now, basetime - time, address, loc_port, rem_port, reason, client))
 		count += 1
 	with database.transaction() as t:
 		t.executemany("INSERT INTO refused (client, timestamp, address, local_port, remote_port, reason) SELECT clients.id, %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
