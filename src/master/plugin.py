@@ -18,10 +18,15 @@
 #
 
 from protocol import format_string
+from twisted.python.threadpool import ThreadPool
 import logging
 import time
 
 logger = logging.getLogger(name='plugin')
+
+pool = ThreadPool()
+pool.adjustPoolsize(1)
+pool.start()
 
 class Plugin:
 	"""
