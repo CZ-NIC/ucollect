@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2014,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@ import socket
 
 logger = logging.getLogger(name='refused')
 
-def store_connections(message, client):
+def store_connections(message, client, now):
 	(basetime,) = struct.unpack('!Q', message[:8])
 	message = message[8:]
 	values = []
@@ -44,7 +44,7 @@ def store_connections(message, client):
 		values.append((basetime - time, address, loc_port, rem_port, reason, client))
 		count += 1
 	with database.transaction() as t:
-		t.executemany("INSERT INTO refused (client, timestamp, address, local_port, remote_port, reason) SELECT clients.id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
+		t.executemany("INSERT INTO refused (client, timestamp, address, local_port, remote_port, reason) SELECT clients.id, %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
 	logger.debug("Stored %s refused connections for client %s", count, client)
 
 class RefusedPlugin(plugin.Plugin):
@@ -62,6 +62,6 @@ class RefusedPlugin(plugin.Plugin):
 			self.send('C' + config, client)
 		elif message[0] == 'D':
 			activity.log_activity(client, 'refused')
-			reactor.callInThread(store_connections, message[1:], client)
+			reactor.callInThread(store_connections, message[1:], client, database.now())
 		else:
 			logger.error("Unknown message from client %s: %s", client, message)

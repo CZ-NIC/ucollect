@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2014,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -75,13 +75,10 @@ class ClientData:
 		self.cnt += 1
 		self.buckets[bucket] = Bucket(bucket, in_time, in_bytes, out_time, out_bytes)
 
-def store_bandwidth(data):
+def store_bandwidth(data, now):
 	logger.info('Storing bandwidth snapshot')
 
 	with database.transaction() as t:
-		t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
-		(now,) = t.fetchone()
-
 		for client, cldata in data.items():
 			for window in cldata.windows.itervalues():
 				t.execute("""INSERT INTO bandwidth (client, timestamp, win_len, in_max, out_max)
@@ -190,7 +187,7 @@ class BandwidthPlugin(plugin.Plugin):
 		# move it to a separate thread, so we don't block the communication. This is
 		# safe -- we pass all the needed data to it as parameters and get rid of our
 		# copy, passing the ownership to the task.
-		reactor.callInThread(store_bandwidth, self.__data)
+		reactor.callInThread(store_bandwidth, self.__data, database.now())
 		self.__data = {}
 
 	def name(self):

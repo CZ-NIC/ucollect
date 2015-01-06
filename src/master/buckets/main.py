@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -37,11 +37,9 @@ import buckets.batch
 
 logger = logging.getLogger(name='buckets')
 
-def store_keys(groups):
+def store_keys(groups, now):
 	logger.info("Storing buckets")
 	with database.transaction() as t:
-		t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'")
-		(now,) = t.fetchone()
 		def aggregate(l1, l2):
 			l1.extend(l2)
 			return l1
@@ -163,7 +161,7 @@ class BucketsPlugin(plugin.Plugin):
 			self.__background_processing = False
 			if result is Failure:
 				logger.error("Failed to push anomalies to DB: %s", result.value)
-		deferred = threads.deferToThread(store_keys, self.__groups)
+		deferred = threads.deferToThread(store_keys, self.__groups, database.now())
 		deferred.addCallback(done)
 
 	def __dec_background(self):

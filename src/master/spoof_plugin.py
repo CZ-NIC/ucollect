@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2014,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -47,10 +47,10 @@ class Token:
 	def time(self):
 		return self.__time
 
-def store_packet(token, spoofed, matches, ip):
+def store_packet(token, spoofed, matches, ip, now):
 	logger.debug("Storing packet with spoof %s from client %s", spoofed, token.client())
 	with database.transaction() as t:
-		t.execute("INSERT INTO spoof (client, batch, spoofed, addr_matches, received, ip) SELECT id, %s, %s, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', %s FROM clients WHERE name = %s", (token.time(), spoofed, matches, ip, token.client()))
+		t.execute("INSERT INTO spoof (client, batch, spoofed, addr_matches, received, ip) SELECT id, %s, %s, %s, %s, %s FROM clients WHERE name = %s", (token.time(), spoofed, matches, now, ip, token.client()))
 
 class UDPReceiver(twisted.internet.protocol.DatagramProtocol):
 	def __init__(self, spoof):
@@ -75,7 +75,7 @@ class UDPReceiver(twisted.internet.protocol.DatagramProtocol):
 			tok.expect_ordinary = False
 		if not tok.expect_spoofed and not tok.expect_ordinary:
 			self.__spoof.drop_token(token)
-		reactor.callInThread(store_packet, tok, spoofed, (not spoofed) or (addr[0] == self.__spoof.src_addr()), addr[0])
+		reactor.callInThread(store_packet, tok, spoofed, (not spoofed) or (addr[0] == self.__spoof.src_addr()), addr[0], database.now())
 		activity.log_activity(tok.client(), 'spoof')
 
 class SpoofPlugin(plugin.Plugin):

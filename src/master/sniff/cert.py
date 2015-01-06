@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2014,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ import dateutil.parser
 
 logger = logging.getLogger(name='sniff')
 
-def store_certs(client, payload, hosts, batch_time):
+def store_certs(client, payload, hosts, batch_time, now):
 	with database.transaction() as t:
 		for (rid, want_details, want_params) in hosts:
 			(count,) = struct.unpack("!B", payload[0])
@@ -41,7 +41,7 @@ def store_certs(client, payload, hosts, batch_time):
 				if want_params:
 					(cipher, payload) = extract_string(payload)
 					(proto, payload) = extract_string(payload)
-				t.execute("INSERT INTO certs (request, client, batch, timestamp, proto, cipher) SELECT %s, clients.id, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', %s, %s FROM clients WHERE name = %s RETURNING id", (rid, batch_time, proto, cipher, client))
+				t.execute("INSERT INTO certs (request, client, batch, timestamp, proto, cipher) SELECT %s, clients.id, %s, %s, %s, %s FROM clients WHERE name = %s RETURNING id", (rid, batch_time, now, proto, cipher, client))
 				(cert_id,) = t.fetchone()
 				for i in range(0, count):
 					(cert, payload) = extract_string(payload)
@@ -69,7 +69,7 @@ class CertTask(Task):
 		return self.__message
 
 	def success(self, client, payload):
-		reactor.callInThread(store_certs, client, payload, self.__hosts, self.__batch_time)
+		reactor.callInThread(store_certs, client, payload, self.__hosts, self.__batch_time, database.now())
 		log_activity(client, 'certs')
 
 def encode_host(host, port, starttls, want_cert, want_chain, want_details, want_params):

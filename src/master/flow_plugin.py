@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2014,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -174,7 +174,7 @@ filter_index = {
 	'R': FilterRange
 }
 
-def store_flows(client, message, expect_conf_id):
+def store_flows(client, message, expect_conf_id, now):
 	(header, message) = (message[:12], message[12:])
 	(conf_id, calib_time) = struct.unpack('!IQ', header)
 	if conf_id != expect_conf_id:
@@ -211,7 +211,7 @@ def store_flows(client, message, expect_conf_id):
 					logger.error("Time difference out of range for client %s and in direction: %s", client, calib_time - v)
 					ok = False
 			if ok:
-				values.append((arem, aloc, prem, ploc, proto, calib_time - tbin, calib_time - tein, calib_time - tbout if cout else None, sin, cin, True, in_started, client))
+				values.append((arem, aloc, prem, ploc, proto, now, calib_time - tbin, now, calib_time - tein, now, calib_time - tbout if cout else None, sin, cin, True, in_started, client))
 				count += 1
 		if cout:
 			ok = True
@@ -220,10 +220,10 @@ def store_flows(client, message, expect_conf_id):
 					logger.error("Time difference out of range for client %s and out direction: %s", client, calib_time - v)
 					ok = False
 			if ok:
-				values.append((aloc, arem, ploc, prem, proto, calib_time - tbout, calib_time - teout, calib_time - tbin if cin else None, sout, cout, False, out_started, client))
+				values.append((aloc, arem, ploc, prem, proto, now, calib_time - tbout, now, calib_time - teout, now, calib_time - tbin if cin else None, sout, cout, False, out_started, client))
 				count += 1
 	with database.transaction() as t:
-		t.executemany("INSERT INTO flows (client, ip_from, ip_to, port_from, port_to, proto, start, stop, opposite_start, size, count, inbound, seen_start) SELECT clients.id, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
+		t.executemany("INSERT INTO flows (client, ip_from, ip_to, port_from, port_to, proto, start, stop, opposite_start, size, count, inbound, seen_start) SELECT clients.id, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
 	logger.debug("Stored %s flows for %s", count, client)
 
 class FlowPlugin(plugin.Plugin):
@@ -359,7 +359,7 @@ class FlowPlugin(plugin.Plugin):
 		elif message[0] == 'D':
 			logger.debug('Flows from %s', client)
 			activity.log_activity(client, 'flow')
-			reactor.callInThread(store_flows, client, message[1:], int(self.__config['version']))
+			reactor.callInThread(store_flows, client, message[1:], int(self.__config['version']), database.now())
 		elif message[0] == 'U':
 			# Client is requesting difference in a filter
 			(full, name_len) = struct.unpack('!?I', message[1:6])

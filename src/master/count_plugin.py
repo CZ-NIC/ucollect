@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -28,16 +28,13 @@ import activity
 
 logger = logging.getLogger(name='count')
 
-def store_counts(data, stats):
+def store_counts(data, stats, now):
 	logger.info('Storing count snapshot')
 	with database.transaction() as t:
 		t.execute('SELECT name, id FROM count_types ORDER BY ord')
 		name_data = t.fetchall()
 		name_order = map(lambda x: x[0], name_data)
 		names = dict(name_data)
-		# Store the timestamp here, so all the clients have the same value.
-		t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
-		(now,) = t.fetchone()
 		# It seems MySQL complains with insert ... select in some cases.
 		# So we do some insert-select-insert magic here. That is probably
 		# slower, but no idea how to help that. And it should work.
@@ -100,11 +97,11 @@ class CountPlugin(plugin.Plugin):
 	def __process(self):
 		if not self.__data:
 			return # No data to store.
-		# As manipulation with DM might be time consuming (as it may be blocking, etc),
+		# As manipulation with DB might be time consuming (as it may be blocking, etc),
 		# move it to a separate thread, so we don't block the communication. This is
 		# safe -- we pass all the needed data to it as parameters and get rid of our
 		# copy, passing the ownership to the task.
-		reactor.callInThread(store_counts, self.__data, self.__stats)
+		reactor.callInThread(store_counts, self.__data, self.__stats, database.now())
 		self.__data = {}
 		self.__stats = {}
 

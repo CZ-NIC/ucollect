@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@ import psycopg2
 import logging
 import threading
 import traceback
+import time
 from master_config import get
 
 logger = logging.getLogger(name='database')
@@ -77,3 +78,17 @@ def transaction(reuse=True):
 		return __cache.context
 	else:
 		return __CursorContext(__cache.connection)
+
+__time_update = 0
+__time_db = 0
+
+def now():
+	global __time_update
+	global __time_db
+	t = time.time()
+	if __time_update + 2 < t:
+		__time_update = t
+		with transaction() as t:
+			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
+			(__time_db,) = t.fetchone()
+	return __time_db
