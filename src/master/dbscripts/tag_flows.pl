@@ -24,6 +24,7 @@ my $read = $dbh->prepare('SELECT id, ip_from, ip_to, port_from, port_to, inbound
 my $update = $dbh->prepare('UPDATE flows SET tag = ?, tagged_on = ? WHERE id = ?');
 
 my $found = 1;
+my $count = 0;
 while ($found) {
 	$read->execute;
 	undef $found;
@@ -37,7 +38,9 @@ while ($found) {
 		my $tag = $tags{$ip}->{ports}->{$port} // $tags{$ip}->{values} // '?';
 		$update->execute($tag, $tstamp, $id);
 		$found = 1;
+		$count ++;
 	}
 	$dbh->commit;
+	print "Done $count\n";
 }
 
