@@ -223,7 +223,7 @@ CREATE TABLE flows (
 );
 CREATE SEQUENCE flow_ids OWNED BY flows.id;
 ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flow_ids');
-CREATE INDEX ON flows (ip_remote);
+CREATE INDEX ON flows (host(ip_remote));
 CREATE INDEX ON flows (tag);
 CREATE INDEX ON flows (start);
 
