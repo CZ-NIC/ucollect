@@ -203,8 +203,10 @@ CREATE TABLE flows (
 	client INT NOT NULL,
 	ip_from INET NOT NULL,
 	ip_to INET NOT NULL,
+	ip_remote INET NOT NULL,
 	port_from INT NOT NULL,
 	port_to INT NOT NULL,
+	port_remote INT NOT NULL,
 	proto CHAR(1) NOT NULL,
 	start TIMESTAMP NOT NULL,
 	stop TIMESTAMP NOT NULL,
@@ -221,7 +223,9 @@ CREATE TABLE flows (
 );
 CREATE SEQUENCE flow_ids OWNED BY flows.id;
 ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flow_ids');
+CREATE INDEX ON flows (ip_remote);
 CREATE INDEX ON flows (tag);
+CREATE INDEX ON flows (start);
 
 INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat'), ('spoof'), ('refused');
 CREATE TABLE starttls_protos (
