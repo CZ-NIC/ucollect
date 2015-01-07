@@ -164,6 +164,11 @@ if (fork == 0) {
 			$update_archived->execute($id);
 		}
 		$packet_group->execute($id_dest, $group);
+		if ($count % 10000 == 0) {
+			print "Packet snapshot at $count\n";
+			$destination->commit;
+			$source->commit;
+		}
 	}
 	print "Stored $count packets\n";
 	$destination->commit;
