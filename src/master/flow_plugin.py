@@ -223,7 +223,7 @@ def store_flows(client, message, expect_conf_id, now):
 				values.append((aloc, arem, arem, ploc, prem, prem, proto, now, calib_time - tbout, now, calib_time - teout, now, calib_time - tbin if cin else None, sout, cout, False, out_started, client))
 				count += 1
 	with database.transaction() as t:
-		t.executemany("INSERT INTO flows (client, ip_from, ip_to, ip_remote, port_from, port_to, port_remote, proto, start, stop, opposite_start, size, count, inbound, seen_start) SELECT clients.id, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
+		t.executemany("INSERT INTO flows (client, ip_from, ip_to, ip_remote, port_from, port_to, port_remote, proto, start, stop, opposite_start, size, count, inbound, seen_start) SELECT clients.id, %s, %s, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
 	logger.debug("Stored %s flows for %s", count, client)
 
 class FlowPlugin(plugin.Plugin):
