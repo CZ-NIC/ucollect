@@ -322,7 +322,9 @@ if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
 	my $max_time = $destination->selectrow_array('SELECT COALESCE(MAX(flows.tagged_on), TO_TIMESTAMP(0)) FROM flows');
-	print "Getting flows tagged after $max_time\n";
+	my $get_times = $source->prepare('SELECT DISTINCT tagged_on FROM flows WHERE tagged_on > ? ORDER BY tagged_on');
+	print "Getting flows times tagged after $max_time\n";
+	$get_times->execute($max_time);
 	my $store_flow = $destination->prepare('INSERT INTO flows (peer_ip, peer_port, inbound, tagged_on, proto, start, stop, opposite_start, size, count, tag, seen_start) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 	my $store_group = $destination->prepare('INSERT INTO flow_groups (flow, from_group) VALUES (?, ?)');
 	my $get_flows = $source->prepare('SELECT
@@ -334,35 +336,27 @@ if (fork == 0) {
 		ON
 			flows.client = group_members.client
 		WHERE
-			tagged_on > ?
+			tagged_on = ?
 		ORDER BY
 			flows.id');
-	$get_flows->execute($max_time);
-	print "Flows are flowing\n";
 	my ($fid, $dst_fid);
 	my ($fcount, $gcount) = (0, 0);
-	my $running_count = 0;
-	my $last_tagged_on = $max_time;
-	while (my ($group, $id, $ip_from, $ip_to, $port_from, $port_to, $inbound, $tagged_on, @payload) = $get_flows->fetchrow_array) {
-		if ($fid != $id) {
-			$fcount ++;
-			$running_count ++;
-			if ($running_count > 100000 and $last_tagged_on != $tagged_on) {
-				$source->commit;
-				$destination->commit;
-				print "Flow snapshot at $fcount\n";
+	while (my ($cur_time) = $get_times->fetchrow_array) {
+		$get_flows->execute($cur_time);
+		while (my ($group, $id, $ip_from, $ip_to, $port_from, $port_to, $inbound, $tagged_on, @payload) = $get_flows->fetchrow_array) {
+			if ($fid != $id) {
+				$fcount ++;
+				$store_flow->execute($inbound ? ($ip_from, $port_from) : ($ip_to, $port_to), $inbound, $tagged_on, @payload);
+				$dst_fid = $destination->last_insert_id(undef, undef, 'flows', undef);
+				$fid = $id;
 			}
-			$last_tagged_on = $tagged_on;
-			$store_flow->execute($inbound ? ($ip_from, $port_from) : ($ip_to, $port_to), $inbound, $tagged_on, @payload);
-			$dst_fid = $destination->last_insert_id(undef, undef, 'flows', undef);
-			$fid = $id;
+			$store_group->execute($dst_fid, $group);
+			$gcount ++;
 		}
-		$store_group->execute($dst_fid, $group);
-		$gcount ++;
+		$source->commit;
+		$destination->commit;
+		print "Stored $fcount flows with $gcount group entries ($cur_time)\n";
 	}
-	print "Stored $fcount flows with $gcount group entries\n";
-	$source->commit;
-	$destination->commit;
 	exit;
 }
 
