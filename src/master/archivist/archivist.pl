@@ -162,13 +162,13 @@ if (fork == 0) {
 			$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
 			$count ++;
 			$update_archived->execute($id);
+			if ($count % 100000 == 0) {
+				print "Packet snapshot at $count\n";
+				$destination->commit;
+				$source->commit;
+			}
 		}
 		$packet_group->execute($id_dest, $group);
-		if ($count % 10000 == 0) {
-			print "Packet snapshot at $count\n";
-			$destination->commit;
-			$source->commit;
-		}
 	}
 	print "Stored $count packets\n";
 	$destination->commit;
