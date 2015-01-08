@@ -19,7 +19,7 @@ while (<>) {
 }
 
 my $dbh = DBI->connect("dbi:Pg:dbname=turris", "tagger", "", { RaiseError => 1, AutoCommit => 0 });
-my $read = $dbh->prepare('SELECT id, ip_from, ip_to, port_from, port_to, inbound FROM flows WHERE tag IS NULL LIMIT 10000');
+my $read = $dbh->prepare('SELECT id, ip_from, ip_to, port_from, port_to, inbound FROM flows WHERE tag IS NULL LIMIT 100000');
 my $update = $dbh->prepare('UPDATE flows SET tag = ?, tagged_on = ? WHERE id = ?');
 
 my $found = 1;
