@@ -1,5 +1,6 @@
 --[[
 Copyright 2014, CZ.NIC z.s.p.o. (http://www.nic.cz/)
+Copyright 2015, CZ.NIC z.s.p.o. (http://www.nic.cz/)
 
 This script is part of majordomo plugin for ucollect
 
@@ -77,7 +78,7 @@ function db(name, storage)
 		local dbfile = io.open(self.PATH .. "/" .. self.FILE_PREFIX .. self.name, "w");
 		if dbfile then
 			for key, value in pairs(self.data) do
-				dbfile:write(key .. "=" .. value .. "\n");
+				dbfile:write(key .. "," .. value.ts .. "," .. value.payload .. "\n");
 			end
 			dbfile:close();
 		end
@@ -87,9 +88,9 @@ function db(name, storage)
 		local dbfile = io.open(self.PATH .. "/" .. self.FILE_PREFIX .. self.name, "r");
 		if dbfile then
 			for line in dbfile:lines() do
-				local key, value = line:match("(.*)=(.*)");
-				if key and value then
-					self.data[key] = value;
+				local key, ts, payload = line:match("(.*),(.*),(.*)");
+				if key and payload and ts then
+					self.data[key] = { payload = payload, ts = ts };
 				end
 			end
 			dbfile:close();
@@ -227,8 +228,8 @@ function get_inst_ptrdb()
 
 		local cached = self.data[key];
 		if cached then
-			if cached ~= empty_result then
-				return cached;
+			if cached.payload ~= empty_result then
+				return cached.payload;
 			else
 				return nil;
 			end
@@ -236,13 +237,13 @@ function get_inst_ptrdb()
 
 		local ptr, nxdomain = resolve(key);
 		if not ptr and nxdomain then
-			self.data[key] = empty_result;
+			self.data[key] = { payload = empty_result, ts = os.time() };
 			return nil;
 		elseif not ptr and not nxdomain then
-			self.data[key] = empty_result;
+			self.data[key] = { payload = empty_result, ts = os.time() };
 			return nil;
 		elseif ptr and not nxdomain then
-			self.data[key] = ptr;
+			self.data[key] = { payload = ptr, ts = os.time() };
 			return ptr;
 		end
 	end
@@ -263,8 +264,8 @@ function get_inst_macdb()
 
 		local cached = self.data[key];
 		if cached then
-			if cached ~= empty_result then
-				return cached;
+			if cached.payload ~= empty_result then
+				return cached.payload;
 			else
 				return nil;
 			end
@@ -274,11 +275,11 @@ function get_inst_macdb()
 		local result = handle:read();
 		handle:close();
 		if not result then
-			self.data[key] = empty_result;
+			self.data[key] = { payload = empty_result, ts = os.time() };
 			return nil;
 		end
 		local vendor = result:match("%w+|%w+|%w+|%w+|([%w%s]+).*");
-		self.data[key]=vendor;
+		self.data[key] = { payload = vendor, ts = os.time() };
 		return vendor;
 	end
 
