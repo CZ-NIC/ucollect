@@ -363,7 +363,8 @@ CREATE TABLE ssh_commands (
         session_id INTEGER REFERENCES ssh_sessions(id) ON DELETE CASCADE,
         ts TIMESTAMP WITH TIME ZONE NOT NULL,
         success BOOLEAN NOT NULL,
-        command TEXT NOT NULL
+        command TEXT NOT NULL,
+	archived BOOL NOT NULL DEFAULT false
 );
 
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
