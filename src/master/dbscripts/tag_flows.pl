@@ -25,6 +25,7 @@ my $update = $dbh->prepare('UPDATE flows SET tag = ?, tagged_on = ? WHERE id = ?
 my $found = 1;
 my $count = 0;
 while ($found) {
+	my $batch = 0;
 	my $tstamp = $dbh->selectrow_array("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
 	$read->execute;
 	undef $found;
@@ -39,8 +40,10 @@ while ($found) {
 		$update->execute($tag, $tstamp, $id);
 		$found = 1;
 		$count ++;
+		$batch ++;
 	}
 	$dbh->commit;
 	print "Done $count\n";
+	last if $batch < 100000;
 }
 
