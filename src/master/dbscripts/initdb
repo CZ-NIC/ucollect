@@ -81,6 +81,7 @@ CREATE TABLE anomaly_types (
 	description TEXT NOT NULL
 );
 CREATE TABLE anomalies (
+	id BIGINT NOT NULL PRIMARY KEY,
 	from_group INT NOT NULL,
 	type CHAR NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
@@ -93,6 +94,8 @@ CREATE TABLE anomalies (
 	CHECK(relevance_count <= relevance_of)
 );
 CREATE INDEX ON anomalies (from_group, type, timestamp);
+CREATE SEQUENCE anomaly_ids OWNED BY anomalies.id;
+ALTER TABLE anomalies ALTER COLUMN id SET DEFAULT NEXTVAL('anomaly_ids');
 
 CREATE TABLE count_types (
 	id SMALLINT PRIMARY KEY NOT NULL,
