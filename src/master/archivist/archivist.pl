@@ -323,10 +323,10 @@ if (fork == 0) {
 	my $destination = connect_db 'destination';
 	my $max_time = $destination->selectrow_array('SELECT COALESCE(MAX(flows.tagged_on), TO_TIMESTAMP(0)) FROM flows');
 	print "Getting flows tagged after $max_time\n";
-	my $store_flow = $destination->prepare('INSERT INTO flows (peer_ip, peer_port, inbound, proto, start, stop, opposite_start, size, count, tag, tagged_on, seen_start) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+	my $store_flow = $destination->prepare('INSERT INTO flows (peer_ip, peer_port, inbound, tagged_on, proto, start, stop, opposite_start, size, count, tag, seen_start) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 	my $store_group = $destination->prepare('INSERT INTO flow_groups (flow, from_group) VALUES (?, ?)');
 	my $get_flows = $source->prepare('SELECT
-			group_members.in_group, flows.id, ip_from, ip_to, port_from, port_to, inbound, proto, start, stop, opposite_start, size, count, tag, tagged_on, flows.seen_start
+			group_members.in_group, flows.id, ip_from, ip_to, port_from, port_to, inbound, tagged_on, proto, start, stop, opposite_start, size, count, tag, flows.seen_start
 		FROM
 			flows
 		JOIN
@@ -341,15 +341,19 @@ if (fork == 0) {
 	print "Flows are flowing\n";
 	my ($fid, $dst_fid);
 	my ($fcount, $gcount) = (0, 0);
-	while (my ($group, $id, $ip_from, $ip_to, $port_from, $port_to, $inbound, @payload) = $get_flows->fetchrow_array) {
+	my $running_count = 0;
+	my $last_tagged_on = $max_time;
+	while (my ($group, $id, $ip_from, $ip_to, $port_from, $port_to, $inbound, $tagged_on, @payload) = $get_flows->fetchrow_array) {
 		if ($fid != $id) {
 			$fcount ++;
-			if ($fcount % 100000 == 0) {
+			$running_count ++;
+			if ($running_count > 100000 and $last_tagged_on != $tagged_on) {
 				$source->commit;
 				$destination->commit;
 				print "Flow snapshot at $fcount\n";
 			}
-			$store_flow->execute($inbound ? ($ip_from, $port_from) : ($ip_to, $port_to), $inbound, @payload);
+			$last_tagged_on = $tagged_on;
+			$store_flow->execute($inbound ? ($ip_from, $port_from) : ($ip_to, $port_to), $inbound, $tagged_on, @payload);
 			$dst_fid = $destination->last_insert_id(undef, undef, 'flows', undef);
 			$fid = $id;
 		}
