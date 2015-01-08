@@ -157,16 +157,16 @@ if (fork == 0) {
 	my $count = 0;
 	while (my ($id, $group, @data) = $get_packets->fetchrow_array) {
 		if ($last_id != $id) {
-			$store_packet->execute(@data);
-			$last_id = $id;
-			$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
 			$count ++;
-			$update_archived->execute($id);
 			if ($count % 100000 == 0) {
 				print "Packet snapshot at $count\n";
 				$destination->commit;
 				$source->commit;
 			}
+			$store_packet->execute(@data);
+			$last_id = $id;
+			$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
+			$update_archived->execute($id);
 		}
 		$packet_group->execute($id_dest, $group);
 	}
@@ -338,13 +338,19 @@ if (fork == 0) {
 		ORDER BY
 			flows.id');
 	$get_flows->execute($max_time);
+	print "Flows are flowing\n";
 	my ($fid, $dst_fid);
 	my ($fcount, $gcount) = (0, 0);
 	while (my ($group, $id, $ip_from, $ip_to, $port_from, $port_to, $inbound, @payload) = $get_flows->fetchrow_array) {
 		if ($fid != $id) {
+			$fcount ++;
+			if ($fcount % 100000 == 0) {
+				$source->commit;
+				$destination->commit;
+				print "Flow snapshot at $fcount\n";
+			}
 			$store_flow->execute($inbound ? ($ip_from, $port_from) : ($ip_to, $port_to), $inbound, @payload);
 			$dst_fid = $destination->last_insert_id(undef, undef, 'flows', undef);
-			$fcount ++;
 			$fid = $id;
 		}
 		$store_group->execute($dst_fid, $group);
