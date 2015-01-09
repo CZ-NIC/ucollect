@@ -157,18 +157,18 @@ if (fork == 0) {
 	my $count = 0;
 	while (my ($id, $group, @data) = $get_packets->fetchrow_array) {
 		if ($last_id != $id) {
+			$count ++;
+			if ($count % 100000 == 0) {
+				print "Packet snapshot at $count\n";
+				$destination->commit;
+				$source->commit;
+			}
 			$store_packet->execute(@data);
 			$last_id = $id;
 			$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
-			$count ++;
 			$update_archived->execute($id);
 		}
 		$packet_group->execute($id_dest, $group);
-		if ($count % 10000 == 0) {
-			print "Packet snapshot at $count\n";
-			$destination->commit;
-			$source->commit;
-		}
 	}
 	print "Stored $count packets\n";
 	$destination->commit;
@@ -322,11 +322,13 @@ if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
 	my $max_time = $destination->selectrow_array('SELECT COALESCE(MAX(flows.tagged_on), TO_TIMESTAMP(0)) FROM flows');
-	print "Getting flows tagged after $max_time\n";
-	my $store_flow = $destination->prepare('INSERT INTO flows (peer_ip, peer_port, inbound, proto, start, stop, opposite_start, size, count, tag, tagged_on, seen_start) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+	my $get_times = $source->prepare('SELECT DISTINCT tagged_on FROM flows WHERE tagged_on > ? ORDER BY tagged_on');
+	print "Getting flows times tagged after $max_time\n";
+	$get_times->execute($max_time);
+	my $store_flow = $destination->prepare('INSERT INTO flows (peer_ip, peer_port, inbound, tagged_on, proto, start, stop, opposite_start, size, count, tag, seen_start) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 	my $store_group = $destination->prepare('INSERT INTO flow_groups (flow, from_group) VALUES (?, ?)');
 	my $get_flows = $source->prepare('SELECT
-			group_members.in_group, flows.id, ip_from, ip_to, port_from, port_to, inbound, proto, start, stop, opposite_start, size, count, tag, tagged_on, flows.seen_start
+			group_members.in_group, flows.id, ip_from, ip_to, port_from, port_to, inbound, tagged_on, proto, start, stop, opposite_start, size, count, tag, flows.seen_start
 		FROM
 			flows
 		JOIN
@@ -334,25 +336,27 @@ if (fork == 0) {
 		ON
 			flows.client = group_members.client
 		WHERE
-			tagged_on > ?
+			tagged_on = ?
 		ORDER BY
 			flows.id');
-	$get_flows->execute($max_time);
 	my ($fid, $dst_fid);
 	my ($fcount, $gcount) = (0, 0);
-	while (my ($group, $id, $ip_from, $ip_to, $port_from, $port_to, $inbound, @payload) = $get_flows->fetchrow_array) {
-		if ($fid != $id) {
-			$store_flow->execute($inbound ? ($ip_from, $port_from) : ($ip_to, $port_to), $inbound, @payload);
-			$dst_fid = $destination->last_insert_id(undef, undef, 'flows', undef);
-			$fcount ++;
-			$fid = $id;
+	while (my ($cur_time) = $get_times->fetchrow_array) {
+		$get_flows->execute($cur_time);
+		while (my ($group, $id, $ip_from, $ip_to, $port_from, $port_to, $inbound, $tagged_on, @payload) = $get_flows->fetchrow_array) {
+			if ($fid != $id) {
+				$fcount ++;
+				$store_flow->execute($inbound ? ($ip_from, $port_from) : ($ip_to, $port_to), $inbound, $tagged_on, @payload);
+				$dst_fid = $destination->last_insert_id(undef, undef, 'flows', undef);
+				$fid = $id;
+			}
+			$store_group->execute($dst_fid, $group);
+			$gcount ++;
 		}
-		$store_group->execute($dst_fid, $group);
-		$gcount ++;
+		$source->commit;
+		$destination->commit;
+		print "Stored $fcount flows with $gcount group entries ($cur_time)\n";
 	}
-	print "Stored $fcount flows with $gcount group entries\n";
-	$source->commit;
-	$destination->commit;
 	exit;
 }
 

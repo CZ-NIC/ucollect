@@ -104,6 +104,7 @@ static uint64_t delayed_timestamp(uint64_t timestamp, uint64_t window_len, size_
 
 // Window initialization - fill up static parts, allocate dynamic parts and init their values
 static struct window init_window(struct mem_pool *pool, uint64_t length, size_t count, uint64_t current_time) {
+	assert(count >= 2);
 	size_t mem_size = count * sizeof(struct frame);
 	struct frame *frames = mem_pool_alloc(pool, mem_size);
 	memset(frames, 0, mem_size);
@@ -168,7 +169,11 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 			cwindow->timestamp = delayed_timestamp(current_timestamp(), cwindow->len, cwindow->cnt);
 			memset(cwindow->frames, 0, cwindow->cnt * sizeof(struct frame));
 			cwindow->current_frame = 0;
-			ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: Dropping window - time changed?\n");
+			ulog(LLOG_WARN,
+				"BANDWIDTH: Dropping window - time changed? (window = %" PRIu64 ", delta = %" PRIu64 ")\n",
+				cwindow->len,
+				cwindow->timestamp - info->timestamp
+			);
 		}
 
 		// "Rewind tape" to matching point
@@ -408,12 +413,13 @@ void init(struct context *context) {
 
 	// Windows settings
 	// Parameter count should be number that windows_count*window_length is at least 1 second
+	// WARNING: Minimal value of windows_count is 2!
 	size_t init = 0;
 	context->user_data->windows[init++] = init_window(context->permanent_pool, 500000, 4, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 1000000, 1, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 2000000, 1, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 5000000, 1, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 10000000, 1, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 1000000, 2, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 2000000, 2, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 5000000, 2, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 10000000, 2, common_start_timestamp);
 
 	init = 0;
 	for (size_t i = 0; i <= 20; i++) {

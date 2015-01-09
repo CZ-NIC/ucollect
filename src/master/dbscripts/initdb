@@ -5,6 +5,8 @@
 psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
+DROP TABLE IF EXISTS ssh_commands;
+DROP TABLE IF EXISTS ssh_sessions;
 DROP TABLE IF EXISTS refused;
 DROP TABLE IF EXISTS spoof;
 DROP TABLE IF EXISTS nats;
@@ -81,6 +83,7 @@ CREATE TABLE anomaly_types (
 	description TEXT NOT NULL
 );
 CREATE TABLE anomalies (
+	id BIGINT NOT NULL PRIMARY KEY,
 	from_group INT NOT NULL,
 	type CHAR NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
@@ -93,6 +96,8 @@ CREATE TABLE anomalies (
 	CHECK(relevance_count <= relevance_of)
 );
 CREATE INDEX ON anomalies (from_group, type, timestamp);
+CREATE SEQUENCE anomaly_ids OWNED BY anomalies.id;
+ALTER TABLE anomalies ALTER COLUMN id SET DEFAULT NEXTVAL('anomaly_ids');
 
 CREATE TABLE count_types (
 	id SMALLINT PRIMARY KEY NOT NULL,
@@ -223,8 +228,9 @@ CREATE TABLE flows (
 );
 CREATE SEQUENCE flow_ids OWNED BY flows.id;
 ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flow_ids');
-CREATE INDEX ON flows (host(ip_remote));
+CREATE INDEX ON flows (ip_remote);
 CREATE INDEX ON flows (tag);
+CREATE INDEX ON flows (tagged_on);
 CREATE INDEX ON flows (start);
 
 INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat'), ('spoof'), ('refused');
@@ -339,6 +345,28 @@ CREATE TABLE refused (
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
 
+CREATE TABLE ssh_sessions (
+	id INT NOT NULL PRIMARY KEY,
+	long_id CHAR(32) NOT NULL,
+	client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+	end_time TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+	login TEXT NOT NULL,
+	password TEXT NOT NULL
+);
+CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
+ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
+CREATE INDEX ssh_sessions_long_id_idx ON ssh_sessions (long_id);
+
+CREATE TABLE ssh_commands (
+	id SERIAL PRIMARY KEY,
+	session_id INTEGER REFERENCES ssh_sessions(id) ON DELETE CASCADE,
+	ts TIMESTAMP WITH TIME ZONE NOT NULL,
+	success BOOLEAN NOT NULL,
+	command TEXT NOT NULL,
+	archived BOOL NOT NULL DEFAULT false
+);
+
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
 GRANT INSERT ON activities TO $DBUPDATER;
@@ -397,6 +425,8 @@ GRANT SELECT (start) ON flows TO $DBCLEANER;
 GRANT SELECT (batch) ON nats TO $DBCLEANER;
 GRANT SELECT (batch) ON spoof TO $DBCLEANER;
 GRANT SELECT (timestamp) ON refused TO $DBCLEANER;
+GRANT SELECT (start_time, id) ON ssh_sessions TO $DBCLEANER;
+GRANT SELECT (session_id) ON ssh_ssesions TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
 GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
@@ -410,6 +440,8 @@ GRANT DELETE ON flows TO $DBCLEANER;
 GRANT DELETE ON nats TO $DBCLEANER;
 GRANT DELETE ON spoof TO $DBCLEANER;
 GRANT DELETE ON refused TO $DBCLEANER;
+GRANT DELETE ON ssh_sessions TO $DBCLEANER;
+GRANT DELETE ON ssh_commands TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
@@ -440,6 +472,14 @@ GRANT SELECT ON config TO $DBFLOWTAGGER;
 GRANT UPDATE ON config TO $DBFLOWTAGGER;
 GRANT SELECT ON flow_filters TO $DBFLOWTAGGER;
 GRANT INSERT ON flow_filters TO $DBFLOWTAGGER;
+
+GRANT INSERT ON ssh_sessions TO $DBKIPPO;
+GRANT INSERT ON ssh_commands TO $DBKIPPO;
+GRANT UPDATE ON ssh_sessions TO $DBKIPPO;
+GRANT UPDATE ON ssh_commands TO $DBKIPPO;
+GRANT SELECT ON ssh_sessions TO $DBKIPPO;
+GRANT SELECT ON ssh_commands TO $DBKIPPO;
+GRANT ALL ON ssh_session_ids TO $DBKIPPO;
 
 COMMIT;
 ENDSQL

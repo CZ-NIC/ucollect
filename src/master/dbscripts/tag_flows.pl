@@ -19,13 +19,14 @@ while (<>) {
 }
 
 my $dbh = DBI->connect("dbi:Pg:dbname=turris", "tagger", "", { RaiseError => 1, AutoCommit => 0 });
-my $tstamp = $dbh->selectrow_array("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
-my $read = $dbh->prepare('SELECT id, ip_from, ip_to, port_from, port_to, inbound FROM flows WHERE tag IS NULL LIMIT 10000');
+my $read = $dbh->prepare('SELECT id, ip_from, ip_to, port_from, port_to, inbound FROM flows WHERE tag IS NULL LIMIT 100000');
 my $update = $dbh->prepare('UPDATE flows SET tag = ?, tagged_on = ? WHERE id = ?');
 
 my $found = 1;
 my $count = 0;
 while ($found) {
+	my $batch = 0;
+	my $tstamp = $dbh->selectrow_array("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
 	$read->execute;
 	undef $found;
 	while (my ($id, $ip_from, $ip_to, $port_from, $port_to, $inbound) = $read->fetchrow_array) {
@@ -39,8 +40,10 @@ while ($found) {
 		$update->execute($tag, $tstamp, $id);
 		$found = 1;
 		$count ++;
+		$batch ++;
 	}
 	$dbh->commit;
 	print "Done $count\n";
+	last if $batch < 100000;
 }
 
