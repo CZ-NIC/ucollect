@@ -371,7 +371,7 @@ void dbg_dump(struct context *context, void *data, size_t id) {
 	//Report buckets
 	fprintf(ofile,
 		"\n%6s%20s%20s%20s%20s%20s\n",
-		"type", "bucket (Mbps)", "download time (s)", "download (MB)", "upload time (s)", "upload (MB)"
+		"type", "bucket (kbps)", "download time (s)", "download (MB)", "upload time (s)", "upload (MB)"
 	);
 
 	for (size_t i = 0; i < STATS_BUCKETS_CNT; i++) {
