@@ -28,6 +28,7 @@ MONTHLY_ORIGIN_PREFIX="majordomo_origin_monthly_";
 DB_PATH_DEFAULT="/tmp/majordomo_db/";
 USE_DNS_LOOKUP_BACKEND = "nslookup_openwrt"
 MAX_ITEMS_PER_CLIENT_DEFAULT = 6000
+CACHE_RECORD_VALIDITY = 60 * 60 * 24 * 7; -- 7 days
 
 -- This names have to be synced with Majordomo plugin
 KW_OTHER_PROTO = "both"
@@ -90,10 +91,19 @@ function db(name, storage)
 			for line in dbfile:lines() do
 				local key, ts, payload = line:match("(.*),(.*),(.*)");
 				if key and payload and ts then
-					self.data[key] = { payload = payload, ts = ts };
+					self.data[key] = { payload = payload, ts = tonumber(ts) };
 				end
 			end
 			dbfile:close();
+		end
+	end
+
+	function result:check(key)
+		local value = self.data[key];
+		if value then
+			if value.ts < os.time() - CACHE_RECORD_VALIDITY then
+				self.data[key] = nil;
+			end
 		end
 	end
 
