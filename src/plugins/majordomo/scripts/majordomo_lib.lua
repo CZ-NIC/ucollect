@@ -1,6 +1,5 @@
 --[[
-Copyright 2014, CZ.NIC z.s.p.o. (http://www.nic.cz/)
-Copyright 2015, CZ.NIC z.s.p.o. (http://www.nic.cz/)
+Copyright 2014, 2015 CZ.NIC z.s.p.o. (http://www.nic.cz/)
 
 This script is part of majordomo plugin for ucollect
 
