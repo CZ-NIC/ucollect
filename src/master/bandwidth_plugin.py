@@ -138,7 +138,8 @@ class ClientData:
 	"""
 	Class that stores all windows of client
 	"""
-	def __init__(self):
+	def __init__(self, version):
+		self.version = version
 		self.cnt = 0
 		self.windows = {}
 		self.buckets = {}
@@ -167,6 +168,16 @@ def store_bandwidth(data, now):
 		for client, cldata in data.items():
 			if not cldata.buckets:
 				continue
+
+			## Choose data structures according to protocol version
+			BUCKET_MAP = None
+			BUCKETS_CNT = None
+			if cldata.version <= 2:
+				BUCKET_MAP = BUCKET_MAP_PROTO2
+				BUCKETS_CNT = BUCKETS_CNT_PROTO2
+			elif cldata.version >= 3:
+				BUCKET_MAP = BUCKET_MAP_PROTO3
+				BUCKETS_CNT = BUCKETS_CNT_PROTO3
 
 			##### DBG #####
 			in_time = [0] * BUCKETS_CNT
@@ -283,7 +294,7 @@ class BandwidthPlugin(plugin.Plugin):
 
 		# Add client's record
 		if not client in self.__data:
-			self.__data[client] = ClientData();
+			self.__data[client] = ClientData(self.version(client));
 
 		# Extract timestamp from message and skip it
 		timestamp = data[0]
