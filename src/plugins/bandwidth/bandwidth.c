@@ -35,7 +35,7 @@
 #include "../../core/loop.h"
 
 #define WINDOW_GROUPS_CNT 5
-#define STATS_BUCKETS_CNT (20+8+9+1)
+#define STATS_BUCKETS_CNT (20+8+9+1+3)
 #define STATS_FROM_WINDOW 2000000
 
 // Settings for communication protocol
@@ -117,18 +117,18 @@ static struct window init_window(struct mem_pool *pool, uint64_t length, size_t 
 	};
 }
 
-static inline uint64_t bytes_to_mbits(uint64_t bytes) {
-	return bytes * 8 / 1000 / 1000;
+static inline uint64_t bytes_to_kbits(uint64_t bytes) {
+	return bytes * 8 / 1000;
 }
 
-static inline uint64_t mbits_to_bytes(uint64_t mbits) {
-	return mbits * 1000 * 1000 / 8;
+static inline uint64_t kbits_to_bytes(uint64_t kbits) {
+	return kbits * 1000 / 8;
 }
 
 // Compute key of bucket and init values to 0
-static struct bucket init_bucket(int mega_bits_per_second) {
+static struct bucket init_bucket(int kilo_bits_per_second) {
 	return (struct bucket) {
-		.key = mbits_to_bytes(mega_bits_per_second)
+		.key = kbits_to_bytes(kilo_bits_per_second)
 	};
 }
 
@@ -291,7 +291,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 
 	for (size_t bucket = 0; bucket < STATS_BUCKETS_CNT; bucket++) {
 		if (d->in_buckets[bucket].time != 0 || d->out_buckets[bucket].time != 0) {
-			msg[fill++] = htobe64(bytes_to_mbits(d->in_buckets[bucket].key));
+			msg[fill++] = htobe64(bytes_to_kbits(d->in_buckets[bucket].key));
 			msg[fill++] = htobe64(d->in_buckets[bucket].time);
 			msg[fill++] = htobe64(d->in_buckets[bucket].bytes);
 			msg[fill++] = htobe64(d->out_buckets[bucket].time);
@@ -378,7 +378,7 @@ void dbg_dump(struct context *context, void *data, size_t id) {
 		fprintf(ofile,
 			"%6s%20" PRIu64 "%20" PRIu64 "%20.3f%20" PRIu64 "%20.3f\n",
 			"bucket",
-			bytes_to_mbits(d->in_buckets[i].key),
+			bytes_to_kbits(d->in_buckets[i].key),
 			d->in_buckets[i].time,
 			d->in_buckets[i].bytes/(float) 1024 /  1024,
 			d->out_buckets[i].time,
@@ -422,17 +422,22 @@ void init(struct context *context) {
 	context->user_data->windows[init++] = init_window(context->permanent_pool, 10000000, 2, common_start_timestamp);
 
 	init = 0;
-	for (size_t i = 0; i <= 20; i++) {
+	for (size_t i = 0; i < 1000; i += 250) {
 		context->user_data->in_buckets[init] = init_bucket(i);
 		context->user_data->out_buckets[init] = init_bucket(i);
 		init++;
 	}
-	for (size_t i = 30; i <= 100; i += 10) {
+	for (size_t i = 1000; i <= 20000; i += 1000) {
 		context->user_data->in_buckets[init] = init_bucket(i);
 		context->user_data->out_buckets[init] = init_bucket(i);
 		init++;
 	}
-	for (size_t i = 200; i <= 1000; i += 100) {
+	for (size_t i = 30000; i <= 100000; i += 10000) {
+		context->user_data->in_buckets[init] = init_bucket(i);
+		context->user_data->out_buckets[init] = init_bucket(i);
+		init++;
+	}
+	for (size_t i = 200000; i <= 1000000; i += 100000) {
 		context->user_data->in_buckets[init] = init_bucket(i);
 		context->user_data->out_buckets[init] = init_bucket(i);
 		init++;
@@ -449,7 +454,7 @@ struct plugin *plugin_info(void) {
 		.packet_callback = packet_handle,
 		.init_callback = init,
 		.uplink_data_callback = communicate,
-		.version = 2
+		.version = 3
 	};
 	return &plugin;
 }
