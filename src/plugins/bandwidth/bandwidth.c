@@ -104,6 +104,7 @@ static uint64_t delayed_timestamp(uint64_t timestamp, uint64_t window_len, size_
 
 // Window initialization - fill up static parts, allocate dynamic parts and init their values
 static struct window init_window(struct mem_pool *pool, uint64_t length, size_t count, uint64_t current_time) {
+	assert(count >= 2);
 	size_t mem_size = count * sizeof(struct frame);
 	struct frame *frames = mem_pool_alloc(pool, mem_size);
 	memset(frames, 0, mem_size);
