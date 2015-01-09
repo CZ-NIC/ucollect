@@ -32,12 +32,89 @@ logger = logging.getLogger(name='bandwidth')
 PROTO_ITEMS_PER_WINDOW = 3
 PROTO_ITEMS_PER_BUCKET = 5
 
-BUCKETS_CNT = 37
-BUCKET_MAP = {
-	1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9,
-	11: 10, 12: 11, 13: 12, 14: 13, 15: 14, 16: 15, 17: 16, 18: 17, 19: 18, 20: 19,
-	30: 20, 40: 21, 50: 22, 60: 23, 70: 24, 80: 25, 90: 26, 100: 27, 200: 28,
-	300: 29, 400: 30, 500: 31, 600: 32, 700: 33, 800: 34, 900: 35, 1000: 36
+BUCKETS_CNT_PROTO2 = 37
+BUCKET_MAP_PROTO2 = {
+	1: 0,
+	2: 1,
+	3: 2,
+	4: 3,
+	5: 4,
+	6: 5,
+	7: 6,
+	8: 7,
+	9: 8,
+	10: 9,
+	11: 10,
+	12: 11,
+	13: 12,
+	14: 13,
+	15: 14,
+	16: 15,
+	17: 16,
+	18: 17,
+	19: 18,
+	20: 19,
+	30: 20,
+	40: 21,
+	50: 22,
+	60: 23,
+	70: 24,
+	80: 25,
+	90: 26,
+	100: 27,
+	200: 28,
+	300: 29,
+	400: 30,
+	500: 31,
+	600: 32,
+	700: 33,
+	800: 34,
+	900: 35,
+	1000: 36
+}
+
+BUCKETS_CNT_PROTO3 = 40
+BUCKET_MAP_PROTO3 = {
+	250: 0,
+	500: 1,
+	750: 2,
+	1000: 3,
+	2000: 4,
+	3000: 5,
+	4000: 6,
+	5000: 7,
+	6000: 8,
+	7000: 9,
+	8000: 10,
+	9000: 11,
+	10000: 12,
+	11000: 13,
+	12000: 14,
+	13000: 15,
+	14000: 16,
+	15000: 17,
+	16000: 18,
+	17000: 19,
+	18000: 20,
+	19000: 21,
+	20000: 22,
+	30000: 23,
+	40000: 24,
+	50000: 25,
+	60000: 26,
+	70000: 27,
+	80000: 28,
+	90000: 29,
+	100000: 30,
+	200000: 31,
+	300000: 32,
+	400000: 33,
+	500000: 34,
+	600000: 35,
+	700000: 36,
+	800000: 37,
+	900000: 38,
+	1000000: 39
 }
 
 class Window:
@@ -61,7 +138,8 @@ class ClientData:
 	"""
 	Class that stores all windows of client
 	"""
-	def __init__(self):
+	def __init__(self, version):
+		self.version = version
 		self.cnt = 0
 		self.windows = {}
 		self.buckets = {}
@@ -90,6 +168,16 @@ def store_bandwidth(data, now):
 		for client, cldata in data.items():
 			if not cldata.buckets:
 				continue
+
+			## Choose data structures according to protocol version
+			BUCKET_MAP = None
+			BUCKETS_CNT = None
+			if cldata.version <= 2:
+				BUCKET_MAP = BUCKET_MAP_PROTO2
+				BUCKETS_CNT = BUCKETS_CNT_PROTO2
+			elif cldata.version >= 3:
+				BUCKET_MAP = BUCKET_MAP_PROTO3
+				BUCKETS_CNT = BUCKETS_CNT_PROTO3
 
 			##### DBG #####
 			in_time = [0] * BUCKETS_CNT
@@ -206,7 +294,7 @@ class BandwidthPlugin(plugin.Plugin):
 
 		# Add client's record
 		if not client in self.__data:
-			self.__data[client] = ClientData();
+			self.__data[client] = ClientData(self.version(client));
 
 		# Extract timestamp from message and skip it
 		timestamp = data[0]
