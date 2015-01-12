@@ -159,7 +159,6 @@ if (fork == 0) {
 		if ($last_id != $id) {
 			$count ++;
 			if ($count % 100000 == 0) {
-				print "Packet snapshot at $count\n";
 				$destination->commit;
 				$source->commit;
 			}
@@ -355,8 +354,8 @@ if (fork == 0) {
 		}
 		$source->commit;
 		$destination->commit;
-		print "Stored $fcount flows with $gcount group entries ($cur_time)\n";
 	}
+	print "Stored $fcount flows with $gcount group entries (up to $cur_time)\n";
 	exit;
 }
 
