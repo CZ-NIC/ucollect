@@ -463,6 +463,7 @@ if (fork == 0) {
 	}
 	$destination->commit;
 	$source->commit;
+	print "Archived $count_sessions SSH sessions and $count_commands commands\n";
 	exit;
 }
 

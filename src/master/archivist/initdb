@@ -390,6 +390,7 @@ GRANT INSERT ON ssh_sessions TO archivist;
 GRANT SELECT ON ssh_sessions TO archivist;
 GRANT UPDATE ON ssh_sessions TO archivist;
 GRANT INSERT ON ssh_commands TO archivist;
+GRANT ALL ON ssh_session_ids TO archivist;
 
 COMMIT;
 END_SQL
