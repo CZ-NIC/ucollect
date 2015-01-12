@@ -3,6 +3,8 @@
 psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
 BEGIN;
 
+DROP TABLE IF EXISTS ssh_commands;
+DROP TABLE IF EXISTS ssh_sessions;
 DROP TABLE IF EXISTS refused_clients;
 DROP TABLE IF EXISTS refused_addrs;
 DROP TABLE IF EXISTS spoof_counts;
@@ -310,6 +312,25 @@ CREATE TABLE refused_addrs (
 	CHECK(client_count <= conn_count)
 );
 
+CREATE TABLE ssh_sessions (
+	id INT NOT NULL PRIMARY KEY,
+	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+	end_time TIMESTAMP WITH TIME ZONE,
+	login TEXT NOT NULL,
+	password TEXT NOT NULL,
+	UNIQUE(start_time, login, password)
+);
+CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
+ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
+
+CREATE TABLE ssh_commands (
+	session INT NOT NULL,
+	timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+	success BOOL NOT NULL,
+	command TEXT NOT NULL,
+	FOREIGN KEY (session) REFERENCES ssh_sessions(id) ON DELETE CASCADE
+);
+
 GRANT INSERT ON anomalies TO archivist;
 GRANT SELECT (timestamp) ON anomalies TO archivist;
 GRANT INSERT ON anomaly_types TO archivist;
@@ -365,5 +386,10 @@ GRANT DELETE ON refused_addrs TO archivist;
 GRANT DELETE ON refused_clients TO archivist;
 GRANT SELECT (since) ON refused_addrs TO archivist;
 GRANT SELECT (since) ON refused_clients TO archivist;
+GRANT INSERT ON ssh_sessions TO archivist;
+GRANT SELECT ON ssh_sessions TO archivist;
+GRANT UPDATE ON ssh_sessions TO archivist;
+GRANT INSERT ON ssh_commands TO archivist;
+
 COMMIT;
 END_SQL
