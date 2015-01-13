@@ -215,7 +215,7 @@ CREATE TABLE biflows (
 	start_out TIMESTAMP NOT NULL,
 	stop_in TIMESTAMP NOT NULL,
 	stop_out TIMESTAMP NOT NULL,
-	size_it BIGINT NOT NULL,
+	size_in BIGINT NOT NULL,
 	size_out BIGINT NOT NULL,
 	count_in INT NOT NULL,
 	count_out INT NOT NULL,
@@ -428,7 +428,7 @@ GRANT SELECT (batch) ON nats TO $DBCLEANER;
 GRANT SELECT (batch) ON spoof TO $DBCLEANER;
 GRANT SELECT (timestamp) ON refused TO $DBCLEANER;
 GRANT SELECT (start_time, id) ON ssh_sessions TO $DBCLEANER;
-GRANT SELECT (session_id) ON ssh_ssesions TO $DBCLEANER;
+GRANT SELECT (session_id) ON ssh_commands TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
 GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
