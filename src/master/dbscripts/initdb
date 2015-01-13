@@ -10,7 +10,7 @@ DROP TABLE IF EXISTS ssh_sessions;
 DROP TABLE IF EXISTS refused;
 DROP TABLE IF EXISTS spoof;
 DROP TABLE IF EXISTS nats;
-DROP TABLE IF EXISTS flows;
+DROP TABLE IF EXISTS biflows;
 DROP TABLE IF EXISTS flow_filters;
 DROP TABLE IF EXISTS capture_stats;
 DROP TABLE IF EXISTS counts;
@@ -203,35 +203,36 @@ CREATE TABLE pings (
 	CHECK(avg <= max)
 );
 
-CREATE TABLE flows (
+CREATE TABLE biflows (
 	id BIGINT PRIMARY KEY NOT NULL,
 	client INT NOT NULL,
-	ip_from INET NOT NULL,
-	ip_to INET NOT NULL,
+	ip_local INET NOT NULL,
 	ip_remote INET NOT NULL,
-	port_from INT NOT NULL,
-	port_to INT NOT NULL,
+	port_local INT NOT NULL,
 	port_remote INT NOT NULL,
 	proto CHAR(1) NOT NULL,
-	start TIMESTAMP NOT NULL,
-	stop TIMESTAMP NOT NULL,
-	opposite_start TIMESTAMP,
-	size BIGINT NOT NULL,
-	count INT NOT NULL,
-	inbound BOOL NOT NULL,
+	start_in TIMESTAMP NOT NULL,
+	start_out TIMESTAMP NOT NULL,
+	stop_in TIMESTAMP NOT NULL,
+	stop_out TIMESTAMP NOT NULL,
+	size_it BIGINT NOT NULL,
+	size_out BIGINT NOT NULL,
+	count_in INT NOT NULL,
+	count_out INT NOT NULL,
+	seen_start_in BOOL NOT NULL,
+	seen_start_out BOOL NOT NULL,
 	tag TEXT,
 	tagged_on TIMESTAMP,
-	seen_start BOOL NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U'),
-	CHECK(start <= stop)
+	CHECK(start_in <= stop_in),
+	CHECK(start_out <= stop_out)
 );
-CREATE SEQUENCE flow_ids OWNED BY flows.id;
-ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flow_ids');
-CREATE INDEX ON flows (ip_remote);
-CREATE INDEX ON flows (tag);
-CREATE INDEX ON flows (tagged_on);
-CREATE INDEX ON flows (start);
+CREATE SEQUENCE biflow_ids OWNED BY biflows.id;
+ALTER TABLE biflows ALTER COLUMN id SET DEFAULT NEXTVAL('biflow_ids');
+CREATE INDEX ON biflows (ip_remote);
+CREATE INDEX ON biflows (tag);
+CREATE INDEX ON biflows (tagged_on);
 
 INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat'), ('spoof'), ('refused');
 CREATE TABLE starttls_protos (
@@ -398,8 +399,8 @@ GRANT ALL ON certs_id TO $DBUPDATER;
 GRANT INSERT ON certs TO $DBUPDATER;
 GRANT INSERT ON cert_chains TO $DBUPDATER;
 GRANT SELECT ON certs TO $DBUPDATER;
-GRANT INSERT ON flows TO $DBUPDATER;
-GRANT ALL on flow_ids TO $DBUPDATER;
+GRANT INSERT ON biflows TO $DBUPDATER;
+GRANT ALL ON biflow_ids TO $DBUPDATER;
 GRANT INSERT ON nats TO $DBUPDATER;
 GRANT SELECT (batch) ON nats TO $DBUPDATER;
 GRANT SELECT ON config TO $DBUPDATER;
@@ -422,7 +423,7 @@ GRANT SELECT (timestamp) ON bandwidth_stats_dbg to $DBCLEANER;
 GRANT SELECT (batch) ON pings TO $DBCLEANER;
 GRANT SELECT (batch, id) ON certs TO $DBCLEANER;
 GRANT SELECT (cert) ON cert_chains TO $DBCLEANER;
-GRANT SELECT (start) ON flows TO $DBCLEANER;
+GRANT SELECT (start_in) ON biflows TO $DBCLEANER;
 GRANT SELECT (batch) ON nats TO $DBCLEANER;
 GRANT SELECT (batch) ON spoof TO $DBCLEANER;
 GRANT SELECT (timestamp) ON refused TO $DBCLEANER;
@@ -437,7 +438,7 @@ GRANT DELETE ON bandwidth_stats_dbg TO $DBCLEANER;
 GRANT DELETE ON pings TO $DBCLEANER;
 GRANT DELETE ON certs TO $DBCLEANER;
 GRANT DELETE ON cert_chains TO $DBCLEANER;
-GRANT DELETE ON flows TO $DBCLEANER;
+GRANT DELETE ON biflows TO $DBCLEANER;
 GRANT DELETE ON nats TO $DBCLEANER;
 GRANT DELETE ON spoof TO $DBCLEANER;
 GRANT DELETE ON refused TO $DBCLEANER;
@@ -459,7 +460,7 @@ GRANT SELECT ON ping_requests TO $DBARCHIVIST;
 GRANT SELECT ON cert_requests TO $DBARCHIVIST;
 GRANT SELECT ON certs TO $DBARCHIVIST;
 GRANT SELECT ON cert_chains TO $DBARCHIVIST;
-GRANT SELECT ON flows TO $DBARCHIVIST;
+GRANT SELECT ON biflows TO $DBARCHIVIST;
 GRANT SELECT ON bandwidth TO $DBARCHIVIST;
 GRANT SELECT ON bandwidth_stats TO $DBARCHIVIST;
 GRANT SELECT ON nats TO $DBARCHIVIST;
@@ -469,8 +470,8 @@ GRANT SELECT ON ssh_sessions TO $DBARCHIVIST;
 GRANT SELECT ON ssh_commands TO $DBARCHIVIST;
 GRANT UPDATE (archived) ON ssh_commands TO $DBARCHIVIST;
 
-GRANT SELECT ON flows TO $DBFLOWTAGGER;
-GRANT UPDATE (tag, tagged_on) ON flows TO $DBFLOWTAGGER;
+GRANT SELECT ON biflows TO $DBFLOWTAGGER;
+GRANT UPDATE (tag, tagged_on) ON biflows TO $DBFLOWTAGGER;
 GRANT SELECT (value, type) ON anomalies TO $DBFLOWTAGGER;
 GRANT SELECT ON config TO $DBFLOWTAGGER;
 GRANT UPDATE ON config TO $DBFLOWTAGGER;
