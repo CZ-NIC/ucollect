@@ -320,33 +320,33 @@ if (fork == 0) {
 if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
-	my $max_time = $destination->selectrow_array('SELECT COALESCE(MAX(flows.tagged_on), TO_TIMESTAMP(0)) FROM flows');
-	my $get_times = $source->prepare('SELECT DISTINCT tagged_on FROM flows WHERE tagged_on > ? ORDER BY tagged_on');
+	my $max_time = $destination->selectrow_array('SELECT COALESCE(MAX(biflows.tagged_on), TO_TIMESTAMP(0)) FROM biflows');
+	my $get_times = $source->prepare('SELECT DISTINCT tagged_on FROM biflows WHERE tagged_on > ? ORDER BY tagged_on');
 	print "Getting flows times tagged after $max_time\n";
 	$get_times->execute($max_time);
-	my $store_flow = $destination->prepare('INSERT INTO flows (peer_ip, peer_port, inbound, tagged_on, proto, start, stop, opposite_start, size, count, tag, seen_start) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-	my $store_group = $destination->prepare('INSERT INTO flow_groups (flow, from_group) VALUES (?, ?)');
+	my $store_flow = $destination->prepare('INSERT INTO biflows (ip_remote, port_remote, tagged_on, proto, start_in, stop_in, start_out, stop_out, size_in, count_in, size_out, count_out, tag, seen_start_in, seen_start_out) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+	my $store_group = $destination->prepare('INSERT INTO biflow_groups (biflow, from_group) VALUES (?, ?)');
 	my $get_flows = $source->prepare('SELECT
-			group_members.in_group, flows.id, ip_from, ip_to, port_from, port_to, inbound, tagged_on, proto, start, stop, opposite_start, size, count, tag, flows.seen_start
+			group_members.in_group, biflows.id, ip_remote, port_remote, tagged_on, proto, start_in, stop_in, start_out, stop_out, size_in, count_in, size_out, count_out, tag, biflows.seen_start_in, biflows.seen_start_out
 		FROM
-			flows
+			biflows
 		JOIN
 			group_members
 		ON
-			flows.client = group_members.client
+			biflows.client = group_members.client
 		WHERE
 			tagged_on = ?
 		ORDER BY
-			flows.id');
+			biflows.id');
 	my ($fid, $dst_fid);
 	my ($fcount, $gcount) = (0, 0);
 	while (my ($cur_time) = $get_times->fetchrow_array) {
 		$get_flows->execute($cur_time);
-		while (my ($group, $id, $ip_from, $ip_to, $port_from, $port_to, $inbound, $tagged_on, @payload) = $get_flows->fetchrow_array) {
+		while (my ($group, $id, @payload) = $get_flows->fetchrow_array) {
 			if ($fid != $id) {
 				$fcount ++;
-				$store_flow->execute($inbound ? ($ip_from, $port_from) : ($ip_to, $port_to), $inbound, $tagged_on, @payload);
-				$dst_fid = $destination->last_insert_id(undef, undef, 'flows', undef);
+				$store_flow->execute(@payload);
+				$dst_fid = $destination->last_insert_id(undef, undef, 'biflows', undef);
 				$fid = $id;
 			}
 			$store_group->execute($dst_fid, $group);
