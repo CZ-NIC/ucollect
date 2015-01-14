@@ -315,6 +315,7 @@ CREATE TABLE refused_addrs (
 	CHECK(port >= 0),
 	CHECK(client_count <= conn_count)
 );
+CREATE INDEX ON refused_addrs(since);
 
 CREATE TABLE ssh_sessions (
 	id INT NOT NULL PRIMARY KEY,
