@@ -250,6 +250,8 @@ CREATE TABLE biflows (
 	stop_out TIMESTAMP NOT NULL,
 	size_in BIGINT NOT NULL,
 	size_out BIGINT NOT NULL,
+	count_in INT NOT NULL,
+	count_out INT NOT NULL,
 	seen_start_in BOOL NOT NULL,
 	seen_start_out BOOL NOT NULL,
 	tag TEXT NOT NULL,
