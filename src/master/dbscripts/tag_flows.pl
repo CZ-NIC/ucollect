@@ -19,8 +19,8 @@ while (<>) {
 }
 
 my $dbh = DBI->connect("dbi:Pg:dbname=turris", "tagger", "", { RaiseError => 1, AutoCommit => 0 });
-my $read = $dbh->prepare('SELECT id, ip_from, ip_to, port_from, port_to, inbound FROM flows WHERE tag IS NULL LIMIT 100000');
-my $update = $dbh->prepare('UPDATE flows SET tag = ?, tagged_on = ? WHERE id = ?');
+my $read = $dbh->prepare('SELECT id, ip_remote, port_remote, FROM biflows WHERE tag IS NULL LIMIT 100000');
+my $update = $dbh->prepare('UPDATE biflows SET tag = ?, tagged_on = ? WHERE id = ?');
 
 my $found = 1;
 my $count = 0;
@@ -29,13 +29,7 @@ while ($found) {
 	my $tstamp = $dbh->selectrow_array("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
 	$read->execute;
 	undef $found;
-	while (my ($id, $ip_from, $ip_to, $port_from, $port_to, $inbound) = $read->fetchrow_array) {
-		my ($ip, $port);
-		if ($inbound) {
-			($ip, $port) = ($ip_from, $port_from);
-		} else {
-			($ip, $port) = ($ip_to, $port_to);
-		}
+	while (my ($id, $ip, $port) = $read->fetchrow_array) {
 		my $tag = $tags{$ip}->{ports}->{$port} // $tags{$ip}->{values} // '?';
 		$update->execute($tag, $tstamp, $id);
 		$found = 1;
