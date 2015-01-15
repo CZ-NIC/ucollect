@@ -424,7 +424,7 @@ GRANT SELECT (timestamp) ON bandwidth_stats_dbg to $DBCLEANER;
 GRANT SELECT (batch) ON pings TO $DBCLEANER;
 GRANT SELECT (batch, id) ON certs TO $DBCLEANER;
 GRANT SELECT (cert) ON cert_chains TO $DBCLEANER;
-GRANT SELECT (start_in) ON biflows TO $DBCLEANER;
+GRANT SELECT (start_in, start_out) ON biflows TO $DBCLEANER;
 GRANT SELECT (batch) ON nats TO $DBCLEANER;
 GRANT SELECT (batch) ON spoof TO $DBCLEANER;
 GRANT SELECT (timestamp) ON refused TO $DBCLEANER;
