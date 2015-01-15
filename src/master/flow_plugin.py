@@ -206,11 +206,12 @@ def store_flows(client, message, expect_conf_id, now):
 		logger.trace("Flow times: %s, %s, %s, %s, %s (%s/%s packets)", calib_time, tbin, tbout, tein, teout, cin, cout)
 		ok = True
 		for v in (tbin, tein, tbout, teout):
-			if calib_time - v > 86400000:
-				logger.error("Time difference out of range for client %s: %s", client, calib_time - v)
+			if v > 0 and calib_time - v > 86400000:
+				logger.error("Time difference out of range for client %s: %s/%s", client, calib_time - v, v)
 				ok = False
-		values.append((aloc, arem, ploc, prem, proto, now, calib_time - tbin, now, calib_time - tbout, now, calib_time - tein, now, calib_time - teout, cin, cout, sin, sout, in_started, out_started, client))
-		count += 1
+		if ok:
+			values.append((aloc, arem, ploc, prem, proto, now, calib_time - tbin if tbin > 0 else None, now, calib_time - tbout if tbout > 0 else None, now, calib_time - tein if tein > 0 else None, now, calib_time - teout if teout > 0 else None, cin, cout, sin, sout, in_started, out_started, client))
+			count += 1
 	with database.transaction() as t:
 		t.executemany("INSERT INTO biflows (client, ip_local, ip_remote, port_local, port_remote, proto, start_in, start_out, stop_in, stop_out, count_in, count_out, size_in, size_out, seen_start_in, seen_start_out) SELECT clients.id, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
 	logger.debug("Stored %s flows for %s", count, client)
