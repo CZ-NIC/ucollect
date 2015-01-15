@@ -211,10 +211,10 @@ CREATE TABLE biflows (
 	port_local INT NOT NULL,
 	port_remote INT NOT NULL,
 	proto CHAR(1) NOT NULL,
-	start_in TIMESTAMP NOT NULL,
-	start_out TIMESTAMP NOT NULL,
-	stop_in TIMESTAMP NOT NULL,
-	stop_out TIMESTAMP NOT NULL,
+	start_in TIMESTAMP,
+	start_out TIMESTAMP,
+	stop_in TIMESTAMP,
+	stop_out TIMESTAMP,
 	size_in BIGINT NOT NULL,
 	size_out BIGINT NOT NULL,
 	count_in INT NOT NULL,
@@ -226,7 +226,8 @@ CREATE TABLE biflows (
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start_in <= stop_in),
-	CHECK(start_out <= stop_out)
+	CHECK(start_out <= stop_out),
+	CHECK((start_in IS NOT NULL AND end_in IS NOT NULL) OR (start_out IS NOT NULL AND end_out IS NOT NULL))
 );
 CREATE SEQUENCE biflow_ids OWNED BY biflows.id;
 ALTER TABLE biflows ALTER COLUMN id SET DEFAULT NEXTVAL('biflow_ids');
