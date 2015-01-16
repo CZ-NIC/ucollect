@@ -219,6 +219,8 @@ static void received(struct context *context, const struct packet_info *info) {
 	};
 	C(bind(fd, (struct sockaddr *)&addr, sizeof addr), "Bind");
 	C(sendto(fd, data, size, MSG_NOSIGNAL, (struct sockaddr *)&addr, sizeof addr), "Spoofed sendto");
+	if (close(fd) == -1)
+		ulog(LLOG_ERROR, "Spoofer failed to close socket: %s\n", strerror(errno));
 }
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
