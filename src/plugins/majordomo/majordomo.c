@@ -334,6 +334,9 @@ static void dump_item(const uint8_t *key_bytes, size_t key_size, struct trie_dat
 		app_protocol = "TCP";
 	} else if (key->protocol == 'U') {
 		app_protocol = "UDP";
+	} else {
+		ulog(LLOG_ERROR, "Invalid majordomo protocol: %c\n", key->protocol);
+		abort();
 	}
 
 	fprintf(d->dump_file,
