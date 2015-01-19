@@ -96,6 +96,8 @@ static void handle_request_v4(struct user_data *u, const struct request_v4 *requ
 		.sin_addr.s_addr = request->dest_address // As well
 	};
 	C(sendto(fd, &packet, sizeof packet, MSG_NOSIGNAL, (struct sockaddr *)&addr, sizeof addr), "Ordinary sendto failed");
+	if (close(fd) == -1)
+		ulog(LLOG_ERROR, "Couldn't close spoof handle %d: %s\n", fd, strerror(errno));
 	// Start looking for the packet
 	u->expected = true;
 	u->expected_packet = packet;
