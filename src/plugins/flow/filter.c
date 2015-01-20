@@ -135,6 +135,8 @@ static bool filter_differential(struct mem_pool *tmp_pool, const struct filter *
 
 static bool filter_range(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
 	enum endpoint endpoint = filter->type->code == 'r' ? local_endpoint(packet->direction) : remote_endpoint(packet->direction);
+	if (endpoint == END_COUNT)
+		return false;
 	if ((filter->v6 && packet->ip_protocol != 6) || (!filter->v6 && packet->ip_protocol != 4))
 		return false;
 	size_t addr_len = filter->v6 ? 16 : 4;
