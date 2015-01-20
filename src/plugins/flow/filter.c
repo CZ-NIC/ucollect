@@ -123,6 +123,8 @@ static bool filter_value_match(struct mem_pool *tmp_pool, const struct filter *f
 
 static bool filter_differential(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet) {
 	enum endpoint endpoint = filter->type->code == 'd' ? local_endpoint(packet->direction) : remote_endpoint(packet->direction);
+	if (endpoint == END_COUNT)
+		return false; // No packets with unknown direction pass the filter
 	// Check for IP address match first
 	if (trie_lookup(filter->trie, packet->addresses[endpoint], packet->addr_len))
 		return true;
