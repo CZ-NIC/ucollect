@@ -41,11 +41,13 @@ void flow_parse(struct flow *target, const struct packet_info *packet) {
 uint8_t *flow_key(const struct packet_info *packet, size_t *size, struct mem_pool *pool) {
 	size_t addr_s = packet->ip_protocol == 4 ? 4 : 16;
 	assert(addr_s == packet->addr_len);
+	assert(packet->direction < DIR_UNKNOWN);
 	size_t s = 2 + 2 * sizeof(uint16_t) + 2 * addr_s;
 	uint8_t *result = mem_pool_alloc(pool, s);
 	uint8_t *pos = result;
 	*pos ++ = (uint8_t)packet->ip_protocol;
 	*pos ++ = (uint8_t)packet->app_protocol;
+
 	enum endpoint local = local_endpoint(packet->direction);
 	enum endpoint remote = remote_endpoint(packet->direction);
 	memcpy(pos, packet->addresses[local], addr_s);
