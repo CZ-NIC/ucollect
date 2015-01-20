@@ -93,6 +93,7 @@ static bool filter_value_match(struct mem_pool *tmp_pool, const struct filter *f
 	const uint8_t *data;
 	size_t size;
 	assert(packet->layer == 'I'); // Checked by the caller
+	assert(packet->direction < DIR_UNKNOWN);
 	enum endpoint local = local_endpoint(packet->direction), remote = remote_endpoint(packet->direction);
 	// Decide which part of packet we match
 	switch (filter->type->code) {
