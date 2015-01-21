@@ -417,9 +417,9 @@ void init(struct context *context) {
 	// Parameter count should be number that windows_count*window_length is at least 1 second
 	// WARNING: Minimal value of windows_count is 2!
 	size_t init = 0;
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 500000, 4, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 1000000, 2, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 2000000, 2, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 500000, 12, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 1000000, 6, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 2000000, 3, common_start_timestamp);
 	context->user_data->windows[init++] = init_window(context->permanent_pool, 5000000, 2, common_start_timestamp);
 	context->user_data->windows[init++] = init_window(context->permanent_pool, 10000000, 2, common_start_timestamp);
 
