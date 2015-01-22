@@ -354,7 +354,8 @@ CREATE TABLE ssh_sessions (
 	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
 	end_time TIMESTAMP WITH TIME ZONE DEFAULT NULL,
 	login TEXT NOT NULL,
-	password TEXT NOT NULL
+	password TEXT NOT NULL,
+	remote INET
 );
 CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
 ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
