@@ -434,16 +434,16 @@ if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
 	my %sessions;
-	my $get_commands = $source->prepare('SELECT ssh_commands.id, start_time, end_time, login, password, ts, success, command FROM ssh_commands JOIN ssh_sessions ON ssh_commands.session_id = ssh_sessions.id WHERE NOT archived');
+	my $get_commands = $source->prepare('SELECT ssh_commands.id, start_time, end_time, login, password, remote, ts, success, command FROM ssh_commands JOIN ssh_sessions ON ssh_commands.session_id = ssh_sessions.id WHERE NOT archived');
 	my $mark_command = $source->prepare('UPDATE ssh_commands SET archived = TRUE WHERE id = ?');
 	my $store_command = $destination->prepare('INSERT INTO ssh_commands (session, timestamp, success, command) VALUES (?, ?, ?, ?)');
 	my $get_session = $destination->prepare('SELECT id, end_time FROM ssh_sessions WHERE start_time = ? AND login = ? AND password = ?');
 	my $update_session = $destination->prepare('UPDATE ssh_sessions SET end_time = ? WHERE id = ?');
-	my $store_session = $destination->prepare('INSERT INTO ssh_sessions (start_time, end_time, login, password) VALUES (?, ?, ?, ?) RETURNING id');
+	my $store_session = $destination->prepare('INSERT INTO ssh_sessions (start_time, end_time, login, password, remote) VALUES (?, ?, ?, ?, ?) RETURNING id');
 	$get_commands->execute;
 	my $count_commands = 0;
 	my $count_sessions = 0;
-	while (my ($id, $start, $end, $login, $password, $time, $success, $command) = $get_commands->fetchrow_array) {
+	while (my ($id, $start, $end, $login, $password, $remote, $time, $success, $command) = $get_commands->fetchrow_array) {
 		my $sid = $sessions{$start}->{$login}->{$password};
 		if (not defined $sid) {
 			$get_session->execute($start, $login, $password);
@@ -451,7 +451,7 @@ if (fork == 0) {
 				$sid = $id;
 				$update_session->execute($end, $sid) if ($send ne $end);
 			} else {
-				$store_session->execute($start, $end, $login, $password);
+				$store_session->execute($start, $end, $login, $password, $remote);
 				($sid) = $store_session->fetchrow_array;
 				$count_sessions ++;
 			}
