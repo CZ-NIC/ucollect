@@ -323,6 +323,7 @@ CREATE TABLE ssh_sessions (
 	end_time TIMESTAMP WITH TIME ZONE,
 	login TEXT NOT NULL,
 	password TEXT NOT NULL,
+	remote INET,
 	UNIQUE(start_time, login, password)
 );
 CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
