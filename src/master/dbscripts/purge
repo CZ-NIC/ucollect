@@ -17,7 +17,6 @@ BATCH_TABLES='pings certs nats spoof'
 	done
 	echo "DELETE FROM router_loggedpacket WHERE created_at < DATE(NOW()) - $CLEAN_DAYS;"
 	echo "DELETE FROM router_registrationcode WHERE date < DATE(NOW()) - $CLEAN_DAYS;"
-	echo "DELETE FROM flows WHERE start < DATE(NOW()) - $CLEAN_DAYS;"
 	echo "DELETE FROM biflows WHERE COALESCE(start_in, start_out) < DATE(NOW()) - $CLEAN_DAYS;"
 	echo "DELETE FROM ssh_sessions WHERE start_time < DATE(NOW()) - $CLEAN_DAYS;"
 	echo 'COMMIT;'
