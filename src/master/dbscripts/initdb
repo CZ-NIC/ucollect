@@ -338,6 +338,7 @@ CREATE TABLE spoof (
 );
 
 CREATE TABLE refused (
+	id BIGINT NOT NULL PRIMARY KEY,
 	client INT NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
 	address INET NOT NULL,
@@ -346,6 +347,8 @@ CREATE TABLE refused (
 	reason CHAR NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
+CREATE SEQUENCE refused_ids OWNED BY refused;
+ALTER TABLE refused ALTER COLUMN id SET DEFAULT NEXTVAL('refused_ids');
 
 CREATE TABLE ssh_sessions (
 	id INT NOT NULL PRIMARY KEY,
