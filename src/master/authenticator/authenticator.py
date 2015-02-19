@@ -21,7 +21,7 @@
 from twisted.internet import protocol, reactor
 from twisted.protocols import basic
 import re
-import pgdb
+import psycopg2
 import ConfigParser
 import atsha204
 import sys
@@ -36,7 +36,7 @@ if len(sys.argv) != 2:
 config_data = ConfigParser.RawConfigParser()
 with open(sys.argv[1]) as f:
 	config_data.readfp(f, sys.argv[1])
-db = pgdb.connect(database=config_data.get('main', 'db'), user=config_data.get('main', 'dbuser'), password=config_data.get('main', 'dbpasswd'))
+db = psycopg2.connect(database=config_data.get('main', 'db'), user=config_data.get('main', 'dbuser'), password=config_data.get('main', 'dbpasswd'))
 cursor = db.cursor()
 
 class AuthClient(basic.LineReceiver):
