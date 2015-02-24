@@ -40,7 +40,6 @@ KW_OTHER_PORT = "all"
 ]]
 function majordomo_get_configuration()
 	local db_path;
-	local make_lookup_mac;
 	local make_lookup_dns;
 	local max_items_per_client;
 	local majordomocfg = uci.cursor();
@@ -48,16 +47,14 @@ function majordomo_get_configuration()
 	-- Find in config
 	majordomocfg:foreach("majordomo", "db", function(s) if s[".type"] == "db" and s.path then db_path=s.path; return false; end return true; end);
 	majordomocfg:foreach("majordomo", "db", function(s) if s[".type"] == "db" and s.max_items_per_client then max_items_per_client=tonumber(s.max_items_per_client); return false; end return true; end);
-	majordomocfg:foreach("majordomo", "lookup", function(s) if s[".type"] == "lookup" and s.make_lookup_mac then make_lookup_mac=s.make_lookup_mac; return false; end return true; end);
 	majordomocfg:foreach("majordomo", "lookup", function(s) if s[".type"] == "lookup" and s.make_lookup_dns then make_lookup_dns=s.make_lookup_dns; return false; end return true; end);
 
 	-- Test and Set default values
 	if not db_path then db_path = DB_PATH_DEFAULT; end
 	if not max_items_per_client then max_items_per_client = MAX_ITEMS_PER_CLIENT_DEFAULT; end
-	if make_lookup_mac == "1" then make_lookup_mac = true; elseif make_lookup_mac == "0" then make_lookup_mac = false; else make_lookup_mac = true; end
 	if make_lookup_dns == "1" then make_lookup_dns = true; elseif make_lookup_dns == "0" then make_lookup_dns = false; else make_lookup_dns = true; end
 
-	return db_path, make_lookup_mac, make_lookup_dns, max_items_per_client;
+	return db_path, true, make_lookup_dns, max_items_per_client;
 end
 
 --[[
@@ -280,14 +277,16 @@ function get_inst_macdb()
 			end
 		end
 
-		local handle = io.popen("curl http://www.macvendorlookup.com/api/v2/" .. key .. "/pipe");
+		local handle = io.popen("ouidb " .. key);
 		local result = handle:read();
 		handle:close();
-		if not result then
+
+		local vendor = result and result:match("^(%w+[%w%s]+).*$");
+
+		if not vendor then
 			self.data[key] = { payload = empty_result, ts = os.time() };
 			return nil;
 		end
-		local vendor = result:match("%w+|%w+|%w+|%w+|([%w%s]+).*");
 		self.data[key] = { payload = vendor, ts = os.time() };
 		return vendor;
 	end
