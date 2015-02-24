@@ -280,14 +280,16 @@ function get_inst_macdb()
 			end
 		end
 
-		local handle = io.popen("curl http://www.macvendorlookup.com/api/v2/" .. key .. "/pipe");
+		local handle = io.popen("ouidb " .. key);
 		local result = handle:read();
 		handle:close();
-		if not result then
+
+		local vendor = result and result:match("^(%w+[%w%s]+).*$");
+
+		if not vendor then
 			self.data[key] = { payload = empty_result, ts = os.time() };
 			return nil;
 		end
-		local vendor = result:match("%w+|%w+|%w+|%w+|([%w%s]+).*");
 		self.data[key] = { payload = vendor, ts = os.time() };
 		return vendor;
 	end
