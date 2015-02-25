@@ -281,7 +281,7 @@ function get_inst_macdb()
 		local result = handle:read();
 		handle:close();
 
-		local vendor = result and result:match("^(%w+[%w%s]+).*$");
+		local vendor = result and result:match("^(.*)$");
 
 		if not vendor then
 			self.data[key] = { payload = empty_result, ts = os.time() };
