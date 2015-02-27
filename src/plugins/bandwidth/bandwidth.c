@@ -36,7 +36,7 @@
 
 #define WINDOW_GROUPS_CNT 5
 #define STATS_BUCKETS_CNT (20+8+9+1+3)
-#define STATS_FROM_WINDOW 2000000
+#define STATS_FROM_WINDOW 2000
 
 // Settings for communication protocol
 #define PROTO_ITEMS_PER_WINDOW 3
@@ -78,23 +78,16 @@ struct user_data {
 	size_t dbg_dump_timeout;
 };
 
-#define SEC 1000000
+#define SEC 1000
 
 // Get MB/s - for debug purposes only
 static float get_speed_mega_bytes(uint64_t bytes_in_window, uint64_t window_size) {
 	float windows_in_second = SEC/(float)window_size;
-	return (bytes_in_window*windows_in_second/(float)(1000*1000));
+	return (bytes_in_window*windows_in_second/(float)1000);
 }
 
 static float get_speed_mega_bits(uint64_t bytes_in_window, uint64_t window_size) {
 	return 8 * get_speed_mega_bytes(bytes_in_window, window_size);
-}
-
-// Get current time in us from epoch
-static uint64_t current_timestamp(void) {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return (1000000*(uint64_t)tv.tv_sec) + (uint64_t)tv.tv_usec;
 }
 
 // Get origin of history chain that is specific for window
@@ -157,6 +150,7 @@ void update_buckets(struct context *context, uint64_t in, uint64_t out, uint64_t
 
 void packet_handle(struct context *context, const struct packet_info *info) {
 	struct user_data *d = context->user_data;
+	uint64_t packet_timestamp = loop_now(context->loop);
 
 	// Make the same operation for every window
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
@@ -165,21 +159,21 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 
 		// Check that the clock did not change
 		// If some window received packet that is older then its history drop all history and start again
-		if (info->timestamp < cwindow->timestamp) {
+		if (packet_timestamp < cwindow->timestamp) {
 			ulog(LLOG_WARN,
 				"BANDWIDTH: Dropping window - time changed? (window = %" PRIu64 ", delta = %" PRIu64 ", packet_from = %" PRIu64 ", cwindow = %" PRIu64 ")\n",
 				cwindow->len,
-				cwindow->timestamp - info->timestamp,
-				info->timestamp,
+				cwindow->timestamp - packet_timestamp,
+				packet_timestamp,
 				cwindow->timestamp
 			);
-			cwindow->timestamp = delayed_timestamp(current_timestamp(), cwindow->len, cwindow->cnt);
+			cwindow->timestamp = delayed_timestamp(loop_now(context->loop), cwindow->len, cwindow->cnt);
 			memset(cwindow->frames, 0, cwindow->cnt * sizeof(struct frame));
 			cwindow->current_frame = 0;
 		}
 
 		// "Rewind tape" to matching point
-		while (info->timestamp > cwindow->timestamp + cwindow->len * cwindow->cnt) {
+		while (packet_timestamp > cwindow->timestamp + cwindow->len * cwindow->cnt) {
 			if (cwindow->frames[cwindow->current_frame].in_sum > cwindow->in_max) {
 				cwindow->in_max = cwindow->frames[cwindow->current_frame].in_sum;
 			}
@@ -212,7 +206,7 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 
 		// In this point we are able to store packet in our set
 		// Just find the right frame and store the value
-		size_t corresponding_frame = (cwindow->current_frame + ((info->timestamp - cwindow->timestamp) / cwindow->len)) % cwindow->cnt;
+		size_t corresponding_frame = (cwindow->current_frame + ((packet_timestamp - cwindow->timestamp) / cwindow->len)) % cwindow->cnt;
 		if (info->direction == DIR_IN) {
 			cwindow->frames[corresponding_frame].in_sum += info->length;
 		} else {
@@ -409,7 +403,7 @@ void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 
 	// User data initialization
-	uint64_t common_start_timestamp = current_timestamp();
+	uint64_t common_start_timestamp = loop_now(context->loop);
 	context->user_data->timestamp = 0;
 	context->user_data->dbg_dump_timeout = loop_timeout_add(context->loop, DBG_DUMP_INTERVAL, context, NULL, dbg_dump);
 
@@ -417,11 +411,11 @@ void init(struct context *context) {
 	// Parameter count should be number that windows_count*window_length is at least 1 second
 	// WARNING: Minimal value of windows_count is 2!
 	size_t init = 0;
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 500000, 12, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 1000000, 6, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 2000000, 3, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 5000000, 2, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 10000000, 2, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 500, 12, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 1000, 6, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 2000, 3, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 5000, 2, common_start_timestamp);
+	context->user_data->windows[init++] = init_window(context->permanent_pool, 10000, 2, common_start_timestamp);
 
 	init = 0;
 	for (size_t i = 0; i < 1000; i += 250) {
