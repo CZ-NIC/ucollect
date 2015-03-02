@@ -278,7 +278,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	msg[fill++] = htobe64(WINDOW_GROUPS_CNT);
 	ulog(LLOG_DEBUG_VERBOSE, "BANDWIDTH: Sending timestamp %" PRIu64 "\n", d->timestamp);
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {
-		msg[fill++] = htobe64(d->windows[window].len);
+		msg[fill++] = htobe64(d->windows[window].len * 1000); // Keep communication protocol compatible
 		msg[fill++] = htobe64(d->windows[window].in_max);
 		msg[fill++] = htobe64(d->windows[window].out_max);
 	}
