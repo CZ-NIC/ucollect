@@ -111,11 +111,12 @@ for my $port (sort keys %data) {
 $filter .= ')';
 
 my $range_filter;
+my $ports = 'P(25,465,587,143,993,110,995)';
 if (%ranges) {
-	$range_filter = '|(D(addresses),' . join ',', map "R($_)", sort keys %ranges;
+	$range_filter = "|($ports,D(addresses)," . join ',', map "R($_)", sort keys %ranges;
 	$range_filter .= ')';
 } else {
-	$range_filter = 'D(addresses)';
+	$range_filter = "|($ports,D(addresses))";
 }
 
 my %flattened;

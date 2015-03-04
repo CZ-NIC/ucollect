@@ -105,7 +105,7 @@ The types are:
   packet matches one of the ones passed in its parameters. The code is
   followed by single `uint16_t` number, which is count of the ports.
   Then there's so many `uint16_t` numbers, each specifying single
-  port (note that there can't possibly be more than 2^16^ different
+  port (note that there can't possibly be more than 2^16 different
   ports).
 `P`:: Same as `p`, but with remote port.
 `d`:: Local differential IP-address or IP-address+port match. It
