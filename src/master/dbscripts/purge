@@ -9,19 +9,27 @@ BATCH_TABLES='pings certs nats spoof'
 DATE=$(date -d "$CLEAN_DAYS days ago" "+'%Y-%m-%d'")
 
 (
-	echo 'BEGIN;'
+	echo "BEGIN;
+CREATE TABLE ids_tmp (id BIGINT PRIMARY KEY);
+INSERT INTO ids_tmp (id) SELECT (id) FROM anomalies WHERE timestamp < $DATE;
+DELETE FROM derived_data_countrytoanomaly WHERE anomaly_id IN (SELECT id FROM ids_tmp);
+DELETE FROM derived_data_tagtoanomaly WHERE anomaly_id IN (SELECT id FROM ids_tmp);
+TRUNCATE ids_tmp;
+INSERT INTO ids_tmp (id) SELECT (id) FROM biflows WHERE COALESCE(start_in, start_out) < $DATE;
+DELETE FROM derived_data_countrytobiflow WHERE biflow_id IN (SELECT id FROM ids_tmp);
+DELETE FROM derived_data_tagtobiflow WHERE biflow_id IN (SELECT id FROM ids_tmp);
+TRUNCATE ids_tmp;
+INSERT INTO ids_tmp (id) SELECT (id) FROM router_loggedpacket WHERE created_at < $DATE;
+DELETE FROM derived_data_countrytologgedpacket WHERE loggedpacket_id IN (SELECT id FROM ids_tmp);
+DELETE FROM derived_data_tagtologgedpacket WHERE loggedpacket_id IN (SELECT id FROM ids_tmp);
+DROP TABLE ids_tmp;
+"
 	for TABLE in $TABLES ; do
 		echo "DELETE FROM $TABLE WHERE timestamp < $DATE;"
 	done
 	for TABLE in $BATCH_TABLES ; do
 		echo "DELETE FROM $TABLE WHERE batch < $DATE;"
 	done
-	echo "
-CREATE TABLE ids_tmp (id BIGINT PRIMARY KEY);
-INSERT INTO ids_tmp (id) SELECT (id) FROM router_loggedpacket WHERE created_at < $DATE;
-DELETE FROM derived_data_countrytologgedpacket WHERE loggedpacket_id IN (SELECT id FROM ids_tmp);
-DELETE FROM derived_data_tagtologgedpacket WHERE loggedpacket_id IN (SELECT id FROM ids_tmp);
-DROP TABLE ids_tmp;"
 	echo "DELETE FROM router_loggedpacket WHERE created_at < $DATE;"
 	echo "DELETE FROM router_registrationcode WHERE date < $DATE;"
 	echo "DELETE FROM biflows WHERE COALESCE(start_in, start_out) < $DATE;"
