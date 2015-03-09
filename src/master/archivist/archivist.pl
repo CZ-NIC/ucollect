@@ -324,10 +324,10 @@ if (fork == 0) {
 	my $get_times = $source->prepare('SELECT DISTINCT tagged_on FROM biflows WHERE tagged_on > ? ORDER BY tagged_on');
 	print "Getting flows times tagged after $max_time\n";
 	$get_times->execute($max_time);
-	my $store_flow = $destination->prepare('INSERT INTO biflows (ip_remote, port_remote, tagged_on, proto, start_in, stop_in, start_out, stop_out, size_in, count_in, size_out, count_out, tag, seen_start_in, seen_start_out) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+	my $store_flow = $destination->prepare('INSERT INTO biflows (ip_remote, port_remote, port_local, tagged_on, proto, start_in, stop_in, start_out, stop_out, size_in, count_in, size_out, count_out, tag, seen_start_in, seen_start_out) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 	my $store_group = $destination->prepare('INSERT INTO biflow_groups (biflow, from_group) VALUES (?, ?)');
 	my $get_flows = $source->prepare('SELECT
-			group_members.in_group, biflows.id, ip_remote, port_remote, tagged_on, proto, start_in, stop_in, start_out, stop_out, size_in, count_in, size_out, count_out, tag, biflows.seen_start_in, biflows.seen_start_out
+			group_members.in_group, biflows.id, ip_remote, port_remote, port_local, tagged_on, proto, start_in, stop_in, start_out, stop_out, size_in, count_in, size_out, count_out, tag, biflows.seen_start_in, biflows.seen_start_out
 		FROM
 			biflows
 		JOIN
