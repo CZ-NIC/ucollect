@@ -243,6 +243,7 @@ CREATE TABLE biflows (
 	id BIGINT PRIMARY KEY NOT NULL,
 	ip_remote INET NOT NULL,
 	port_remote INT NOT NULL,
+	port_local INT,
 	proto CHAR(1) NOT NULL,
 	start_in TIMESTAMP,
 	start_out TIMESTAMP,
