@@ -143,13 +143,20 @@ if (fork == 0) {
 if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
-	my $get_packets = $source->prepare('
+	# Get the packets. Each packet may have multiple resulting lines,
+	# for multiple groups it is in. Prefilter the groups, we are not
+	# interested in the random ones. We still have the 'all' group
+	# in here, which ensures we have at least one line for the packet
+	# (we could solve it by some kind of outer join, but the condition
+	# at the WHERE part would get complicated, handling NULL columns).
+	my $get_packets = $source->prepare("
 			SELECT router_loggedpacket.id, group_members.in_group, router_loggedpacket.rule_id, router_loggedpacket.time, router_loggedpacket.direction, router_loggedpacket.remote_port, router_loggedpacket.remote_address, router_loggedpacket.local_port, router_loggedpacket.protocol, router_loggedpacket.count FROM router_loggedpacket
 			JOIN router_router ON router_loggedpacket.router_id = router_router.id
 			JOIN group_members ON router_router.client_id = group_members.client
-			WHERE NOT archived
+			JOIN groups ON group_members.in_group = groups.id
+			WHERE NOT archived AND groups.name NOT LIKE 'rand-%'
 			ORDER BY id
-			');
+			");
 	print "Getting new firewall packets\n";
 	$get_packets->execute;
 	my $store_packet = $destination->prepare('INSERT INTO firewall_packets (rule_id, time, direction, port_rem, addr_rem, port_loc, protocol, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
@@ -169,7 +176,9 @@ if (fork == 0) {
 			$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
 			$update_archived->execute($id);
 		}
-		$packet_group->execute($id_dest, $group);
+		if ($interesting_groups->{$group}) { # Filter out the rest of uninteresting groups
+			$packet_group->execute($id_dest, $group);
+		}
 	}
 	print "Stored $count packets\n";
 	$destination->commit;
