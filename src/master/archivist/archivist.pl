@@ -57,6 +57,8 @@ while (my($table, $columns) = each %config_tables) {
 	}
 }
 
+my $interesting_groups = $source->selectall_hashref("SELECT id FROM groups WHERE name NOT LIKE 'rand-%' AND name != 'all'", 'id');
+
 $destination->commit;
 $source->commit;
 undef $destination;
@@ -326,7 +328,11 @@ if (fork == 0) {
 	$get_times->execute($max_time);
 	my $store_flow = $destination->prepare('INSERT INTO biflows (ip_remote, port_remote, port_local, tagged_on, proto, start_in, stop_in, start_out, stop_out, size_in, count_in, size_out, count_out, tag, seen_start_in, seen_start_out) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 	my $store_group = $destination->prepare('INSERT INTO biflow_groups (biflow, from_group) VALUES (?, ?)');
-	my $get_flows = $source->prepare('SELECT
+	# Pre-filter the results so they don't contain the rand-% groups. But we keep the 'all'
+	# group in yet. This ensures we get every biflows at least once (otherwise we would
+	# have to juggle with outer joins. This is simlpler and less error prone, without
+	# too much overhead.
+	my $get_flows = $source->prepare("SELECT
 			group_members.in_group, biflows.id, ip_remote, port_remote, port_local, tagged_on, proto, start_in, stop_in, start_out, stop_out, size_in, count_in, size_out, count_out, tag, biflows.seen_start_in, biflows.seen_start_out
 		FROM
 			biflows
@@ -334,10 +340,16 @@ if (fork == 0) {
 			group_members
 		ON
 			biflows.client = group_members.client
+		JOIN
+			groups
+		ON
+			group_members.in_group = groups.id
 		WHERE
 			tagged_on = ?
+		AND
+			groups.name NOT LIKE 'rand-%'
 		ORDER BY
-			biflows.id');
+			biflows.id");
 	my ($fid, $dst_fid);
 	my ($fcount, $gcount) = (0, 0);
 	while (my ($cur_time) = $get_times->fetchrow_array) {
@@ -349,8 +361,10 @@ if (fork == 0) {
 				$dst_fid = $destination->last_insert_id(undef, undef, 'biflows', undef);
 				$fid = $id;
 			}
-			$store_group->execute($dst_fid, $group);
-			$gcount ++;
+			if ($interesting_groups->{$group}) {
+				$store_group->execute($dst_fid, $group);
+				$gcount ++;
+			}
 		}
 		$source->commit;
 		$destination->commit;
