@@ -276,7 +276,7 @@ class BucketsPlugin(plugin.Plugin):
 					tslot += 1
 					to_merge.append(tslot_data)
 					tslot_data = []
-			self.__merge(timestamp, map(lambda g: self.__groups[crit.code()][g], self.__clients[client].groups()), to_merge)
+			self.__merge(timestamp, map(lambda g: self.__groups[crit.code()][g], self.__clients[client].groups()), to_merge, client)
 
 	def message_from_client(self, message, client):
 		kind = message[0]
@@ -367,15 +367,15 @@ class BucketsPlugin(plugin.Plugin):
 		self.broadcast('G' + data)
 		buckets.client.manager.trim()
 
-	def __merge(self, timestamp, cgroups, data):
+	def __merge(self, timestamp, cgroups, data, client):
 		"""
 		Merge data to the current set in the given criterion groups.
 		"""
 		if timestamp < self.__lower_time:
-			logger.warn('Too old data (from %s, expected at least %s)', timestamp, self.__lower_time)
+			logger.warn('Too old data (from %s, expected at least %s) on client %s', timestamp, self.__lower_time, client)
 			return
 		if self.__upper_time <= timestamp:
-			logger.warn('Too new data (from %s, expected at most %s)', timestamp, self.__upper_time)
+			logger.warn('Too new data (from %s, expected at most %s) on client %s', timestamp, self.__upper_time, client)
 			return
 		if not self.__gathering:
 			logger.warn('Not gathering now')
