@@ -85,7 +85,7 @@ function db(name, storage)
 		local dbfile = io.open(self.PATH .. "/" .. self.FILE_PREFIX .. self.name, "r");
 		if dbfile then
 			for line in dbfile:lines() do
-				local key, ts, payload = line:match("(.*),(.*),(.*)");
+				local key, ts, payload = line:match("^([^,]*),([^,]*),(.*)$");
 				if key and payload and ts then
 					self.data[key] = { payload = payload, ts = tonumber(ts) };
 				end
