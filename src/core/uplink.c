@@ -28,6 +28,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <netdb.h>
 #include <assert.h>
 #include <errno.h>
@@ -98,7 +99,39 @@ struct uplink {
 	z_stream zstrm_recv;
 	uint8_t *inc_buffer;
 	size_t inc_buffer_size;
+	const char *status_file;
 };
+
+static void dump_status(struct uplink *uplink) {
+	const char *status = "unknown";
+	if (uplink->fd == -1) {
+		status = "offline";
+	} else {
+		switch (uplink->auth_status) {
+			case AUTHENTICATED:
+				status = "online";
+				break;
+			case SENT:
+			case NOT_STARTED:
+				status = "connecting";
+				break;
+			case FAILED:
+				status = "bad-auth";
+				break;
+		}
+	}
+	ulog(LLOG_DEBUG, "Dump status %s\n", status);
+	if (!uplink->status_file)
+		return;
+	FILE *sf = fopen(uplink->status_file, "w");
+	if (!sf) {
+		ulog(LLOG_ERROR, "Couldn't dump current uplink status to file %s: %s\n", uplink->status_file, strerror(errno));
+		return;
+	}
+	fprintf(sf, "%s\t%llu\n", status, (unsigned long long)time(NULL));
+	if (fclose(sf) == EOF)
+		ulog(LLOG_WARN, "Error closing status file %s/%p: %s\n", uplink->status_file, (void *)sf, strerror(errno));
+}
 
 static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect);
 static void connect_fail(struct uplink *uplink);
@@ -231,6 +264,7 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 		};
 		loop_register_fd(uplink->loop, errs[0], &handler->handler);
 		ulog(LLOG_INFO, "Socat started\n");
+		dump_status(uplink);
 		return true;
 	} else {
 		close(sockets[0]);
@@ -344,6 +378,7 @@ static void uplink_disconnect(struct uplink *uplink, bool reset_reconnect) {
 		uplink->addr_len = 0;
 	} else
 		ulog(LLOG_DEBUG, "Uplink connection to %s:%s not open\n", uplink->remote_name, uplink->service);
+	dump_status(uplink);
 }
 
 static void send_ping(struct context *context_unused, void *data, size_t id_unused) {
@@ -444,7 +479,9 @@ static void handle_buffer(struct uplink *uplink) {
 							  memcpy(buffer, uplink->buffer, uplink->buffer_size);
 							  size_t length = uplink->buffer_size;
 							  buffer_reset(uplink);
-							  if (!loop_plugin_send_data(uplink->loop, plugin_name, buffer, length)) {
+							  if (loop_plugin_send_data(uplink->loop, plugin_name, buffer, length)) {
+								  dump_status(uplink);
+							  } else {
 								  ulog(LLOG_ERROR, "Plugin %s referenced by uplink does not exist\n", plugin_name);
 								  // TODO: Create some function for formatting messages
 								  size_t pname_len = strlen(plugin_name);
@@ -714,6 +751,12 @@ struct uplink *uplink_create(struct loop *loop) {
 	return result;
 }
 
+void uplink_set_status_file(struct uplink *uplink, const char *file) {
+	assert(!uplink->status_file);
+	uplink->status_file = file;
+	dump_status(uplink);
+}
+
 void uplink_reconnect(struct uplink *uplink) {
 	// Reconnect
 	if (!uplink->reconnect_scheduled) {
@@ -753,6 +796,9 @@ void uplink_destroy(struct uplink *uplink) {
 	// And destroy library handlers
 	deflateEnd(&(uplink->zstrm_send));
 	inflateEnd(&(uplink->zstrm_recv));
+	if (uplink->status_file)
+		if (unlink(uplink->status_file) == -1)
+			ulog(LLOG_ERROR, "Couldn't remove status file %s: %s\n", uplink->status_file, strerror(errno));
 }
 
 static bool send_raw_data(struct uplink *uplink, const uint8_t *buffer, size_t size, int flags) {

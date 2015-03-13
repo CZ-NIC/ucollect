@@ -60,6 +60,8 @@ int main(int argc, const char* argv[]) {
 
 	// Connect upstream
 	uplink = uplink_create(loop);
+	// FIXME: Is it OK to hardcore it here?
+	uplink_set_status_file(uplink, "/tmp/ucollect-status");
 
 	set_stop_signals();
 
