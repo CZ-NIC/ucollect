@@ -126,7 +126,7 @@ void loop_unregister_fd(struct loop *loop, int fd) __attribute__((nonnull));
 /*
  * Create a new memory pool.
  *
- * The pool will be destroyed with the loop or whith the owner of current context,
+ * The pool will be destroyed with the loop or with the owner of current context,
  * whatever happens first. The current context may be NULL, which means it's out
  * of plugin context (eg. from the framework).
  */
