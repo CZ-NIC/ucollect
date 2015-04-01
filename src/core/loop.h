@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013,2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@ struct epoll_handler {
 	void (*handler)(void *data, uint32_t events);
 };
 
-struct loop *loop_create() __attribute__((malloc));
+struct loop *loop_create() __attribute__((malloc)) __attribute__((returns_nonnull));
 // Warning: This one is not reentrant, due to signal handling :-(
 void loop_run(struct loop *loop) __attribute__((nonnull));
 void loop_break(struct loop *loop) __attribute__((nonnull));
@@ -54,7 +54,7 @@ void loop_destroy(struct loop *loop) __attribute__((nonnull));
  *
  * The statistics are diff from the last time this function was called.
  */
-size_t *loop_pcap_stats(struct context *context) __attribute__((nonnull)) __attribute__((malloc));
+size_t *loop_pcap_stats(struct context *context) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
 /*
  * When you want to configure the loop, you start by loop_config_start. You get
  * a handle to the configurator. You can then call loop_add_pcap and
@@ -71,7 +71,7 @@ size_t *loop_pcap_stats(struct context *context) __attribute__((nonnull)) __attr
  * (not initialized again). The new ones are created and the old ones removed on the
  * commit.
  */
-struct loop_configurator *loop_config_start(struct loop *loop) __attribute__((nonnull)) __attribute__((malloc));
+struct loop_configurator *loop_config_start(struct loop *loop) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
 void loop_config_commit(struct loop_configurator *configurator) __attribute__((nonnull));
 void loop_config_abort(struct loop_configurator *configurator) __attribute__((nonnull));
 
@@ -130,11 +130,11 @@ void loop_unregister_fd(struct loop *loop, int fd) __attribute__((nonnull));
  * whatever happens first. The current context may be NULL, which means it's out
  * of plugin context (eg. from the framework).
  */
-struct mem_pool *loop_pool_create(struct loop *loop, struct context *current_context, const char *name) __attribute__((nonnull(1, 3))) __attribute__((malloc));
+struct mem_pool *loop_pool_create(struct loop *loop, struct context *current_context, const char *name) __attribute__((nonnull(1, 3))) __attribute__((malloc)) __attribute__((returns_nonnull));
 // Get a pool that lives for the whole life of the loop
-struct mem_pool *loop_permanent_pool(struct loop *loop) __attribute__((nonnull)) __attribute__((pure));
+struct mem_pool *loop_permanent_pool(struct loop *loop) __attribute__((nonnull)) __attribute__((pure)) __attribute__((returns_nonnull));
 // Get a temporary pool that may be freed any time the control returns to main loop
-struct mem_pool *loop_temp_pool(struct loop *loop) __attribute__((nonnull)) __attribute__((pure));
+struct mem_pool *loop_temp_pool(struct loop *loop) __attribute__((nonnull)) __attribute__((pure)) __attribute__((returns_nonnull));
 
 /*
  * Send some data from uplink to a plugin. Plugin is specified by name.
@@ -166,7 +166,7 @@ size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *conte
 // Cancel a timeout. It must not have been called yet.
 void loop_timeout_cancel(struct loop *loop, size_t id) __attribute__((nonnull));
 // Return number of milliseconds since some unspecified time in the past
-uint64_t loop_now(struct loop *loop);
+uint64_t loop_now(struct loop *loop) __attribute__((pure));
 
 // XOR the hash of all the plugins together and to the hash here.
 void loop_xor_plugins(struct loop *loop, uint8_t *hash) __attribute__((nonnull));

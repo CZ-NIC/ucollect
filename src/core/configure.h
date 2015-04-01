@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -28,9 +28,9 @@ struct loop;
  * Set the configuration directory. Not copied, should be preserved for the
  * whole lifetime of the program.
  */
-void config_set_dir(const char *dir);
-void config_set_package(const char *package_name);
+void config_set_dir(const char *dir) __attribute__((nonnull));
+void config_set_package(const char *package_name) __attribute__((nonnull));
 void config_allow_null_uplink(void);
-bool load_config(struct loop *loop);
+bool load_config(struct loop *loop) __attribute__((nonnull));
 
 #endif

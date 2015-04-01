@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ struct context;
 /*
  * Create an uplink. It is expected to be called only once on a given loop.
  */
-struct uplink *uplink_create(struct loop *loop) __attribute__((malloc)) __attribute__((nonnull));
+struct uplink *uplink_create(struct loop *loop) __attribute__((malloc)) __attribute__((nonnull)) __attribute__((returns_nonnull));
 /*
  * Set or change the remote endpoint of the uplink. It'll (re)connect.
  *
@@ -46,7 +46,7 @@ void uplink_configure(struct uplink *uplink, const char *remote_name, const char
 // Move configuration to the provided pool (so the old may be reset)
 void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) __attribute__((nonnull));
 // Disconnect and connect.
-void uplink_reconnect(struct uplink *uplink);
+void uplink_reconnect(struct uplink *uplink) __attribute__((nonnull));
 /*
  * Disconnect and destroy an uplink. It is expected to be called just before the loop
  * is destroyed.
@@ -76,7 +76,7 @@ bool uplink_plugin_send_message(struct context *context, const void *data, size_
 // Some parsing & rendering functions
 
 // Get a string from buffer. Returns NULL if badly formatted. The buffer position is updated.
-char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) __attribute__((nonnull)) __attribute__((malloc));
+char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
 // Parses a uint32_t from the buffer. Aborts if not enough data. The buffer position is updated.
 uint32_t uplink_parse_uint32(const uint8_t **buffer, size_t *length) __attribute__((nonnull));
 // Render string to the wire format. Update position and length of buffer.

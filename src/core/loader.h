@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ struct plugin;
  * Call it with the library name to load.
  */
 
-void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash);
-void plugin_unload(void *plugin);
+void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash) __attribute__((nonnull)) __attribute__((returns_nonnull)) __attribute__((malloc));
+void plugin_unload(void *plugin) __attribute__((nonnull));
 
 #endif
