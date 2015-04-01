@@ -55,6 +55,7 @@ typedef void (*server_ready)(struct context *context, struct fd_tag *tag, struct
  */
 struct server_desc {
 	const char *name;
+	char code; // Code in uplink communication
 	int sock_type; // like SOCK_STREAM or SOCK_DGRAM
 	uint16_t default_port;
 	server_alloc server_alloc_cb;

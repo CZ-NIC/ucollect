@@ -29,6 +29,7 @@
 const struct server_desc server_descs_intern[] = {
 	{
 		.name = "telnet",
+		.code = 'T',
 		.sock_type = SOCK_STREAM,
 		.default_port = 23,
 		// No server-scope data, so skip server_alloc and server_set_fd

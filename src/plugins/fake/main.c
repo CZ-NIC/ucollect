@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,14 +17,16 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include "server.h"
 #include "main.h"
+#include "server.h"
+#include "log.h"
 
 #include "../../core/plugin.h"
 #include "../../core/context.h"
 #include "../../core/mem_pool.h"
 #include "../../core/util.h"
 #include "../../core/loop.h"
+#include "../../core/uplink.h"
 
 #include <string.h>
 #include <errno.h>
@@ -49,12 +51,15 @@ struct fd_tag {
 	socklen_t addr_len;
 	size_t inactivity_timeout;
 	bool inactivity_timeout_active;
+	bool closed;
 };
 
 struct user_data {
 	struct fd_tag *tags;
 	size_t *tag_indices;
 	size_t server_count, tag_count;
+	struct log *log;
+	struct mem_pool *log_pool;
 };
 
 static void initialize(struct context *context) {
@@ -66,8 +71,10 @@ static void initialize(struct context *context) {
 	}
 	*u = (struct user_data) {
 		.tags = mem_pool_alloc(context->permanent_pool, tag_count * sizeof *u->tags),
-		.tag_indices = mem_pool_alloc(context->permanent_pool, (server_count + 1) * sizeof *u->tag_indices)
+		.tag_indices = mem_pool_alloc(context->permanent_pool, (server_count + 1) * sizeof *u->tag_indices),
+		.log_pool = loop_pool_create(context->loop, context, "Fake log")
 	};
+	u->log = log_alloc(context->permanent_pool, u->log_pool);
 	memset(u->tags, 0, tag_count * sizeof * u->tags);
 	size_t pos = 0, i = 0;
 	for (const struct server_desc *desc = server_descs; desc->name; desc++) {
@@ -204,8 +211,24 @@ static char *addr2str(struct mem_pool *pool, struct sockaddr *addr, socklen_t ad
 	return mem_pool_printf(pool, "[%s]:%s", result, port);
 }
 
+static void log_send(struct context *context) {
+	size_t msg_size;
+	const uint8_t *msg = log_dump(context, context->user_data->log, &msg_size);
+	uplink_plugin_send_message(context, msg, msg_size);
+}
+
+static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_type type) {
+	ulog(LLOG_DEBUG, "Logging event %hhu for tag %p\n", (uint8_t)type, (void *)tag);
+	struct user_data *u = context->user_data;
+	assert(tag->addr.sin6_family == AF_INET6);
+	if (log_event(context, u->log, tag->desc->code, tag->addr.sin6_addr.s6_addr, 16, type, NULL))
+		log_send(context);
+}
+
 void conn_closed(struct context *context, struct fd_tag *tag, bool error) {
-	// TODO: Log some event to the server? Is it interesting?
+	if (!tag->closed)
+		log_wrapper(context, tag, error ? EVENT_LOST : EVENT_DISCONNECT);
+	tag->closed = true;
 	if (tag->inactivity_timeout_active) {
 		tag->inactivity_timeout_active = false;
 		loop_timeout_cancel(context->loop, tag->inactivity_timeout);
@@ -217,7 +240,8 @@ void conn_closed(struct context *context, struct fd_tag *tag, bool error) {
 }
 
 void conn_log_attempt(struct context *context, struct fd_tag *tag) {
-	// TODO
+	ulog(LLOG_DEBUG, "Login attempt on %p from %s\n", (void *)tag, addr2str(context->temp_pool, (struct sockaddr *)&tag->addr, tag->addr_len));
+	log_wrapper(context, tag, EVENT_LOGIN);
 }
 
 static void conn_inactive(struct context *context, void *data, size_t id) {
@@ -225,6 +249,8 @@ static void conn_inactive(struct context *context, void *data, size_t id) {
 	assert(tag->inactivity_timeout == id);
 	ulog(LLOG_DEBUG, "Connection %p/%p with FD %d of fake server %s timed out after %u ms\n", (void *)tag->conn, (void *)tag, tag->fd, tag->desc->name, tag->desc->conn_timeout);
 	tag->inactivity_timeout_active = false; // It fired, no longer active.
+	log_wrapper(context, tag, EVENT_TIMEOUT);
+	tag->closed = true;
 	conn_closed(context, tag, false);
 }
 
@@ -261,25 +287,26 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			loop_plugin_register_fd(context, new, empty);
 			ulog(LLOG_DEBUG, "Accepted connecion %d from %s on FD %d for fake server %s\n", new, addr2str(context->temp_pool, addr_p, empty->addr_len), fd, t->desc->name);
 			empty->fd = new;
+			empty->closed = false;
 			if (empty->desc->conn_set_fd_cb)
 				empty->desc->conn_set_fd_cb(context, empty, empty->server, empty->conn, new);
+			log_wrapper(context, empty, EVENT_CONNECT);
 			activity(context, empty);
 		} else {
 			// No place to put it into.
-			struct sockaddr_in6 addr;
-			struct sockaddr *addr_p = (struct sockaddr *)&addr;
-			socklen_t addr_len = sizeof addr;
-			int new = accept(fd, addr_p, &addr_len);
+			struct fd_tag aux_tag;
+			struct sockaddr *addr_p = (struct sockaddr *)&aux_tag.addr;
+			int new = accept(fd, addr_p, &aux_tag.addr_len);
 			if (new == -1) {
 				ulog(LLOG_ERROR, "Failed to accept extra connection on FD %d for fake server %s: %s\n", fd, t->desc->name, strerror(errno));
 				return;
 			}
-			ulog(LLOG_WARN, "Throwing out connection %d from %s accepted on %d of fake server %s, too many opened ones\n", fd, addr2str(context->temp_pool, addr_p, addr_len), fd, t->desc->name);
+			ulog(LLOG_WARN, "Throwing out connection %d from %s accepted on %d of fake server %s, too many opened ones\n", fd, addr2str(context->temp_pool, addr_p, aux_tag.addr_len), fd, t->desc->name);
 			if (close(new) == -1) {
-				ulog(LLOG_ERROR, "Error throwing newly accepted connection %d from %s accepted on %d of fake server %s: %s\n", new, addr2str(context->temp_pool, addr_p, addr_len), fd, t->desc->name, strerror(errno));
+				ulog(LLOG_ERROR, "Error throwing newly accepted connection %d from %s accepted on %d of fake server %s: %s\n", new, addr2str(context->temp_pool, addr_p, aux_tag.addr_len), fd, t->desc->name, strerror(errno));
 				return;
 			}
-			// TODO: Store the event?
+			log_wrapper(context, &aux_tag, EVENT_CONNECT_EXTRA);
 		}
 	} else {
 		if (t->desc->server_ready_cb)

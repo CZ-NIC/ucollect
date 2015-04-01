@@ -1,2 +1,2 @@
 LIBRARIES += src/plugins/fake/libplugin_fake
-libplugin_fake_MODULES := main server telnet
+libplugin_fake_MODULES := main server log telnet
