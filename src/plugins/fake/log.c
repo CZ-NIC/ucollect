@@ -104,8 +104,15 @@ struct event_header {
 	char code;
 } __attribute__((packed));
 
+// The IPv6 mapped IPv4 addresses are 0000:0000:FFFF:<IP>.
+static const uint8_t mapped_prefix[] = { [8] = 0xFF, [9] = 0xFF, [10] = 0xFF, [11] = 0xFF };
+
 bool log_event(struct context *context, struct log *log, char server_code, const uint8_t *address, size_t addr_len, enum event_type type, struct event_info *info) {
-	// TODO: Strip IPv4 addresses stored as IPv6 to be trasmitted as IPv6 only.
+	// If it's IPv6 mapped IPv4, store it as IPv4 only
+	if (memcmp(address, mapped_prefix, sizeof mapped_prefix) == 0) {
+		addr_len -= sizeof mapped_prefix;
+		address += sizeof mapped_prefix;
+	}
 	size_t info_count = 0;
 	size_t expected_size = sizeof(struct event_header);
 	expected_size += addr_len;
