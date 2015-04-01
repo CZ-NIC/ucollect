@@ -170,14 +170,19 @@ static void send_denial(struct context *context, void *data, size_t id) {
 
 static bool process_line(struct context *context, struct fd_tag *tag, struct conn_data *conn) {
 	(void)tag;
-	if (conn->position == WANT_LOGIN) {
-		if (!ask_for(context, conn, "password"))
-			return false;
-		conn->position = WANT_PASSWORD;
-	} else {
-		conn->position = WAIT_DENIAL;
-		conn->denial_timeout = loop_timeout_add(context->loop, denial_timeout, context, conn, send_denial);
-		conn_log_attempt(context, tag);
+	switch (conn->position) {
+		case WANT_LOGIN:
+			if (!ask_for(context, conn, "password"))
+				return false;
+			conn->position = WANT_PASSWORD;
+			break;
+		case WANT_PASSWORD:
+			conn->position = WAIT_DENIAL;
+			conn->denial_timeout = loop_timeout_add(context->loop, denial_timeout, context, conn, send_denial);
+			conn_log_attempt(context, tag);
+			break;
+		case WAIT_DENIAL:
+			ulog(LLOG_DEBUG, "Data when expecting none on telnet connection %p on tag %p with fd %d\n", (void *)conn, (void *)tag, conn->fd);
 	}
 	return true;
 }
