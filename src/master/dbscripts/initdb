@@ -5,6 +5,8 @@
 psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
+DROP TABLE IF EXISTS fake_logs;
+DROP TABLE IF EXISTS fake_server_names;
 DROP TABLE IF EXISTS nats;
 DROP TABLE IF EXISTS flows;
 DROP TABLE IF EXISTS flow_filters;
@@ -27,6 +29,8 @@ DROP TABLE IF EXISTS cert_requests;
 DROP TABLE IF EXISTS starttls_protos;
 DROP TABLE IF EXISTS clients;
 DROP TABLE IF EXISTS config;
+DROP TYPE IF EXISTS fake_log_type;
+DROP TYPE IF EXISTS fake_server;
 
 CREATE TABLE clients (
 	id INT PRIMARY KEY NOT NULL,
@@ -290,6 +294,31 @@ CREATE TABLE flow_filters (
 	address TEXT NOT NULL
 );
 
+CREATE TYPE fake_log_type AS ENUM ('connect', 'disconnect', 'lost', 'extra', 'timeout', 'login');
+CREATE TYPE fake_server AS ENUM ('telnet');
+
+CREATE TABLE fake_server_names (
+	name TEXT NOT NULL,
+	code CHAR NOT NULL,
+	type fake_server NOT NULL,
+	UNIQUE(name),
+	UNIQUE(code),
+	UNIQUE(type)
+);
+
+INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet');
+
+CREATE TABLE fake_logs (
+	client INT NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	remote INET NOT NULL,
+	server fake_server NOT NULL,
+	name TEXT,
+	password TEXT,
+	error TEXT,
+	FOREIGN KEY (client) REFERENCES clients(id)
+);
+
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
 GRANT INSERT ON activities TO $DBUPDATER;
@@ -321,7 +350,9 @@ GRANT ALL on flow_ids TO $DBUPDATER;
 GRANT INSERT ON nats TO $DBUPDATER;
 GRANT SELECT (batch) ON nats TO $DBUPDATER;
 GRANT SELECT ON config TO $DBUPDATER;
-GRANT SELECT ON flow_filters to $DBUPDATER;
+GRANT SELECT ON flow_filters TO $DBUPDATER;
+GRANT SELECT ON fake_server_names TO $DBUPDATER;
+GRANT INSERT ON fake_logs TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
@@ -337,6 +368,7 @@ GRANT SELECT (batch, id) ON certs TO $DBCLEANER;
 GRANT SELECT (cert) ON cert_chains TO $DBCLEANER;
 GRANT SELECT (start) ON flows TO $DBCLEANER;
 GRANT SELECT (batch) ON nats TO $DBCLEANER;
+GRANT SELECT (timestamp) ON fake_logs TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
 GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
@@ -346,6 +378,7 @@ GRANT DELETE ON certs TO $DBCLEANER;
 GRANT DELETE ON cert_chains TO $DBCLEANER;
 GRANT DELETE ON flows TO $DBCLEANER;
 GRANT DELETE ON nats TO $DBCLEANER;
+GRANT DELETE ON fake_logs TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
@@ -365,6 +398,7 @@ GRANT SELECT ON cert_chains TO $DBARCHIVIST;
 GRANT SELECT ON flows TO $DBARCHIVIST;
 GRANT SELECT ON bandwidth TO $DBARCHIVIST;
 GRANT SELECT ON nats TO $DBARCHIVIST;
+GRANT SELECT ON fake_logs TO $DBARCHIVIST;
 
 GRANT SELECT ON flows TO $DBFLOWTAGGER;
 GRANT UPDATE (tag, tagged_on) ON flows TO $DBFLOWTAGGER;
