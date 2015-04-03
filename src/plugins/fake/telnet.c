@@ -75,6 +75,7 @@ struct conn_data {
 	enum command neg_verb; // What was the last verb used for option negotiation
 	enum position position; // Global state
 	bool protocol_error; // Was there error in the protocol, causing it to close?
+	const char *close_reason;
 	size_t denial_timeout;
 	size_t attempts; // Number of attempts the other side tried
 	struct fd_tag *tag;
@@ -96,6 +97,8 @@ static bool send_all(struct conn_data *conn, const uint8_t *data, size_t amount)
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				continue;
 			ulog(LLOG_DEBUG, "Telnet send error: %s\n", strerror(errno));
+			if (!conn->close_reason)
+				conn->close_reason = strerror(errno);
 			return false;
 		}
 		data += sent;
@@ -118,7 +121,7 @@ static bool ask_for(struct context *context, struct conn_data *conn, const char 
 static void do_close(struct context *context, struct conn_data *conn, bool error) {
 	if (conn->position == WAIT_DENIAL)
 		loop_timeout_cancel(context->loop, conn->denial_timeout);
-	conn_closed(context, conn->tag, error);
+	conn_closed(context, conn->tag, error, conn->close_reason);
 }
 
 void telnet_conn_set_fd(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn, int fd) {
@@ -133,10 +136,13 @@ void telnet_conn_set_fd(struct context *context, struct fd_tag *tag, struct serv
 		do_close(context, conn, true);
 	conn->tag = tag;
 	conn->attempts = 0;
+	conn->close_reason = NULL;
 }
 
 static bool protocol_error(struct context *context, struct conn_data *conn, const char *message) {
 	conn->protocol_error = true;
+	if (!conn->close_reason)
+		conn->close_reason = message;
 	ulog(LLOG_DEBUG, "Telnet protocol error %s\n", message);
 	size_t len = strlen(message);
 	uint8_t *message_eol = mem_pool_alloc(context->temp_pool, len + 4); // 2 more for CR LF, 2 more for IAC GA
@@ -159,6 +165,7 @@ static void send_denial(struct context *context, void *data, size_t id) {
 		return;
 	}
 	if (++ conn->attempts == max_attempts) {
+		conn->close_reason = "Attempts";
 		do_close(context, conn, false);
 		return;
 	}
@@ -278,10 +285,13 @@ void telnet_data(struct context *context, struct fd_tag *tag, struct server_data
 			if (errno == EWOULDBLOCK || errno == EAGAIN)
 				return;
 			ulog(LLOG_DEBUG, "Error on telnet connection %p on tag %p with fd %d: %s\n", (void *)conn, (void *)tag, conn->fd, strerror(errno));
+			conn->close_reason = strerror(errno);
 			error = true;
 			// No break - fall through
 		case 0: // Close
 			ulog(LLOG_DEBUG, "Closed telnet connection %p/%p/%d\n", (void *)conn, (void *)tag, conn->fd);
+			if (!conn->close_reason)
+				conn->close_reason = "Closed";
 			do_close(context, conn, error);
 			return;
 		default:

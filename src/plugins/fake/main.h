@@ -31,7 +31,7 @@ struct fd_tag *tag;
  * The error indicates if it was in some error (no matter what) or
  * if it was clean shutdown.
  */
-void conn_closed(struct context *context, struct fd_tag *tag, bool error);
+void conn_closed(struct context *context, struct fd_tag *tag, bool error, const char *reason);
 /*
  * Log that the other side attemted connection.
  *
