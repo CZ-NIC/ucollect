@@ -40,7 +40,7 @@ enum event_type {
 enum event_info_type {
 	EI_NAME, // The login name
 	EI_PASSWORD, // The password
-	EI_ERROR, // The error
+	EI_REASON, // The error or disconnection reason
 	EI_LAST // This is the last info bundled to the event
 };
 

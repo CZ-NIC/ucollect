@@ -353,7 +353,7 @@ CREATE TABLE fake_logs (
 	server fake_server NOT NULL,
 	name TEXT,
 	password TEXT,
-	error TEXT,
+	reason TEXT,
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
 

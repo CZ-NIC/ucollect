@@ -42,7 +42,7 @@ def store_logs(message, client, now):
 	count = 0
 	while message:
 		(age, type_idx, family_idx, info_count, code) = struct.unpack('!IBBBc', message[:8])
-		(name, passwd, error) = (None, None, None)
+		(name, passwd, reason) = (None, None, None)
 		message = message[8:]
 		tp = types[type_idx]
 		family = families[family_idx]
@@ -56,11 +56,11 @@ def store_logs(message, client, now):
 			elif kind_i == 1:
 				passwd = content
 			elif kind_i == 2:
-				error = content
-		values.append((now, age, tp, address, name, passwd, error, client, code))
+				reason = content
+		values.append((now, age, tp, address, name, passwd, reason, client, code))
 		count += 1
 	with database.transaction() as t:
-		t.executemany("INSERT INTO fake_logs (client, timestamp, event, remote, server, name, password, error) SELECT clients.id, %s - %s * INTERVAL '1 millisecond', %s, %s, fake_server_names.type, %s, %s, %s FROM clients CROSS JOIN fake_server_names WHERE clients.name = %s AND fake_server_names.code = %s", values)
+		t.executemany("INSERT INTO fake_logs (client, timestamp, event, remote, server, name, password, reason) SELECT clients.id, %s - %s * INTERVAL '1 millisecond', %s, %s, fake_server_names.type, %s, %s, %s FROM clients CROSS JOIN fake_server_names WHERE clients.name = %s AND fake_server_names.code = %s", values)
 	logger.debug("Stored %s fake server log events for client %s", count, client)
 
 class FakePlugin(plugin.Plugin):
