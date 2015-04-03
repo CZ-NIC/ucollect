@@ -421,7 +421,6 @@ static void self_reconfigure(struct context *context, void *data, size_t id) {
 
 static void pcap_read(struct pcap_sub_interface *sub, uint32_t unused) {
 	(void) unused;
-	ulog(LLOG_DEBUG_VERBOSE, "Read on interface %s\n", sub->interface->name);
 	sub->interface->in = sub == &sub->interface->directions[0];
 	int result = pcap_dispatch(sub->pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) sub->interface);
 	if (result == -1) {
@@ -430,7 +429,8 @@ static void pcap_read(struct pcap_sub_interface *sub, uint32_t unused) {
 		self_reconfigure(NULL, NULL, 0); // Try to reconfigure on the next loop iteration
 	}
 	sub->interface->watchdog_received = true;
-	ulog(LLOG_DEBUG_VERBOSE, "Handled %d packets on %s/%p\n", result, sub->interface->name, (void *) sub);
+	if (result)
+		ulog(LLOG_DEBUG_VERBOSE, "Handled %d packets on %s/%p\n", result, sub->interface->name, (void *) sub);
 }
 
 static void epoll_register_pcap(struct loop *loop, struct pcap_interface *interface, int op) {
