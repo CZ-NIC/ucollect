@@ -60,6 +60,7 @@ struct log {
 	struct trie *limit_trie;
 	size_t expected_serialized_size; // How large the result will be when we dump it.
 	size_t ip_limit, size_limit;     // Limits on when to send.
+	bool log_credentials;		 // Should we send the login name and password?
 };
 
 struct trie_data {
@@ -86,7 +87,8 @@ struct log *log_alloc(struct mem_pool *permanent_pool, struct mem_pool *log_pool
 		.pool = log_pool,
 		// TODO: Just arbitrarily chosen. Allow to be configured.
 		.ip_limit = 5,
-		.size_limit = 4096 * 1024
+		.size_limit = 4096 * 1024,
+		.log_credentials = true
 	};
 	log_clean(result);
 	return result;
@@ -119,7 +121,8 @@ bool log_event(struct context *context, struct log *log, char server_code, const
 	expected_size += addr_len;
 	if (info)
 		for (struct event_info *i = info; i->type != EI_LAST; i ++)
-			info_count ++;
+			if (log->log_credentials || (i->type != EI_NAME && i->type != EI_PASSWORD))
+					info_count ++;
 	struct log_event *event = mem_pool_alloc(log->pool, sizeof *event + info_count * sizeof event->extra_info[0]);
 	uint8_t *addr_cp = mem_pool_alloc(log->pool, addr_len);
 	memcpy(addr_cp, address, addr_len);
@@ -132,6 +135,9 @@ bool log_event(struct context *context, struct log *log, char server_code, const
 		.info_count = info_count
 	};
 	for (size_t i = 0; i < info_count; i ++) {
+		if (!log->log_credentials && (info[i].type == EI_NAME || info[i].type == EI_PASSWORD))
+			// Skip the login credentials if we shouldn't log them
+			continue;
 		event->extra_info[i] = (struct event_info) {
 			.type = info[i].type,
 			.content = mem_pool_strdup(log->pool, info[i].content)
