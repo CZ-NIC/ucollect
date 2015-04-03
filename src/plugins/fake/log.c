@@ -27,6 +27,7 @@
 
 #include <string.h>
 #include <assert.h>
+#include <arpa/inet.h>
 
 /*
  * Single event in the log.
@@ -98,9 +99,9 @@ enum addr_type {
 
 struct event_header {
 	uint32_t timestamp;		// How many milliseconds ago it happened. uint32_t is enough, as it is more than 49 days.
-	enum event_type type:3;
-	enum addr_type addr:1;
-	uint8_t info_count:4;
+	enum event_type type:8;
+	enum addr_type addr:8;
+	uint8_t info_count;
 	char code;
 } __attribute__((packed));
 
@@ -168,7 +169,7 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 		assert(event->addr_len == 4 || event->addr_len == 16);
 		assert(event->info_count < 16);
 		struct event_header header = {
-			.timestamp = now - event->timestamp,
+			.timestamp = htonl(now - event->timestamp),
 			.type = event->type,
 			.addr = event->addr_len == 4 ? AT_IPv4 : AT_IPv6,
 			.info_count = event->info_count,
@@ -189,7 +190,7 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 		}
 	}
 	assert(pos == result + *size);
-	assert(size = 0);
+	assert(rest == 0);
 	log_clean(log);
 	return result;
 }
