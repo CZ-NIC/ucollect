@@ -26,13 +26,13 @@ import log_extra
 import logging
 import logging.handlers
 from client import ClientFactory
-from plugin import Plugins
+from plugin import Plugins, pool
 import master_config
 import activity
 import importlib
 import os
 
-reactor.suggestThreadPoolSize(1) # Too much seems to have trouble with locking :-(
+reactor.suggestThreadPoolSize(4) # Too much seems to have trouble with locking :-(
 severity = master_config.get('log_severity')
 if severity == 'TRACE':
 	severity = log_extra.TRACE_LEVEL
@@ -91,6 +91,7 @@ logging.info('Init done')
 reactor.run()
 
 logging.info('Finishing up')
+pool.stop()
 if socat:
 	soc = socat
 	socat = None

@@ -7,14 +7,20 @@ BEGIN;
 
 DROP TABLE IF EXISTS fake_logs;
 DROP TABLE IF EXISTS fake_server_names;
+DROP TABLE IF EXISTS ssh_commands;
+DROP TABLE IF EXISTS ssh_sessions;
+DROP TABLE IF EXISTS refused;
+DROP TABLE IF EXISTS spoof;
 DROP TABLE IF EXISTS nats;
-DROP TABLE IF EXISTS flows;
+DROP TABLE IF EXISTS biflows;
 DROP TABLE IF EXISTS flow_filters;
 DROP TABLE IF EXISTS capture_stats;
 DROP TABLE IF EXISTS counts;
 DROP TABLE IF EXISTS count_types;
 DROP TABLE IF EXISTS count_snapshots;
 DROP TABLE IF EXISTS bandwidth;
+DROP TABLE IF EXISTS bandwidth_stats;
+DROP TABLE IF EXISTS bandwidth_stats_dbg;
 DROP TABLE IF EXISTS activities;
 DROP TABLE IF EXISTS activity_types;
 DROP TABLE IF EXISTS anomalies;
@@ -81,6 +87,7 @@ CREATE TABLE anomaly_types (
 	description TEXT NOT NULL
 );
 CREATE TABLE anomalies (
+	id BIGINT NOT NULL PRIMARY KEY,
 	from_group INT NOT NULL,
 	type CHAR NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
@@ -93,6 +100,8 @@ CREATE TABLE anomalies (
 	CHECK(relevance_count <= relevance_of)
 );
 CREATE INDEX ON anomalies (from_group, type, timestamp);
+CREATE SEQUENCE anomaly_ids OWNED BY anomalies.id;
+ALTER TABLE anomalies ALTER COLUMN id SET DEFAULT NEXTVAL('anomaly_ids');
 
 CREATE TABLE count_types (
 	id SMALLINT PRIMARY KEY NOT NULL,
@@ -131,6 +140,27 @@ CREATE TABLE bandwidth (
 	out_max BIGINT NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
 	PRIMARY KEY (timestamp, client, win_len)
+);
+CREATE TABLE bandwidth_stats (
+	timestamp TIMESTAMP NOT NULL,
+	client INT NOT NULL,
+	in_time INT[] NOT NULL,
+	in_bytes BIGINT[] NOT NULL,
+	out_time INT[] NOT NULL,
+	out_bytes BIGINT[] NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
+	PRIMARY KEY (timestamp, client)
+);
+CREATE TABLE bandwidth_stats_dbg (
+	timestamp TIMESTAMP NOT NULL,
+	timestamp_dbg INT,
+	client INT NOT NULL,
+	in_time INT[] NOT NULL,
+	in_bytes BIGINT[] NOT NULL,
+	out_time INT[] NOT NULL,
+	out_bytes BIGINT[] NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
+	PRIMARY KEY (timestamp, client)
 );
 CREATE TABLE capture_stats (
 	snapshot BIGINT NOT NULL,
@@ -177,31 +207,39 @@ CREATE TABLE pings (
 	CHECK(avg <= max)
 );
 
-CREATE TABLE flows (
+CREATE TABLE biflows (
 	id BIGINT PRIMARY KEY NOT NULL,
 	client INT NOT NULL,
-	ip_from INET NOT NULL,
-	ip_to INET NOT NULL,
-	port_from INT NOT NULL,
-	port_to INT NOT NULL,
+	ip_local INET NOT NULL,
+	ip_remote INET NOT NULL,
+	port_local INT NOT NULL,
+	port_remote INT NOT NULL,
 	proto CHAR(1) NOT NULL,
-	start TIMESTAMP NOT NULL,
-	stop TIMESTAMP NOT NULL,
-	opposite_start TIMESTAMP,
-	size BIGINT NOT NULL,
-	count INT NOT NULL,
-	inbound BOOL NOT NULL,
+	start_in TIMESTAMP,
+	start_out TIMESTAMP,
+	stop_in TIMESTAMP,
+	stop_out TIMESTAMP,
+	size_in BIGINT NOT NULL,
+	size_out BIGINT NOT NULL,
+	count_in INT NOT NULL,
+	count_out INT NOT NULL,
+	seen_start_in BOOL NOT NULL,
+	seen_start_out BOOL NOT NULL,
 	tag TEXT,
 	tagged_on TIMESTAMP,
-	seen_start BOOL NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U'),
-	CHECK(start <= stop)
+	CHECK(start_in <= stop_in),
+	CHECK(start_out <= stop_out),
+	CHECK((start_in IS NOT NULL AND stop_in IS NOT NULL) OR (start_out IS NOT NULL AND stop_out IS NOT NULL))
 );
-CREATE SEQUENCE flow_ids OWNED BY flows.id;
-ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flow_ids');
+CREATE SEQUENCE biflow_ids OWNED BY biflows.id;
+ALTER TABLE biflows ALTER COLUMN id SET DEFAULT NEXTVAL('biflow_ids');
+CREATE INDEX ON biflows (ip_remote);
+CREATE INDEX ON biflows (tag);
+CREATE INDEX ON biflows (tagged_on);
 
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat');
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat'), ('spoof'), ('refused');
 CREATE TABLE starttls_protos (
 	id SMALLINT NOT NULL PRIMARY KEY,
 	name TEXT NOT NULL,
@@ -219,8 +257,7 @@ CREATE TABLE cert_requests (
 	want_params BOOL NOT NULL DEFAULT true,
 	lastrun TIMESTAMP NOT NULL DEFAULT TO_TIMESTAMP(0),
 	interval INTERVAL NOT NULL DEFAULT '1 day',
-	FOREIGN KEY (starttls) REFERENCES starttls_protos(id),
-	UNIQUE(host, port)
+	FOREIGN KEY (starttls) REFERENCES starttls_protos(id)
 );
 CREATE SEQUENCE cert_requests_id OWNED BY cert_requests.id;
 ALTER TABLE cert_requests ALTER COLUMN id SET DEFAULT NEXTVAL('cert_requests_id');
@@ -284,7 +321,7 @@ CREATE TABLE config (
 	value TEXT NOT NULL,
 	UNIQUE(plugin, name)
 );
-INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('flow', 'filter-diff', 'D(addresses)'), ('sniff', 'nat-interval', '3 days');
+INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('flow', 'filter-diff', 'D(addresses)'), ('sniff', 'nat-interval', '3 days'), ('spoof', 'answer_timeout', '60'), ('spoof', 'dest_addr', 'api.turris.cz'), ('spoof', 'src_addr', '192.0.2.1'), ('spoof', 'interval', '1 day'), ('spoof', 'port', '5678');
 
 CREATE TABLE flow_filters (
 	filter TEXT NOT NULL,
@@ -319,6 +356,52 @@ CREATE TABLE fake_logs (
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
 
+CREATE TABLE spoof (
+	client INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	spoofed BOOLEAN NOT NULL,
+	addr_matches BOOLEAN NOT NULL,
+	received TIMESTAMP,
+	ip INET,
+	FOREIGN KEY (client) REFERENCES clients(id)
+);
+
+CREATE TABLE refused (
+	id BIGINT NOT NULL PRIMARY KEY,
+	client INT NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	address INET NOT NULL,
+	local_port INT NOT NULL,
+	remote_port INT NOT NULL,
+	reason CHAR NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id)
+);
+CREATE SEQUENCE refused_ids OWNED BY refused.id;
+ALTER TABLE refused ALTER COLUMN id SET DEFAULT NEXTVAL('refused_ids');
+
+CREATE TABLE ssh_sessions (
+	id INT NOT NULL PRIMARY KEY,
+	long_id CHAR(32) NOT NULL,
+	client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+	end_time TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+	login TEXT NOT NULL,
+	password TEXT NOT NULL,
+	remote INET
+);
+CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
+ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
+CREATE INDEX ssh_sessions_long_id_idx ON ssh_sessions (long_id);
+
+CREATE TABLE ssh_commands (
+	id SERIAL PRIMARY KEY,
+	session_id INTEGER REFERENCES ssh_sessions(id) ON DELETE CASCADE,
+	ts TIMESTAMP WITH TIME ZONE NOT NULL,
+	success BOOLEAN NOT NULL,
+	command TEXT NOT NULL,
+	archived BOOL NOT NULL DEFAULT false
+);
+
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
 GRANT INSERT ON activities TO $DBUPDATER;
@@ -328,10 +411,15 @@ GRANT SELECT ON groups TO $DBUPDATER;
 GRANT SELECT ON group_members TO $DBUPDATER;
 GRANT SELECT ON anomaly_types TO $DBUPDATER;
 GRANT INSERT ON anomalies TO $DBUPDATER;
+GRANT ALL ON anomaly_ids TO $DBUPDATER;
 GRANT SELECT ON count_types TO $DBUPDATER;
 GRANT INSERT ON count_snapshots TO $DBUPDATER;
 GRANT SELECT ON count_snapshots TO $DBUPDATER;
 GRANT INSERT ON bandwidth TO $DBUPDATER;
+GRANT SELECT ON bandwidth_stats TO $DBUPDATER;
+GRANT INSERT ON bandwidth_stats TO $DBUPDATER;
+GRANT UPDATE ON bandwidth_stats TO $DBUPDATER;
+GRANT INSERT ON bandwidth_stats_dbg TO $DBUPDATER;
 GRANT SELECT ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT UPDATE ON SEQUENCE count_snapshots_id TO $DBUPDATER;
 GRANT INSERT ON counts TO $DBUPDATER;
@@ -345,14 +433,18 @@ GRANT ALL ON certs_id TO $DBUPDATER;
 GRANT INSERT ON certs TO $DBUPDATER;
 GRANT INSERT ON cert_chains TO $DBUPDATER;
 GRANT SELECT ON certs TO $DBUPDATER;
-GRANT INSERT ON flows TO $DBUPDATER;
-GRANT ALL on flow_ids TO $DBUPDATER;
+GRANT INSERT ON biflows TO $DBUPDATER;
+GRANT ALL ON biflow_ids TO $DBUPDATER;
 GRANT INSERT ON nats TO $DBUPDATER;
 GRANT SELECT (batch) ON nats TO $DBUPDATER;
 GRANT SELECT ON config TO $DBUPDATER;
 GRANT SELECT ON flow_filters TO $DBUPDATER;
 GRANT SELECT ON fake_server_names TO $DBUPDATER;
 GRANT INSERT ON fake_logs TO $DBUPDATER;
+GRANT SELECT ON flow_filters to $DBUPDATER;
+GRANT SELECT (batch) ON spoof TO $DBUPDATER;
+GRANT INSERT ON spoof TO $DBUPDATER;
+GRANT INSERT ON refused TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
@@ -363,22 +455,34 @@ GRANT SELECT (timestamp) ON activities TO $DBCLEANER;
 GRANT SELECT (timestamp) ON anomalies TO $DBCLEANER;
 GRANT SELECT (timestamp) ON count_snapshots TO $DBCLEANER;
 GRANT SELECT (timestamp) ON bandwidth to $DBCLEANER;
+GRANT SELECT (timestamp) ON bandwidth_stats to $DBCLEANER;
+GRANT SELECT (timestamp) ON bandwidth_stats_dbg to $DBCLEANER;
 GRANT SELECT (batch) ON pings TO $DBCLEANER;
 GRANT SELECT (batch, id) ON certs TO $DBCLEANER;
 GRANT SELECT (cert) ON cert_chains TO $DBCLEANER;
-GRANT SELECT (start) ON flows TO $DBCLEANER;
+GRANT SELECT (start_in, start_out) ON biflows TO $DBCLEANER;
 GRANT SELECT (batch) ON nats TO $DBCLEANER;
 GRANT SELECT (timestamp) ON fake_logs TO $DBCLEANER;
+GRANT SELECT (batch) ON spoof TO $DBCLEANER;
+GRANT SELECT (timestamp) ON refused TO $DBCLEANER;
+GRANT SELECT (start_time, id) ON ssh_sessions TO $DBCLEANER;
+GRANT SELECT (session_id) ON ssh_commands TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
 GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
 GRANT DELETE ON bandwidth to $DBCLEANER;
+GRANT DELETE ON bandwidth_stats TO $DBCLEANER;
+GRANT DELETE ON bandwidth_stats_dbg TO $DBCLEANER;
 GRANT DELETE ON pings TO $DBCLEANER;
 GRANT DELETE ON certs TO $DBCLEANER;
 GRANT DELETE ON cert_chains TO $DBCLEANER;
-GRANT DELETE ON flows TO $DBCLEANER;
+GRANT DELETE ON biflows TO $DBCLEANER;
 GRANT DELETE ON nats TO $DBCLEANER;
 GRANT DELETE ON fake_logs TO $DBCLEANER;
+GRANT DELETE ON spoof TO $DBCLEANER;
+GRANT DELETE ON refused TO $DBCLEANER;
+GRANT DELETE ON ssh_sessions TO $DBCLEANER;
+GRANT DELETE ON ssh_commands TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
@@ -395,18 +499,32 @@ GRANT SELECT ON ping_requests TO $DBARCHIVIST;
 GRANT SELECT ON cert_requests TO $DBARCHIVIST;
 GRANT SELECT ON certs TO $DBARCHIVIST;
 GRANT SELECT ON cert_chains TO $DBARCHIVIST;
-GRANT SELECT ON flows TO $DBARCHIVIST;
+GRANT SELECT ON biflows TO $DBARCHIVIST;
 GRANT SELECT ON bandwidth TO $DBARCHIVIST;
+GRANT SELECT ON bandwidth_stats TO $DBARCHIVIST;
 GRANT SELECT ON nats TO $DBARCHIVIST;
 GRANT SELECT ON fake_logs TO $DBARCHIVIST;
+GRANT SELECT ON spoof TO $DBARCHIVIST;
+GRANT SELECT ON refused TO $DBARCHIVIST;
+GRANT SELECT ON ssh_sessions TO $DBARCHIVIST;
+GRANT SELECT ON ssh_commands TO $DBARCHIVIST;
+GRANT UPDATE (archived) ON ssh_commands TO $DBARCHIVIST;
 
-GRANT SELECT ON flows TO $DBFLOWTAGGER;
-GRANT UPDATE (tag, tagged_on) ON flows TO $DBFLOWTAGGER;
+GRANT SELECT ON biflows TO $DBFLOWTAGGER;
+GRANT UPDATE (tag, tagged_on) ON biflows TO $DBFLOWTAGGER;
 GRANT SELECT (value, type) ON anomalies TO $DBFLOWTAGGER;
 GRANT SELECT ON config TO $DBFLOWTAGGER;
 GRANT UPDATE ON config TO $DBFLOWTAGGER;
 GRANT SELECT ON flow_filters TO $DBFLOWTAGGER;
 GRANT INSERT ON flow_filters TO $DBFLOWTAGGER;
+
+GRANT INSERT ON ssh_sessions TO $DBKIPPO;
+GRANT INSERT ON ssh_commands TO $DBKIPPO;
+GRANT UPDATE ON ssh_sessions TO $DBKIPPO;
+GRANT UPDATE ON ssh_commands TO $DBKIPPO;
+GRANT SELECT ON ssh_sessions TO $DBKIPPO;
+GRANT SELECT ON ssh_commands TO $DBKIPPO;
+GRANT ALL ON ssh_session_ids TO $DBKIPPO;
 
 COMMIT;
 ENDSQL

@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -17,9 +17,11 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-import pgdb
+import psycopg2
 import logging
 import threading
+import traceback
+import time
 from master_config import get
 
 logger = logging.getLogger(name='database')
@@ -44,7 +46,7 @@ class __CursorContext:
 		if self.__depth:
 			return # Didn't exit all the contexts yet
 		if exc_type:
-			logger.debug('Rollback of transaction %s', self)
+			logger.debug('Rollback of transaction %s:%s/%s/%s', self, exc_type, exc_val, traceback.format_tb(exc_tb))
 			self.__connection.rollback()
 		else:
 			logger.debug('Commit of transaction %s', self)
@@ -66,7 +68,7 @@ def transaction(reuse=True):
 	"""
 	global __cache
 	if 'connection' not in __cache.__dict__:
-		__cache.connection = pgdb.connect(database=get('db'), user=get('dbuser'), password=get('dbpasswd'), host=get('dbhost'))
+		__cache.connection = psycopg2.connect(database=get('db'), user=get('dbuser'), password=get('dbpasswd'), host=get('dbhost'))
 		logger.debug("Initializing connection to DB")
 
 	if reuse:
@@ -76,3 +78,17 @@ def transaction(reuse=True):
 		return __cache.context
 	else:
 		return __CursorContext(__cache.connection)
+
+__time_update = 0
+__time_db = 0
+
+def now():
+	global __time_update
+	global __time_db
+	t = time.time()
+	if __time_update + 2 < t:
+		__time_update = t
+		with transaction() as t:
+			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
+			(__time_db,) = t.fetchone()
+	return __time_db

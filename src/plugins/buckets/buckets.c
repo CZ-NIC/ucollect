@@ -158,9 +158,12 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 	memcpy(header, data, length);
 	// Extract the elements of the header
 	struct user_data *u = context->user_data;
-	if (u->initialized && u->config_version != ntohl(header->config_version)) {
-		// We can't reload configuration, so we reinitialize the whole plugin.
-		loop_plugin_reinit(context);
+	if (u->initialized) {
+		if (u->config_version != ntohl(header->config_version)) {
+			// We can't reload configuration, so we reinitialize the whole plugin.
+			loop_plugin_reinit(context);
+		} else
+			return; // The config is loaded and is the same. Don't configure anything.
 	}
 	u->bucket_count = ntohl(header->bucket_count);
 	u->hash_count = ntohl(header->hash_count);
@@ -486,7 +489,7 @@ static void packet(struct context *context, const struct packet_info *packet) {
 		struct trie *t = g->criteria[i].trie[key_index];
 		// We store the key in the key of trie, just by indexing it. No need to store more.
 		trie_index(t, key, length);
-		g->criteria[i].overflow = (trie_size(t) == u->max_key_count);
+		g->criteria[i].overflow = (trie_size(t) >= u->max_key_count);
 	}
 }
 

@@ -30,6 +30,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+static void store(struct mem_pool *pool);
+static void drop(struct mem_pool *pool);
+
 #ifdef MEM_POOL_DEBUG
 
 #define POOL_CANARY_BEGIN 0x783A7BF4
@@ -44,6 +47,8 @@ struct pool_chunk {
 
 struct mem_pool {
 	struct pool_chunk *head, *tail;
+	size_t pool_index;
+	size_t used, allocated, requests;
 	char name[];
 };
 
@@ -58,6 +63,7 @@ struct mem_pool *mem_pool_create(const char *name) {
 	*pool = (struct mem_pool) {
 		.head = NULL
 	};
+	store(pool);
 	strcpy(pool->name, name);
 	ulog(LLOG_DEBUG, "Created pool %s\n", name);
 	return pool;
@@ -70,6 +76,9 @@ void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
 	chunk->length = size;
 	pool_insert_after(pool, chunk, NULL);
 	ulog(LLOG_DEBUG_VERBOSE, "Allocated %zu bytes from %s at address %p\n", size, pool->name, (void *) chunk);
+	pool->used += size;
+	pool->allocated += sizeof *chunk + size + sizeof(uint32_t);
+	pool->requests ++;
 	return chunk->data;
 }
 
@@ -83,11 +92,15 @@ void mem_pool_reset(struct mem_pool *pool) {
 		free(current);
 	}
 	pool->tail = NULL;
+	pool->allocated = 0;
+	pool->used = 0;
+	pool->requests = 0;
 }
 
 void mem_pool_destroy(struct mem_pool *pool) {
 	mem_pool_reset(pool);
 	ulog(LLOG_DEBUG, "Destroyed pool %s\n", pool->name);
+	drop(pool);
 	free(pool);
 }
 
@@ -116,6 +129,8 @@ struct mem_pool {
 	unsigned char *pos;
 	// How many bytes there are for allocations.
 	size_t available;
+	size_t pool_index;
+	size_t used, allocated, requests;
 	// The name of this memory pool (for debug and errors).
 	char name[];
 };
@@ -205,8 +220,10 @@ struct mem_pool *mem_pool_create(const char *name) {
 	*pool = (struct mem_pool) {
 		.first = page,
 		.pos = pos,
-		.available = available
+		.available = available,
+		.allocated = PAGE_SIZE
 	};
+	store(pool);
 	strcpy(pool->name, name); // OK to use strcpy, we allocated enough extra space.
 
 	return pool;
@@ -214,6 +231,7 @@ struct mem_pool *mem_pool_create(const char *name) {
 
 void mem_pool_destroy(struct mem_pool *pool) {
 	ulog(LLOG_DEBUG, "Destroying memory pool '%s'\n", pool->name);
+	drop(pool);
 	/*
 	 * Walk the pages and release each of them. The pool itself is in one of them,
 	 * so there's no need to explicitly delete it.
@@ -254,7 +272,10 @@ void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
 			pool->available = available;
 			pool->pos = pos;
 		}
+		pool->allocated += page_size;
 	}
+	pool->used += size;
+	pool->requests ++;
 	return result;
 }
 
@@ -265,12 +286,32 @@ void mem_pool_reset(struct mem_pool *pool) {
 	pool->pos = pool->first->data;
 	pool->available = pool->first->size - sizeof *pool->first;
 	pool->first->next = NULL;
+	pool->allocated = PAGE_SIZE;
+	pool->used = 0;
+	pool->requests = 0;
 	// Allocate the pool (again) from the page. It is already there.
 	struct mem_pool *the_pool = page_alloc(&pool->pos, &pool->available, sizeof *pool + 1 + strlen(pool->name));
 	assert(pool == the_pool); // It should be the same pool.
 }
 
 #endif
+
+static struct mem_pool **pools;
+size_t pool_count;
+
+static void store(struct mem_pool *pool) {
+	pools = realloc(pools, (++ pool_count) * sizeof *pools);
+	pools[pool_count - 1] = pool;
+	pool->pool_index = pool_count - 1;
+}
+
+static void drop(struct mem_pool *pool) {
+	assert(pool_count > pool->pool_index);
+	assert(pool == pools[pool->pool_index]);
+	pools[pool->pool_index] = pools[pool_count - 1];
+	pools[pool->pool_index]->pool_index = pool->pool_index;
+	pools = realloc(pools, (-- pool_count) * sizeof *pools);
+}
 
 char *mem_pool_strdup(struct mem_pool *pool, const char *string) {
 	size_t length = strlen(string);
@@ -300,5 +341,28 @@ char *mem_pool_hex(struct mem_pool *pool, const uint8_t *data, size_t size) {
 	for (size_t i = 0; i < size; i ++)
 		sprintf(result + 3*i, "%.2hhX%c", data[i], (i+1) % 4 ? ':' : ' ');
 	result[size ? 3*size-1 : 0] = '\0';
+	return result;
+}
+
+char *mem_pool_stats(struct mem_pool *tmp_pool) {
+	char **parts = mem_pool_alloc(tmp_pool, pool_count * sizeof *parts);
+	size_t len = 1;
+	for (size_t i = 0; i < pool_count; i ++) {
+		struct mem_pool *p = pools[i];
+		parts[i] = mem_pool_printf(tmp_pool, "%s: %zu/%zu (%zu)", p->name, p->used, p->allocated, p->requests);
+		len += 2 + strlen(parts[i]);
+	}
+	char *result = mem_pool_alloc(tmp_pool, len);
+	size_t pos = 0;
+	for (size_t i = 0; i < pool_count; i ++) {
+		if (pos) {
+			memcpy(result + pos, ", ", 2);
+			pos += 2;
+		}
+		size_t l = strlen(parts[i]);
+		memcpy(result + pos, parts[i], l);
+		pos += l;
+	}
+	result[pos] = '\0';
 	return result;
 }

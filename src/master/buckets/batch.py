@@ -21,6 +21,7 @@ from twisted.internet.task import LoopingCall
 from twisted.internet import threads, reactor
 from twisted.python.failure import Failure
 import logging
+import plugin
 
 logger = logging.getLogger(name='buckets')
 
@@ -53,7 +54,7 @@ def flush():
 	global __batch
 	if __batch:
 		logger.debug("Batch flush")
-		deferred = threads.deferToThreadPool(reactor, reactor.getThreadPool(), __execute, __batch)
+		deferred = threads.deferToThreadPool(reactor, plugin.pool, __execute, __batch)
 		deferred.addCallback(__distribute)
 		__batch = []
 

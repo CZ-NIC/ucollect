@@ -3,10 +3,17 @@
 psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
 BEGIN;
 
+DROP TABLE IF EXISTS ssh_commands;
+DROP TABLE IF EXISTS ssh_sessions;
+DROP TABLE IF EXISTS refused_clients;
+DROP TABLE IF EXISTS refused_addrs;
+DROP TABLE IF EXISTS spoof_counts;
 DROP TABLE IF EXISTS nat_counts;
-DROP TABLE IF EXISTS flow_groups;
-DROP TABLE IF EXISTS flows;
+DROP TABLE IF EXISTS biflow_groups;
+DROP TABLE IF EXISTS biflows;
 DROP TABLE IF EXISTS bandwidth;
+DROP TABLE IF EXISTS bandwidth_avg;
+DROP TABLE IF EXISTS bandwidth_sums;
 DROP TABLE IF EXISTS cert_histograms;
 DROP TABLE IF EXISTS cert_requests;
 DROP TABLE IF EXISTS anomalies;
@@ -210,28 +217,57 @@ CREATE TABLE bandwidth (
 	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
 );
 
-CREATE TABLE flows (
+CREATE TABLE bandwidth_avg (
+	timestamp TIMESTAMP NOT NULL,
+	client INT NOT NULL,
+	bps_in INT NOT NULL,
+	bps_out INT NOT NULL,
+	UNIQUE(timestamp, client),
+	CHECK(bps_in >= 0),
+	CHECK(bps_out >= 0)
+);
+
+CREATE TABLE bandwidth_sums (
+	timestamp TIMESTAMP NOT NULL,
+	from_group INT NOT NULL,
+	client_count INT NOT NULL,
+	in_time INT[] NOT NULL,
+	out_time INT[] NOT NULL,
+	in_bytes BIGINT[] NOT NULL,
+	out_bytes BIGINT[] NOT NULL,
+	UNIQUE(timestamp, from_group),
+	FOREIGN KEY (from_group) REFERENCES groups(id)
+);
+
+CREATE TABLE biflows (
 	id BIGINT PRIMARY KEY NOT NULL,
-	peer_ip INET NOT NULL,
-	peer_port INT NOT NULL,
+	ip_remote INET NOT NULL,
+	port_remote INT NOT NULL,
+	port_local INT,
 	proto CHAR(1) NOT NULL,
-	start TIMESTAMP NOT NULL,
-	stop TIMESTAMP NOT NULL,
-	opposite_start TIMESTAMP,
-	size BIGINT NOT NULL,
-	count INT NOT NULL,
-	inbound BOOL NOT NULL,
+	start_in TIMESTAMP,
+	start_out TIMESTAMP,
+	stop_in TIMESTAMP,
+	stop_out TIMESTAMP,
+	size_in BIGINT NOT NULL,
+	size_out BIGINT NOT NULL,
+	count_in INT NOT NULL,
+	count_out INT NOT NULL,
+	seen_start_in BOOL NOT NULL,
+	seen_start_out BOOL NOT NULL,
 	tag TEXT NOT NULL,
 	tagged_on TIMESTAMP NOT NULL,
 	CHECK(proto = 'T' OR proto = 'U'),
-	CHECK(start <= stop)
+	CHECK(start_in <= stop_in),
+	CHECK(start_out <= stop_out)
 );
-CREATE SEQUENCE flows_id OWNED BY flows.id;
-ALTER TABLE flows ALTER COLUMN id SET DEFAULT NEXTVAL('flows_id');
-CREATE TABLE flow_groups (
-	flow BIGINT NOT NULL,
+CREATE SEQUENCE biflow_ids OWNED BY biflows.id;
+ALTER TABLE biflows ALTER COLUMN id SET DEFAULT NEXTVAL('biflow_ids');
+CREATE INDEX ON biflows (tagged_on);
+CREATE TABLE biflow_groups (
+	biflow BIGINT NOT NULL,
 	from_group INT NOT NULL,
-	FOREIGN KEY (flow) REFERENCES flows(id),
+	FOREIGN KEY (biflow) REFERENCES biflows(id),
 	FOREIGN KEY (from_group) REFERENCES groups(id)
 );
 
@@ -245,6 +281,61 @@ CREATE TABLE nat_counts (
 	total SMALLINT NOT NULL,
 	UNIQUE(from_group, batch),
 	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
+);
+
+CREATE TABLE spoof_counts (
+	from_group INT NOT NULL,
+	batch TIMESTAMP NOT NULL,
+	reachable SMALLINT NOT NULL,
+	spoofable SMALLINT NOT NULL,
+	UNIQUE(from_group, batch),
+	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE
+);
+
+CREATE TABLE refused_clients (
+	client INT NOT NULL,
+	reason CHAR NOT NULL,
+	since TIMESTAMP NOT NULL,
+	until TIMESTAMP NOT NULL,
+	count INT NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
+	CHECK(since < until),
+	UNIQUE(client, reason, since)
+);
+
+CREATE TABLE refused_addrs (
+	addr INET NOT NULL,
+	port INT NOT NULL,
+	reason CHAR NOT NULL,
+	since TIMESTAMP NOT NULL,
+	until TIMESTAMP NOT NULL,
+	conn_count INT NOT NULL,
+	client_count INT NOT NULL,
+	UNIQUE(addr, port, reason, since),
+	CHECK(port < 65536),
+	CHECK(port >= 0),
+	CHECK(client_count <= conn_count)
+);
+CREATE INDEX ON refused_addrs(since);
+
+CREATE TABLE ssh_sessions (
+	id INT NOT NULL PRIMARY KEY,
+	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+	end_time TIMESTAMP WITH TIME ZONE,
+	login TEXT NOT NULL,
+	password TEXT NOT NULL,
+	remote INET,
+	UNIQUE(start_time, login, password)
+);
+CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
+ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
+
+CREATE TABLE ssh_commands (
+	session INT NOT NULL,
+	timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+	success BOOL NOT NULL,
+	command TEXT NOT NULL,
+	FOREIGN KEY (session) REFERENCES ssh_sessions(id) ON DELETE CASCADE
 );
 
 GRANT INSERT ON anomalies TO archivist;
@@ -283,12 +374,30 @@ GRANT DELETE ON cert_histograms TO archivist;
 GRANT SELECT (batch, id) ON cert_histograms TO archivist;
 GRANT SELECT (timestamp) ON bandwidth TO archivist;
 GRANT INSERT ON bandwidth TO archivist;
-GRANT INSERT ON flows TO archivist;
-GRANT SELECT (id, tagged_on) ON flows TO archivist;
-GRANT INSERT ON flow_groups TO archivist;
-GRANT ALL ON flows_id TO archivist;
+GRANT SELECT (timestamp) ON bandwidth_avg TO archivist;
+GRANT INSERT ON bandwidth_avg TO archivist;
+GRANT INSERT ON bandwidth_sums TO archivist;
+GRANT INSERT ON biflows TO archivist;
+GRANT SELECT (id, tagged_on) ON biflows TO archivist;
+GRANT INSERT ON biflow_groups TO archivist;
+GRANT ALL ON biflow_ids TO archivist;
 GRANT SELECT (batch) ON nat_counts TO archivist;
 GRANT INSERT ON nat_counts TO archivist;
 GRANT DELETE ON nat_counts TO archivist;
+GRANT SELECT (batch) ON spoof_counts TO archivist;
+GRANT DELETE ON spoof_counts TO archivist;
+GRANT INSERT ON spoof_counts TO archivist;
+GRANT INSERT ON refused_addrs TO archivist;
+GRANT INSERT ON refused_clients TO archivist;
+GRANT DELETE ON refused_addrs TO archivist;
+GRANT DELETE ON refused_clients TO archivist;
+GRANT SELECT (since) ON refused_addrs TO archivist;
+GRANT SELECT (since) ON refused_clients TO archivist;
+GRANT INSERT ON ssh_sessions TO archivist;
+GRANT SELECT ON ssh_sessions TO archivist;
+GRANT UPDATE ON ssh_sessions TO archivist;
+GRANT INSERT ON ssh_commands TO archivist;
+GRANT ALL ON ssh_session_ids TO archivist;
+
 COMMIT;
 END_SQL

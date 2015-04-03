@@ -1,5 +1,5 @@
 --[[
-Copyright 2014, CZ.NIC z.s.p.o. (http://www.nic.cz/)
+Copyright 2014, 2015 CZ.NIC z.s.p.o. (http://www.nic.cz/)
 
 This script is part of majordomo plugin for ucollect
 
@@ -27,6 +27,7 @@ MONTHLY_ORIGIN_PREFIX="majordomo_origin_monthly_";
 DB_PATH_DEFAULT="/tmp/majordomo_db/";
 USE_DNS_LOOKUP_BACKEND = "nslookup_openwrt"
 MAX_ITEMS_PER_CLIENT_DEFAULT = 6000
+CACHE_RECORD_VALIDITY = 60 * 60 * 24 * 7; -- 7 days
 
 -- This names have to be synced with Majordomo plugin
 KW_OTHER_PROTO = "both"
@@ -39,7 +40,6 @@ KW_OTHER_PORT = "all"
 ]]
 function majordomo_get_configuration()
 	local db_path;
-	local make_lookup_mac;
 	local make_lookup_dns;
 	local max_items_per_client;
 	local majordomocfg = uci.cursor();
@@ -47,16 +47,14 @@ function majordomo_get_configuration()
 	-- Find in config
 	majordomocfg:foreach("majordomo", "db", function(s) if s[".type"] == "db" and s.path then db_path=s.path; return false; end return true; end);
 	majordomocfg:foreach("majordomo", "db", function(s) if s[".type"] == "db" and s.max_items_per_client then max_items_per_client=tonumber(s.max_items_per_client); return false; end return true; end);
-	majordomocfg:foreach("majordomo", "lookup", function(s) if s[".type"] == "lookup" and s.make_lookup_mac then make_lookup_mac=s.make_lookup_mac; return false; end return true; end);
 	majordomocfg:foreach("majordomo", "lookup", function(s) if s[".type"] == "lookup" and s.make_lookup_dns then make_lookup_dns=s.make_lookup_dns; return false; end return true; end);
 
 	-- Test and Set default values
 	if not db_path then db_path = DB_PATH_DEFAULT; end
 	if not max_items_per_client then max_items_per_client = MAX_ITEMS_PER_CLIENT_DEFAULT; end
-	if make_lookup_mac == "1" then make_lookup_mac = true; elseif make_lookup_mac == "0" then make_lookup_mac = false; else make_lookup_mac = true; end
 	if make_lookup_dns == "1" then make_lookup_dns = true; elseif make_lookup_dns == "0" then make_lookup_dns = false; else make_lookup_dns = true; end
 
-	return db_path, make_lookup_mac, make_lookup_dns, max_items_per_client;
+	return db_path, true, make_lookup_dns, max_items_per_client;
 end
 
 --[[
@@ -77,7 +75,7 @@ function db(name, storage)
 		local dbfile = io.open(self.PATH .. "/" .. self.FILE_PREFIX .. self.name, "w");
 		if dbfile then
 			for key, value in pairs(self.data) do
-				dbfile:write(key .. "=" .. value .. "\n");
+				dbfile:write(key .. "," .. value.ts .. "," .. value.payload .. "\n");
 			end
 			dbfile:close();
 		end
@@ -87,12 +85,21 @@ function db(name, storage)
 		local dbfile = io.open(self.PATH .. "/" .. self.FILE_PREFIX .. self.name, "r");
 		if dbfile then
 			for line in dbfile:lines() do
-				local key, value = line:match("(.*)=(.*)");
-				if key and value then
-					self.data[key] = value;
+				local key, ts, payload = line:match("^([^,]*),([^,]*),(.*)$");
+				if key and payload and ts then
+					self.data[key] = { payload = payload, ts = tonumber(ts) };
 				end
 			end
 			dbfile:close();
+		end
+	end
+
+	function result:check(key)
+		local value = self.data[key];
+		if value then
+			if value.ts < os.time() - CACHE_RECORD_VALIDITY then
+				self.data[key] = nil;
+			end
 		end
 	end
 
@@ -227,8 +234,8 @@ function get_inst_ptrdb()
 
 		local cached = self.data[key];
 		if cached then
-			if cached ~= empty_result then
-				return cached;
+			if cached.payload ~= empty_result then
+				return cached.payload;
 			else
 				return nil;
 			end
@@ -236,13 +243,13 @@ function get_inst_ptrdb()
 
 		local ptr, nxdomain = resolve(key);
 		if not ptr and nxdomain then
-			self.data[key] = empty_result;
+			self.data[key] = { payload = empty_result, ts = os.time() };
 			return nil;
 		elseif not ptr and not nxdomain then
-			self.data[key] = empty_result;
+			self.data[key] = { payload = empty_result, ts = os.time() };
 			return nil;
 		elseif ptr and not nxdomain then
-			self.data[key] = ptr;
+			self.data[key] = { payload = ptr, ts = os.time() };
 			return ptr;
 		end
 	end
@@ -263,25 +270,38 @@ function get_inst_macdb()
 
 		local cached = self.data[key];
 		if cached then
-			if cached ~= empty_result then
-				return cached;
+			if cached.payload ~= empty_result then
+				return cached.payload;
 			else
 				return nil;
 			end
 		end
 
-		local handle = io.popen("curl http://www.macvendorlookup.com/api/v2/" .. key .. "/pipe");
+		local handle = io.popen("ouidb " .. key);
 		local result = handle:read();
 		handle:close();
-		if not result then
-			self.data[key] = empty_result;
+
+		local vendor = result and result:match("^(.*)$");
+
+		if not vendor then
+			self.data[key] = { payload = empty_result, ts = os.time() };
 			return nil;
 		end
-		local vendor = result:match("%w+|%w+|%w+|%w+|([%w%s]+).*");
-		self.data[key]=vendor;
+		self.data[key] = { payload = vendor, ts = os.time() };
 		return vendor;
 	end
 
 	return macdb
 end
 
+--[[
+	Iterate over static_name options and return list of defined names
+]]
+function get_static_names_list()
+	local cur = uci.cursor();
+	local list = {};
+
+	cur:foreach("majordomo", "static_name", function(i) if i.mac then list[i.mac] = i.name; end; end);
+
+	return list;
+end

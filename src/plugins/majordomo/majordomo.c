@@ -35,6 +35,7 @@
 #include "../../core/packet.h"
 #include "../../core/uplink.h"
 #include "../../core/loop.h"
+#include "../../core/trie.h"
 
 #define DUMP_FILE_DST "/tmp/ucollect_majordomo"
 #define SOURCE_SIZE_LIMIT 6000
@@ -63,12 +64,7 @@ struct key {
 	uint16_t port;
 };
 
-struct src_key {
-	unsigned char addr[KEYS_ADDR_LEN];
-	unsigned char addr_len;
-};
-
-struct value {
+struct trie_data {
 	uint64_t u_count;
 	uint64_t u_size;
 	uint64_t u_data_size;
@@ -77,22 +73,14 @@ struct value {
 	uint64_t d_data_size;
 };
 
-struct comm_item {
-	struct key key;
-	struct value value;
-	struct comm_item *next;
-	struct comm_item *prev;
-	struct src_item *src_parent;
-};
-
-struct comm_items {
-	struct comm_item *head, *tail;
-	size_t count;
+struct src_key {
+	unsigned char addr[KEYS_ADDR_LEN];
+	unsigned char addr_len;
 };
 
 struct src_item {
 	struct src_key from;
-	struct value other;
+	struct trie_data other;
 	size_t items_in_comm_list;
 	struct src_item *next;
 	struct src_item *prev;
@@ -102,17 +90,6 @@ struct src_items {
 	struct src_item *head, *tail;
 	size_t count;
 };
-
-#define LIST_NODE struct comm_item
-#define LIST_BASE struct comm_items
-#define LIST_NAME(X) items_##X
-#define LIST_COUNT count
-#define LIST_PREV prev
-#define LIST_WANT_INSERT_AFTER
-#define LIST_WANT_REMOVE
-#define LIST_WANT_LFOR
-#include "../../core/link_list.h"
-
 
 #define LIST_NODE struct src_item
 #define LIST_BASE struct src_items
@@ -131,13 +108,16 @@ struct filter_rule {
 
 struct user_data {
 	FILE *file;
-	struct comm_items communication;
+	struct trie *communication;
 	struct src_items sources;
-	struct mem_pool *list_pool;
+	struct mem_pool *data_pool;
 	struct mem_pool *config_pool;
 	struct filter_rule *filter;
 	size_t filter_size;
 	size_t timeout;
+	char *src_str;
+	char *dst_str;
+	FILE *dump_file;
 };
 
 static uint32_t masks[33];
@@ -202,7 +182,7 @@ static void get_string_from_raw_bytes(unsigned char *bytes, unsigned char addr_l
 	}
 }
 
-static void update_value(struct value *value, enum direction direction, uint64_t size, uint64_t data_size) {
+static void update_value(struct trie_data *value, enum direction direction, uint64_t size, uint64_t data_size) {
 	if (direction == DIRECTION_UPLOAD) {
 		value->u_count++;
 		value->u_size += size;
@@ -217,25 +197,31 @@ static void update_value(struct value *value, enum direction direction, uint64_t
 	}
 }
 
-static bool key_equals(struct comm_item *item, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, char protocol, uint16_t port) {
-	return (
-			item->key.from_addr_len == from_addr_len &&
-			item->key.to_addr_len == to_addr_len &&
-			item->key.protocol == protocol &&
-			item->key.port == port &&
-			memcmp(item->key.from, from, from_addr_len) == 0 &&
-			memcmp(item->key.to, to, to_addr_len) == 0
-		);
+static struct key* build_key(struct mem_pool *pool,
+	const unsigned char *from, unsigned char from_addr_len,
+	const unsigned char *to, unsigned char to_addr_len,
+	char protocol, uint64_t port
+	) {
+
+	struct key *key = mem_pool_alloc(pool, sizeof *key);
+	memset(key, 0, sizeof *key);
+	memcpy(key->from, from, from_addr_len);
+	memcpy(key->to, to, to_addr_len);
+	key->from_addr_len = from_addr_len;
+	key->to_addr_len = to_addr_len;
+	key->protocol = protocol; key->port = port;
+
+	return key;
 }
 
-static struct comm_item *find_item(struct comm_items *comm, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, unsigned char protocol, uint16_t port) {
-	LFOR(items, it, comm) {
-		if (key_equals(it, from, from_addr_len, to, to_addr_len, protocol, port)) {
-			return it;
-		}
-	}
-
-	return NULL;
+static void init_trie_data(struct mem_pool *pool, struct trie_data **data, const struct packet_info *info) {
+	*data = mem_pool_alloc(pool, sizeof **data);
+	**data = (struct trie_data) {
+		.u_count = 1,
+		.u_size = info->length,
+		.u_data_size = info->length - info->hdr_length
+		// Item can be created only in one direction and the rest will be zero
+	};
 }
 
 static struct src_item *find_src(struct src_items *sources, const unsigned char *from, unsigned char addr_len) {
@@ -246,28 +232,6 @@ static struct src_item *find_src(struct src_items *sources, const unsigned char 
 	}
 
 	return NULL;
-}
-
-static struct comm_item *create_comm_item(struct comm_items *communication, struct mem_pool *list_pool, const unsigned char *from, unsigned char from_addr_len, const unsigned char *to, unsigned char to_addr_len, uint16_t port, const struct packet_info *info) {
-	struct comm_item *item;
-	//Create item
-	item = mem_pool_alloc(list_pool, sizeof *item);
-	items_insert_after(communication, item, NULL); //NULL == insert after head
-	//Fill item's data
-	memcpy(item->key.from, from, from_addr_len);
-	memcpy(item->key.to, to, to_addr_len);
-	item->key.protocol = info->app_protocol;
-	item->key.port = port;
-	item->key.from_addr_len = from_addr_len;
-	item->key.to_addr_len = to_addr_len;
-	item->value = (struct value) {
-		.u_count = 1,
-		.u_size = info->length,
-		.u_data_size = info->length - info->hdr_length
-		// Item can be created only in one direction and the rest will be zero
-	};
-
-	return item;
 }
 
 static bool filter_address(struct user_data *d, const void *addr_bytes, int family) {
@@ -317,19 +281,18 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 		return;
 
 	// Check situation about this packet
-	struct comm_item *item = find_item(&(d->communication),
-			(unsigned char *) l2->addresses[local_endpoint], l2->addr_len,
-			(unsigned char *) info->addresses[remote_endpoint], info->addr_len,
+	struct key *key = build_key(context->temp_pool,
+			l2->addresses[local_endpoint], l2->addr_len,
+			info->addresses[remote_endpoint], info->addr_len,
 			info->app_protocol, info->ports[remote_endpoint]
-		);
+	);
+
+	struct trie_data **data = trie_index(d->communication, (uint8_t *) key, sizeof *key);
 
 	// Item exists
-	if (item != NULL) {
+	if (*data != NULL) {
 		//Update info
-		update_value(&(item->value), l2->direction, info->length, (info->length - info->hdr_length));
-		//Update position
-		items_remove(&(d->communication), item);
-		items_insert_after(&(d->communication), item, NULL);
+		update_value(*data, l2->direction, info->length, (info->length - info->hdr_length));
 		return;
 	}
 
@@ -337,24 +300,20 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	struct src_item *src = find_src(&(d->sources), l2->addresses[local_endpoint], l2->addr_len);
 	// This is first communication from this source
 	if (src == NULL) {
-		item = create_comm_item(&(d->communication), d->list_pool, l2->addresses[local_endpoint], l2->addr_len, info->addresses[remote_endpoint], info->addr_len, info->ports[remote_endpoint], info);
-		src = src_items_append_pool(&(d->sources), d->list_pool);
+		init_trie_data(d->data_pool, data, info);
+
+		src = src_items_append_pool(&(d->sources), d->data_pool);
 		memcpy(src->from.addr, l2->addresses[local_endpoint], l2->addr_len);
 		src->from.addr_len = l2->addr_len;
-		src->other = (struct value) {
+		src->other = (struct trie_data) {
 			.u_count = 0 // Init all with zero
 		};
 		src->items_in_comm_list = 1;
-		// Add link into item
-		item->src_parent = src;
 
 	} else {
 		// Source has some records; check its limit
 		if (src->items_in_comm_list < SOURCE_SIZE_LIMIT) {
-			item = create_comm_item(&(d->communication), d->list_pool, l2->addresses[local_endpoint], l2->addr_len, info->addresses[remote_endpoint], info->addr_len, info->ports[remote_endpoint], info);
-			// Link item with its parent
-			item->src_parent = src;
-			item->src_parent->items_in_comm_list++;
+			init_trie_data(d->data_pool, data, info);
 		} else {
 			// Source exceeded the limit - update its 'other' value
 			update_value(&(src->other), l2->direction, info->length, (info->length - info->hdr_length));
@@ -362,49 +321,77 @@ void packet_handle(struct context *context, const struct packet_info *info) {
 	}
 }
 
+static void dump_item(const uint8_t *key_bytes, size_t key_size, struct trie_data *data, void *userdata) {
+	struct user_data *d = (struct user_data *) userdata;
+	struct key *key = (struct key *) key_bytes;
+	(void) key_size;
+
+	get_string_from_raw_bytes(key->from, key->from_addr_len, d->src_str);
+	get_string_from_raw_bytes(key->to, key->to_addr_len, d->dst_str);
+
+	const char *app_protocol;
+	if (key->protocol == 'T') {
+		app_protocol = "TCP";
+	} else if (key->protocol == 'U') {
+		app_protocol = "UDP";
+	} else {
+		ulog(LLOG_ERROR, "Invalid majordomo protocol: %c\n", key->protocol);
+		abort();
+	}
+
+	fprintf(d->dump_file,
+		"%s,%s,%s,%" PRIu16 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
+		app_protocol,
+		d->src_str,
+		d->dst_str,
+		key->port,
+		data->d_count,
+		data->d_size,
+		data->d_data_size,
+		data->u_count,
+		data->u_size,
+		data->u_data_size
+	);
+}
+
 static void dump(struct context *context) {
 	struct user_data *d = context->user_data;
-	FILE *dump_file = fopen(DUMP_FILE_DST, "a");
-	if (dump_file == NULL) {
+	d->dump_file = fopen(DUMP_FILE_DST, "a");
+	if (d->dump_file == NULL) {
 		ulog(LLOG_ERROR, "Can't open Majordomo dump file %s", DUMP_FILE_DST);
 		//Nothing to do now
 		return;
 	}
 
-	char *src_str = mem_pool_alloc(context->temp_pool, ADDRSTRLEN);
-	char *dst_str = mem_pool_alloc(context->temp_pool, ADDRSTRLEN);
-	char *app_protocol;
-
-	LFOR(items, it, &(d->communication)) {
-		get_string_from_raw_bytes(it->key.from, it->key.from_addr_len, src_str);
-		get_string_from_raw_bytes(it->key.to, it->key.to_addr_len, dst_str);
-
-		if (it->key.protocol == 'T') {
-			app_protocol = "TCP";
-		} else if (it->key.protocol == 'U') {
-			app_protocol = "UDP";
-		}
-
-		fprintf(dump_file, "%s,%s,%s,%" PRIu16 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", app_protocol, src_str, dst_str, it->key.port, it->value.d_count, it->value.d_size, it->value.d_data_size, it->value.u_count, it->value.u_size, it->value.u_data_size);
-	}
+	trie_walk(d->communication, dump_item, d, context->temp_pool);
 
 	LFOR(src_items, it, &(d->sources)) {
-		get_string_from_raw_bytes(it->from.addr, it->from.addr_len, src_str);
-		fprintf(dump_file, "%s,%s,%s,%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", "both", src_str, "other", "all", it->other.d_count, it->other.d_size, it->other.d_data_size, it->other.u_count, it->other.u_size, it->other.u_data_size);
+		get_string_from_raw_bytes(it->from.addr, it->from.addr_len, d->src_str);
+		fprintf(d->dump_file,
+			"%s,%s,%s,%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
+			"both",
+			d->src_str,
+			"other",
+			"all",
+			it->other.d_count,
+			it->other.d_size,
+			it->other.d_data_size,
+			it->other.u_count,
+			it->other.u_size,
+			it->other.u_data_size
+		);
 	}
 
 	//Cleanup
-	//Reinit lists
-	d->communication.head = NULL;
-	d->communication.tail = NULL;
-	d->communication.count = 0;
+	//Drop dumped data
+	mem_pool_reset(d->data_pool);
+	//Reinit user_data items
 	d->sources.head = NULL;
 	d->sources.tail = NULL;
 	d->sources.count = 0;
-	//Drop dumped data
-	mem_pool_reset(d->list_pool);
+	d->communication = trie_alloc(d->data_pool);
 	//Close dump file
-	fclose(dump_file);
+	fclose(d->dump_file);
 }
 
 void scheduled_dump(struct context *context, void *data, size_t id) {
@@ -418,16 +405,16 @@ void scheduled_dump(struct context *context, void *data, size_t id) {
 void init(struct context *context) {
 	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 	*context->user_data = (struct user_data) {
-		.list_pool = loop_pool_create(context->loop, context, "Majordomo linked-lists pool"),
+		.data_pool = loop_pool_create(context->loop, context, "Majordomo data pool"),
 		.config_pool = loop_pool_create(context->loop, context, "Majordomo config pool"),
 		.timeout = loop_timeout_add(context->loop, DUMP_TIMEOUT, context, NULL, scheduled_dump),
-		.communication = (struct comm_items) {
-			.count = 0
-		},
 		.sources = (struct src_items) {
 			.count = 0
-		}
+		},
+		.src_str = mem_pool_alloc(context->permanent_pool, ADDRSTRLEN),
+		.dst_str = mem_pool_alloc(context->permanent_pool, ADDRSTRLEN)
 	};
+	context->user_data->communication = trie_alloc(context->user_data->data_pool),
 
 	precompute_masks();
 }

@@ -48,11 +48,13 @@ function precache(db_path, ml_mac, ml_dns)
 			read_file(db, file);
 			for addr, items in pairs(db) do
 				if ml_mac then
+					macdb:check(addr);
 					macdb:lookup(addr);
 				end
 				for key, _ in pairs(items) do
 					local _, _, dst, _ = split_key(key);
 					if ml_dns then
+						ptrdb:check(dst);
 						ptrdb:lookup(dst);
 					end
 				end

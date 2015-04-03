@@ -455,7 +455,7 @@ static void loop_get_now(struct loop *loop) {
 	 */
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
 		die("Couldn't get time (%s)\n", strerror(errno));
-	loop->now = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+	loop->now = (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 }
 
 struct loop *loop_create(void) {
@@ -756,11 +756,11 @@ static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char
 		return -1;
 	}
 	// Set parameters.
-	int result = pcap_set_promisc(*pcap, 1);
+	int result = pcap_set_promisc(*pcap, 0); // No promiscuous mode (we don't need that)
 	assert(result == 0); // Can error only on code errors
-	result = pcap_set_timeout(*pcap, PCAP_TIMEOUT); // One second
+	result = pcap_set_timeout(*pcap, PCAP_TIMEOUT); // 100 milliseconds
 	assert(result == 0);
-	pcap_set_buffer_size(*pcap, PCAP_BUFFER);
+	result = pcap_set_buffer_size(*pcap, PCAP_BUFFER);
 	assert(result == 0);
 
 	// TODO: Some filters?

@@ -63,7 +63,9 @@ It describes the server it should connect to. It contains the dns name
 in the `service` option.
 
 There's also the login info. The login name is in the `login` option
-and password in `password`.
+and password in `password`. However, default compilation
+authenticates through libatsha204 and doesn't understant these options
+(just omit them).
 
 There should be exactly one instance of this config section.
 

@@ -1,0 +1,285 @@
+Ucollect installation guide
+***************************
+
+This file documents installation and compilation process of ucollect on a clean
+linux operating system.
+
+We use a clean installation of Debian 7 Wheezy. The names of packages in other
+distributions should be similar.
+
+Build options are customized for installation on the developer's station.
+
+Our projects are compiled with flag NO_DOC=1. If you want documentation you
+have to run 'apt-get install asciidoc' command first. Note: 'asciidoc' includes
+latex with about 700MB of dependencies.
+
+Ucollect client
+===============
+
+1) Install developmnet tools
+----------------------------
+
+apt-get install gcc g++ git qt4-qmake pkg-config cmake
+
+2) Install ucollect dependencies
+--------------------------------
+
+apt-get install zlib1g-dev libpcap-dev python-dev socat
+
+3) Build the rest of dependencies from source code
+--------------------------------------------------
+
+Not all of ucollect's dependencies are packaged in distributions. These
+projects are necessary too:
+
+3.A) libuci
+-----------
+
+Libuci is project from the authors of OpenWrt. It is library for manipulation
+with UCI configuration files.
+
+Clone repository with libuci:
+	git clone git://nbd.name/uci.git
+	cd uci
+
+Checkout latest working(!) version:
+	git checkout v0.8.0
+
+Build and install:
+	cmake -D BUILD_LUA:BOOL=OFF .
+	make
+	make install
+
+3.B) libatsha204
+----------------
+
+Libatsha204 is library for communication with Atmel ATSHA204 crypto chip. This
+library supports several ways how the chip could be installed. Native I2C
+driver of Linux kernel, some USB sticks and SW emulation of chip features are
+supported.
+
+This tutorial is primary targeted on installation of ucollect on the developer's
+station so we will use the SW emulation of the chip.
+
+Install some specific libatsha204 dependencies:
+	apt-get install libunbound-dev libssl-dev
+
+Clone repository with libatsha204:
+	git clone https://gitlab.labs.nic.cz/turris/libatsha204.git
+	cd libatsha204
+
+Libatsha204 uses our own build system that is included as a git submodule:
+	git submodule init
+	git submodule update
+
+Build and install libtsha204 with emulation layer:
+	make USE_LAYER=USE_LAYER_EMULATION NO_DOC=1 CONFIG_PATH="/etc/atsha204.sw"
+	make install
+
+Note: For other layers you have to own a device with Atmel ATSHA204 crypto
+chip.
+
+Copy configuration file to expected location:
+	cp atsha204.sw /etc/.
+
+Note: Configuration file describes content of internal ATSHA204 memory. Not all
+of memory slots are needed or valid.
+
+4) Build ucollect
+-----------------
+
+Clone repository with ucollect:
+	git clone https://gitlab.labs.nic.cz/turris/ucollect.git
+	cd ucollect
+
+Ucollect uses our own build system that is included as a git submodule:
+	git submodule init
+	git submodule update
+
+Build:
+	make NO_DOC=1 NO_MASTER=1
+
+There is no "install" target in Makefile. You can run ucollect from command
+line, eg. ./bin/ucollect. If you need some installation process you can get
+inspired in ucollect-* packages in our openwrt repository.
+
+Ucollect server
+===============
+
+1) Install developmnet tools
+----------------------------
+
+apt-get install gcc g++ git qt4-qmake pkg-config
+
+2) Install ucollect server dependencies
+---------------------------------------
+
+apt-get install zlib1g-dev libqt4-dev
+
+3) Build the rest of dependencies from source code
+--------------------------------------------------
+
+Build and install(!) libatsha204 as is described in Ucollect client, part 3.B.
+
+Now, install additional dependency:
+	apt-get install python-dev
+
+Go to subdirectory src/python and run commands:
+	cd src/python
+	python setup.py build
+	python setup.py install
+
+4) Build soxy
+-------------
+
+Clone repository with ucollect:
+	git clone https://gitlab.labs.nic.cz/turris/ucollect.git
+	cd ucollect
+
+Go to subdirectory src/master/soxy and build it:
+	cd src/master/soxy
+	qmake
+	make
+
+5) Install necessary python packages:
+	apt-get install python-twisted python-dateutil python-psycopg2
+
+Setup ucollect client and server communication and environment
+==============================================================
+
+1) Environment requirements
+---------------------------
+
+There is one unusual requirement. Ucollect is using libatsha204 and ATSHA204
+crypto-chip to authentication. ATSHA204 has 16 key slots and is neccessary to
+pick one. ID of slot is combination of one record in chip's OTP memory and one
+TXT record in specific DNS zone.
+
+The address of the TXT DNS record is defined in libatsha204 repository in
+src/libatsha204/configuration.h file. You're looking for
+DEFAULT_DNS_RECORD_FIND_KEY constant.
+
+Theoretically, for development purposes, you can use our DNS record. For
+production environment you need a zone that is signed with DNSSEC. Libatsha204
+checks validity of DNS signature and checks if signature exists.
+
+2) SSL certificate
+------------------
+
+Naturally, communication between client and server is encrypted. Identities are
+checked with SSL certificates. Self-signed certificate is sufficient. The client
+and the server checks if the certificates are the same. Certificate signed with
+CA doesn't have any benefit in this case.
+
+You can generate it with command like this one:
+
+openssl req -new -x509 -keyout /etc/ucollect-dev.pem -out /etc/ucollect-dev.pem -days 1825 -nodes -subj "/C=CZ/ST=Prague/L=Prague/O=Ucollect"
+
+Parameters C, ST, L, O are of course configurable.
+
+3) Configure server
+-------------------
+
+Ucollect server uses PostgreSQL as backend. So, install PostgreSQL:
+	apt-get install postgresql
+
+Log-in as postgres user and create users for ucollect server. No user needs to
+be supersuser. You can answer "no" to all questions.
+	root@ucollect-server:~# su postgres 
+	postgres@ucollect-server:/root$ cd
+	postgres@ucollect-server:~$ createdb ucollect
+	postgres@ucollect-server:~$ createuser ucollect
+	postgres@ucollect-server:~$ createuser authenticator
+	postgres@ucollect-server:~$ createuser updater
+	postgres@ucollect-server:~$ createuser jenkins
+	postgres@ucollect-server:~$ createuser cleaner
+	postgres@ucollect-server:~$ createuser archivist
+
+Some users need password, some users are using system-user based authentication.
+Password is necessary for: updater (set name/password in
+src/master/collect-master.conf), authenticator (set name/password in
+src/master/authenticator/authenticator.conf).
+
+Anyway, disable authentication is the easiest solution on the developer's
+station. Go to postgresql configuration directory /etc/postgresql/VERSION/main
+and edit file pg_hba.conf. Set "trust" method to all authentication types.
+Example:
+
+# Database administrative login by Unix domain socket
+local   all             postgres                                peer
+
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+# "local" is for Unix domain socket connections only
+local   all             all                                     trust
+# IPv4 local connections:
+host    all             all             127.0.0.1/32            trust
+# IPv6 local connections:
+host    all             all             ::1/128                 trust
+
+
+Now you should be able to initialize the database. Go to src/master/dbscripts
+and run:
+	./initdb debug
+
+Change setting of collect-master - at least "certificate" and "key" options.
+Open  src/master/collect-master.conf and change these:
+	; The SSL certificate
+	cert = /etc/ucollect-dev.pem
+	key = /etc/ucollect-dev.pem
+
+Run authenticator:
+	cd src/master/authenticator
+	./authenticator.py authenticator.conf
+
+Run ucollect server:
+	cd src/master
+	./collect-master.py collect-master.conf
+
+4) Configure client
+-------------------
+
+Get root trust anchor for unbound/libunbound:
+	apt-get install unbound-anchor
+	mkdir /etc/unbound
+	unbound-anchor -u http://data.iana.org -x /root-anchors/root-anchors.xml -v
+
+Create configuration for ucollect client:
+	mkdir /etc/config
+	vim /etc/config/ucollect
+
+Example config:
+--------------------------------------------------
+config interface
+	option ifname 'eth0'
+
+config uplink
+	option name localhost
+	option service 5679
+	option cert "/etc/ucollect-dev.pem"
+
+config plugin
+	option libname 'libplugin_count.so'
+
+config plugin
+	option libname 'libplugin_bandwidth.so'
+
+config plugin
+	option libname 'libplugin_buckets.so'
+--------------------------------------------------
+
+And run ucollect client:
+	./bin/ucollect
+
+5) Add clients
+--------------
+
+All clients are identified by ID. ID is sequence of numbers stored in 2 OTP
+slots in ATSHA204 chripto-chip.
+
+Get ID of emulated ATSHA204 crypto chip with tool in libatsha204 repository:
+	atsha204cmd serial-number
+
+ID must be stored in DB in table "clients". The field "mechanism" is important
+for development. It's value "Y" means: Don't check credentials and enable this
+client.

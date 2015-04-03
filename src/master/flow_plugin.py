@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2014,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -139,6 +139,25 @@ class FilterDifferential(Filter):
 	def __str__(self):
 		return self._code + '(' + self._name + ')'
 
+class FilterRange(Filter):
+	def serialize(self):
+		try:
+			addr = socket.inet_pton(socket.AF_INET, self._addr)
+			v6 = False
+		except Exception:
+			addr = socket.inet_pton(socket.AF_INET6, self._addr)
+			v6 = True
+		return self._code + struct.pack('!BB', 6 if v6 else 4, self._mask) + addr[:(self._mask + 7) / 8]
+
+	def parse(self, code, param):
+		self._code = code
+		([self._addr, self._mask], param) = self.get_values(param)
+		self._mask = int(self._mask)
+		return param
+
+	def __str__(self):
+		return self._code + '(' + self._addr + ',' + str(self._mask) + ')'
+
 filter_index = {
 	'T': Filter,
 	'F': Filter,
@@ -150,10 +169,12 @@ filter_index = {
 	'p': FilterPort,
 	'P': FilterPort,
 	'd': FilterDifferential,
-	'D': FilterDifferential
+	'D': FilterDifferential,
+	'r': FilterRange,
+	'R': FilterRange
 }
 
-def store_flows(client, message, expect_conf_id):
+def store_flows(client, message, expect_conf_id, now):
 	(header, message) = (message[:12], message[12:])
 	(conf_id, calib_time) = struct.unpack('!IQ', header)
 	if conf_id != expect_conf_id:
@@ -162,6 +183,7 @@ def store_flows(client, message, expect_conf_id):
 		logger.warn('Empty list of flows from %s', client)
 		return
 	values = []
+	count = 0
 	while message:
 		(flow, message) = (message[:61], message[61:])
 		(flags, cin, cout, sin, sout, ploc, prem, tbin, tbout, tein, teout) = struct.unpack('!BIIQQHHQQQQ', flow)
@@ -182,24 +204,17 @@ def store_flows(client, message, expect_conf_id):
 		else:
 			proto = 'T'
 		logger.trace("Flow times: %s, %s, %s, %s, %s (%s/%s packets)", calib_time, tbin, tbout, tein, teout, cin, cout)
-		if cin:
-			ok = True
-			for v in (tbin, tein):
-				if calib_time - v > 86400000:
-					logger.error("Time difference out of range for client %s and in direction: %s", client, calib_time - v)
-					ok = False
-			if ok:
-				values.append((arem, aloc, prem, ploc, proto, calib_time - tbin, calib_time - tein, calib_time - tbout if cout else None, sin, cin, True, in_started, client))
-		if cout:
-			ok = True
-			for v in (tbout, teout):
-				if calib_time - v > 86400000:
-					logger.error("Time difference out of range for client %s and out direction: %s", client, calib_time - v)
-					ok = False
-			if ok:
-				values.append((aloc, arem, ploc, prem, proto, calib_time - tbout, calib_time - teout, calib_time - tbin if cin else None, sout, cout, False, out_started, client))
+		ok = True
+		for v in (tbin, tein, tbout, teout):
+			if v > 0 and calib_time - v > 86400000:
+				logger.error("Time difference out of range for client %s: %s/%s", client, calib_time - v, v)
+				ok = False
+		if ok:
+			values.append((aloc, arem, ploc, prem, proto, now, calib_time - tbin if tbin > 0 else None, now, calib_time - tbout if tbout > 0 else None, now, calib_time - tein if tein > 0 else None, now, calib_time - teout if teout > 0 else None, cin, cout, sin, sout, in_started, out_started, client))
+			count += 1
 	with database.transaction() as t:
-		t.executemany("INSERT INTO flows (client, ip_from, ip_to, port_from, port_to, proto, start, stop, opposite_start, size, count, inbound, seen_start) SELECT clients.id, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - %s * INTERVAL '1 millisecond', %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
+		t.executemany("INSERT INTO biflows (client, ip_local, ip_remote, port_local, port_remote, proto, start_in, start_out, stop_in, stop_out, count_in, count_out, size_in, size_out, seen_start_in, seen_start_out) SELECT clients.id, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
+	logger.debug("Stored %s flows for %s", count, client)
 
 class FlowPlugin(plugin.Plugin):
 	"""
@@ -334,7 +349,7 @@ class FlowPlugin(plugin.Plugin):
 		elif message[0] == 'D':
 			logger.debug('Flows from %s', client)
 			activity.log_activity(client, 'flow')
-			reactor.callInThread(store_flows, client, message[1:], int(self.__config['version']))
+			reactor.callInThread(store_flows, client, message[1:], int(self.__config['version']), database.now())
 		elif message[0] == 'U':
 			# Client is requesting difference in a filter
 			(full, name_len) = struct.unpack('!?I', message[1:6])

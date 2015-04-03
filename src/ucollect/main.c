@@ -22,8 +22,27 @@
 #include "../core/uplink.h"
 #include "../core/configure.h"
 #include "../core/startup.h"
+#include "../core/tunable.h"
+#include "../core/mem_pool.h"
 
 #include <syslog.h>
+#include <string.h>
+
+static void dump_stats(struct context *context, void *data, size_t id) {
+	(void)context;
+	(void)data;
+	(void)id;
+	char *stats = mem_pool_stats(loop_temp_pool(loop));
+	char *tok;
+	while ((tok = strtok(stats, ","))) {
+		stats = NULL;
+		while (*tok == ' ')
+			tok ++;
+		ulog(LLOG_INFO, "Mempool stats: %s\n", tok);
+	}
+	ulog(LLOG_INFO, "Mempool stats done\n");
+	loop_timeout_add(loop, STAT_DUMP_TIMEOUT, NULL, NULL, dump_stats);
+}
 
 int main(int argc, const char* argv[]) {
 	(void) argc;
@@ -37,8 +56,12 @@ int main(int argc, const char* argv[]) {
 	// Create the loop.
 	loop = loop_create();
 
+	loop_timeout_add(loop, STAT_DUMP_TIMEOUT, NULL, NULL, dump_stats);
+
 	// Connect upstream
 	uplink = uplink_create(loop);
+	// FIXME: Is it OK to hardcore it here?
+	uplink_set_status_file(uplink, "/tmp/ucollect-status");
 
 	set_stop_signals();
 

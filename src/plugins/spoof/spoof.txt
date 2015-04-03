@@ -1,0 +1,58 @@
+The spoof plugin
+================
+
+The goal of this plugin is to check if ISPs properly block packets
+with spoofed addresses (addresses not in their ranges).
+
+Upon request, the plugin sends two packets to the server. One is with
+the correct source address, the other is spoofed (the correct one is
+to check reachability). The server than looks into the content of the
+address and pairs it to the client, storing the result to database.
+
+Currently, it works only on IPv4.
+
+The request
+-----------
+
+The requests starts with the opcode `'4'` (character '4', not byte
+with number 4). This is to provide possibility of future extension to
+other types of requests.
+
+Then there are these fields:
+
+source address:: This is an `uint32_t` field, and it is the IP address
+  that is set as source address on the spoofed packet.
+destination address:: Similarly, an `uint32_t` field, meaning the
+  address both packets are sent to.
+port:: An `uint16_t` field, specifying the destination UDP port.
+token:: An `uint64_t` token used for pairing packets to clients. It is
+  randomly generated number.
+
+The packet
+----------
+
+The packet is a UDP packet, with given port and addresses. It
+contains:
+
+Magic signature:: This is `uint32_t` number, always set to
+  `0x17ACEE43`. This helps to verify the packet is ours and not
+  something stray wandering the Internet.
+Token:: An `uint64_t` number, copied verbatim from the request. It is
+  used to pair the packet on the server side when received.
+Spoofed:: A `bool` value, set to `true` on the packet that has spoofed
+  address, `false` on the other one.
+Message:: There's a character string explaining the packet is testing
+  one. It has no meaning for the application itself, so it is ignored
+  by the server.
+
+Generation of packet
+--------------------
+
+The ordinary packet is sent first, the usual way (by opening a IP/UDP
+socket and using `sendto`). The packet is then captured when going out
+by WAN interface. The packet is examined and used as a template for
+the forged packet. This saves a lot of sniffing through the OS to find
+out needed information (like the MAC address of the gate, the correct
+interface to send the packet through, etc). The source address is
+modified according to the request and it is sent out though a
+AF_PACKET socket.

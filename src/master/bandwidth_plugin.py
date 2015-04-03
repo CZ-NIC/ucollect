@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2014,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -30,6 +30,92 @@ logger = logging.getLogger(name='bandwidth')
 
 # Count of items that are send for one window
 PROTO_ITEMS_PER_WINDOW = 3
+PROTO_ITEMS_PER_BUCKET = 5
+
+BUCKETS_CNT_PROTO2 = 37
+BUCKET_MAP_PROTO2 = {
+	1: 0,
+	2: 1,
+	3: 2,
+	4: 3,
+	5: 4,
+	6: 5,
+	7: 6,
+	8: 7,
+	9: 8,
+	10: 9,
+	11: 10,
+	12: 11,
+	13: 12,
+	14: 13,
+	15: 14,
+	16: 15,
+	17: 16,
+	18: 17,
+	19: 18,
+	20: 19,
+	30: 20,
+	40: 21,
+	50: 22,
+	60: 23,
+	70: 24,
+	80: 25,
+	90: 26,
+	100: 27,
+	200: 28,
+	300: 29,
+	400: 30,
+	500: 31,
+	600: 32,
+	700: 33,
+	800: 34,
+	900: 35,
+	1000: 36
+}
+
+BUCKETS_CNT_PROTO3 = 40
+BUCKET_MAP_PROTO3 = {
+	250: 0,
+	500: 1,
+	750: 2,
+	1000: 3,
+	2000: 4,
+	3000: 5,
+	4000: 6,
+	5000: 7,
+	6000: 8,
+	7000: 9,
+	8000: 10,
+	9000: 11,
+	10000: 12,
+	11000: 13,
+	12000: 14,
+	13000: 15,
+	14000: 16,
+	15000: 17,
+	16000: 18,
+	17000: 19,
+	18000: 20,
+	19000: 21,
+	20000: 22,
+	30000: 23,
+	40000: 24,
+	50000: 25,
+	60000: 26,
+	70000: 27,
+	80000: 28,
+	90000: 29,
+	100000: 30,
+	200000: 31,
+	300000: 32,
+	400000: 33,
+	500000: 34,
+	600000: 35,
+	700000: 36,
+	800000: 37,
+	900000: 38,
+	1000000: 39
+}
 
 class Window:
 	"""
@@ -40,28 +126,121 @@ class Window:
 		self.in_max = in_max
 		self.out_max = out_max
 
+class Bucket:
+	def __init__(self, bucket, in_time, in_bytes, out_time, out_bytes):
+		self.bucket = bucket
+		self.in_time = in_time
+		self.in_bytes = in_bytes
+		self.out_time = out_time
+		self.out_bytes = out_bytes
+
 class ClientData:
 	"""
 	Class that stores all windows of client
 	"""
-	def __init__(self):
+	def __init__(self, version):
+		self.version = version
 		self.cnt = 0
 		self.windows = {}
+		self.buckets = {}
+		self.timestamp_dbg = None
 
 	def add_window(self, window_length, in_max, out_max):
 		self.cnt += 1
 		self.windows[window_length] = Window(window_length, in_max, out_max)
 
-def store_bandwidth(data):
+	def add_bucket(self, bucket, in_time, in_bytes, out_time, out_bytes):
+		self.cnt += 1
+		self.buckets[bucket] = Bucket(bucket, in_time, in_bytes, out_time, out_bytes)
+
+def store_bandwidth(data, now):
 	logger.info('Storing bandwidth snapshot')
 
 	with database.transaction() as t:
-		t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
-		(now,) = t.fetchone()
-
 		for client, cldata in data.items():
 			for window in cldata.windows.itervalues():
-				t.execute("INSERT INTO bandwidth (client, timestamp, win_len, in_max, out_max) SELECT clients.id AS client, %s, %s, %s, %s FROM clients WHERE name = %s;", (now, window.length, window.in_max, window.out_max, client))
+				t.execute("""INSERT INTO bandwidth (client, timestamp, win_len, in_max, out_max)
+				SELECT clients.id AS client, %s, %s, %s, %s
+				FROM clients
+				WHERE name = %s
+				""", (now, window.length, window.in_max, window.out_max, client))
+
+		for client, cldata in data.items():
+			if not cldata.buckets:
+				continue
+
+			## Choose data structures according to protocol version
+			BUCKET_MAP = None
+			BUCKETS_CNT = None
+			if cldata.version <= 2:
+				BUCKET_MAP = BUCKET_MAP_PROTO2
+				BUCKETS_CNT = BUCKETS_CNT_PROTO2
+			elif cldata.version >= 3:
+				BUCKET_MAP = BUCKET_MAP_PROTO3
+				BUCKETS_CNT = BUCKETS_CNT_PROTO3
+
+			##### DBG #####
+			in_time = [0] * BUCKETS_CNT
+			in_bytes = [0] * BUCKETS_CNT
+			out_time = [0] * BUCKETS_CNT
+			out_bytes = [0] * BUCKETS_CNT
+
+			for bucket in cldata.buckets.itervalues():
+				pos = BUCKET_MAP[bucket.bucket]
+				in_time[pos] = bucket.in_time
+				in_bytes[pos] = bucket.in_bytes
+				out_time[pos] = bucket.out_time
+				out_bytes[pos] = bucket.out_bytes
+
+			t.execute("""INSERT INTO bandwidth_stats_dbg (client, timestamp, timestamp_dbg, in_time, in_bytes, out_time, out_bytes)
+			SELECT clients.id AS client, %s as timestamp, %s, %s, %s, %s, %s
+			FROM clients
+			WHERE name = %s
+			""", (now, cldata.timestamp_dbg, in_time, in_bytes, out_time, out_bytes, client))
+			##### /DBG #####
+			t.execute("""SELECT client, timestamp, in_time, in_bytes, out_time, out_bytes
+			FROM bandwidth_stats
+			JOIN clients ON bandwidth_stats.client = clients.id
+			WHERE name = %s AND timestamp = date_trunc('hour', %s)
+			""", (client, now))
+			result = t.fetchone()
+			if result == None:
+				in_time = [0] * BUCKETS_CNT
+				in_bytes = [0] * BUCKETS_CNT
+				out_time = [0] * BUCKETS_CNT
+				out_bytes = [0] * BUCKETS_CNT
+
+				for bucket in cldata.buckets.itervalues():
+					pos = BUCKET_MAP[bucket.bucket]
+					in_time[pos] = bucket.in_time
+					in_bytes[pos] = bucket.in_bytes
+					out_time[pos] = bucket.out_time
+					out_bytes[pos] = bucket.out_bytes
+
+				t.execute("""INSERT INTO bandwidth_stats (client, timestamp, in_time, in_bytes, out_time, out_bytes)
+				SELECT clients.id AS client, date_trunc('hour', %s) as timestamp, %s, %s, %s, %s
+				FROM clients
+				WHERE name = %s
+				""", (now, in_time, in_bytes, out_time, out_bytes, client))
+			else:
+				client_id = result[0]
+				timestamp = result[1]
+				in_time = result[2]
+				in_bytes = result[3]
+				out_time = result[4]
+				out_bytes = result[5]
+
+				for bucket in cldata.buckets.itervalues():
+					pos = BUCKET_MAP[bucket.bucket]
+					in_time[pos] += bucket.in_time
+					in_bytes[pos] += bucket.in_bytes
+					out_time[pos] += bucket.out_time
+					out_bytes[pos] += bucket.out_bytes
+
+				t.execute("""UPDATE bandwidth_stats
+				SET in_time = %s, in_bytes = %s, out_time = %s, out_bytes = %s
+				WHERE client = %s AND timestamp = %s
+				""", (in_time, in_bytes, out_time, out_bytes, client_id, timestamp))
 
 class BandwidthPlugin(plugin.Plugin):
 	"""
@@ -96,7 +275,7 @@ class BandwidthPlugin(plugin.Plugin):
 		# move it to a separate thread, so we don't block the communication. This is
 		# safe -- we pass all the needed data to it as parameters and get rid of our
 		# copy, passing the ownership to the task.
-		reactor.callInThread(store_bandwidth, self.__data)
+		reactor.callInThread(store_bandwidth, self.__data, database.now())
 		self.__data = {}
 
 	def name(self):
@@ -115,25 +294,52 @@ class BandwidthPlugin(plugin.Plugin):
 
 		# Add client's record
 		if not client in self.__data:
-			self.__data[client] = ClientData();
+			self.__data[client] = ClientData(self.version(client));
 
 		# Extract timestamp from message and skip it
 		timestamp = data[0]
-		int_count -= 1
-		data = data[1:]
-
 		if timestamp < self.__last:
 			logger.info("Data of bandwidth snapshot on %s too old, ignoring (%s vs. %s)", client, timestamp, self.__last)
 			return
+		self.__data[client].timestamp_dbg = timestamp
 
-		# Get data from message
-		windows = int_count / PROTO_ITEMS_PER_WINDOW
-		for i in range(0, windows):
-			self.__data[client].add_window(data[i*PROTO_ITEMS_PER_WINDOW], data[i*PROTO_ITEMS_PER_WINDOW+1], data[i*PROTO_ITEMS_PER_WINDOW+2])
+		if self.version(client) <= 1:
+			int_count -= 1
+			data = data[1:]
+			windows = int_count / PROTO_ITEMS_PER_WINDOW
+			for i in range(0, windows):
+				self.__data[client].add_window(
+					data[i*PROTO_ITEMS_PER_WINDOW],
+					data[i*PROTO_ITEMS_PER_WINDOW+1],
+					data[i*PROTO_ITEMS_PER_WINDOW+2]
+				)
+
+		elif self.version(client) >= 2:
+			win_cnt = data[1]
+			buckets_cnt_pos = 2 + PROTO_ITEMS_PER_WINDOW * win_cnt
+			data_windows = data[2:buckets_cnt_pos]
+			buckets_cnt = data[buckets_cnt_pos]
+			data_buckets = data[(buckets_cnt_pos+1):]
+
+			# Get data from message
+			for i in range(0, win_cnt):
+				self.__data[client].add_window(
+					data_windows[i*PROTO_ITEMS_PER_WINDOW],
+					data_windows[i*PROTO_ITEMS_PER_WINDOW+1],
+					data_windows[i*PROTO_ITEMS_PER_WINDOW+2]
+				)
+
+			for i in range(0, buckets_cnt):
+				self.__data[client].add_bucket(
+					data_buckets[i*PROTO_ITEMS_PER_BUCKET],
+					data_buckets[i*PROTO_ITEMS_PER_BUCKET+1],
+					data_buckets[i*PROTO_ITEMS_PER_BUCKET+2],
+					data_buckets[i*PROTO_ITEMS_PER_BUCKET+3],
+					data_buckets[i*PROTO_ITEMS_PER_BUCKET+4]
+				)
 
 		# Log client's activity
 		activity.log_activity(client, "bandwidth")
-
 
 	def client_connected(self, client):
 		"""

@@ -34,6 +34,16 @@ struct context;
  */
 struct uplink *uplink_create(struct loop *loop) __attribute__((malloc)) __attribute__((nonnull)) __attribute__((returns_nonnull));
 /*
+ * Set the file where status changes should be stored.
+ *
+ * This is expected to be called at most once per the lifetime of uplink.
+ * If it is not called at all, it won't dump the status changes.
+ * The file will be removed on uplink_destroy.
+ *
+ * It'll keep the pointer provided, so don't free it.
+ */
+void uplink_set_status_file(struct uplink *uplink, const char *path) __attribute__((nonnull));
+/*
  * Set or change the remote endpoint of the uplink. It'll (re)connect.
  *
  * The remote_name and service represent the machine and port to connect to. It can

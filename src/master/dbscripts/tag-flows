@@ -1,0 +1,8 @@
+#!/bin/sh
+
+set -e
+cd /home/tagger/dist-fw-data/
+git pull -q
+wget https://www.turris.cz/greylist-data/greylist-latest.csv -q -O - | tail -n+2 | cut -f1 -d, | sed -e 's/^/add GREYLIST /' >greylist
+/home/tagger/ucollect/src/master/dbscripts/tag_flows.pl turris-ipsets greylist
+

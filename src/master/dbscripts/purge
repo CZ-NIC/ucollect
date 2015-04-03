@@ -4,19 +4,21 @@ set -ex
 
 . ./dbconfig
 
-TABLES='activities anomalies count_snapshots bandwidth'
-BATCH_TABLES='pings certs nats'
+TABLES='activities anomalies count_snapshots bandwidth bandwidth_stats bandwidth_stats_dbg refused'
+BATCH_TABLES='pings certs nats spoof'
+DATE=$(date -d "$CLEAN_DAYS days ago" "+'%Y-%m-%d'")
 
 (
-	echo 'BEGIN;'
+	echo "BEGIN;"
 	for TABLE in $TABLES ; do
-		echo "DELETE FROM $TABLE WHERE timestamp < DATE(NOW()) - $CLEAN_DAYS;"
+		echo "DELETE FROM $TABLE WHERE timestamp < $DATE;"
 	done
 	for TABLE in $BATCH_TABLES ; do
-		echo "DELETE FROM $TABLE WHERE batch < DATE(NOW()) - $CLEAN_DAYS;"
+		echo "DELETE FROM $TABLE WHERE batch < $DATE;"
 	done
-	echo "DELETE FROM router_loggedpacket WHERE created_at < DATE(NOW()) - $CLEAN_DAYS;"
-	echo "DELETE FROM router_registrationcode WHERE date < DATE(NOW()) - $CLEAN_DAYS;"
-	echo "DELETE FROM flows WHERE start < DATE(NOW()) - $CLEAN_DAYS;"
+	echo "DELETE FROM router_loggedpacket WHERE created_at < $DATE;"
+	echo "DELETE FROM router_registrationcode WHERE date < $DATE;"
+	echo "DELETE FROM biflows WHERE COALESCE(start_in, start_out) < $DATE;"
+	echo "DELETE FROM ssh_sessions WHERE start_time < $DATE;"
 	echo 'COMMIT;'
 ) | psql -U "$DBCLEANER" -d "$DB" $DBPARAMS

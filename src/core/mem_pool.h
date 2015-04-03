@@ -45,4 +45,7 @@ char *mem_pool_printf(struct mem_pool *pool, const char *format, ...) __attribut
 // Format binary data to hex
 char *mem_pool_hex(struct mem_pool *pool, const uint8_t *data, size_t size) __attribute__((malloc)) __attribute__((nonnull)) __attribute__((returns_nonnull));
 
+// Provide a string with statistics about all the memory pools. The result is allocated from tmp_pool
+char *mem_pool_stats(struct mem_pool *tmp_pool) __attribute__((malloc)) __attribute__((nonnull));
+
 #endif

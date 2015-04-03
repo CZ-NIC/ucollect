@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2014,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -28,7 +28,7 @@ from twisted.internet import reactor
 
 logger = logging.getLogger(name='sniff')
 
-def submit_data(client, payload, hosts, batch_time):
+def submit_data(client, payload, hosts, batch_time, now):
 	data = []
 	for (rid, count) in hosts:
 		(slen, payload) = (payload[:4], payload[4:])
@@ -36,7 +36,7 @@ def submit_data(client, payload, hosts, batch_time):
 		if slen > 0:
 			(ip, times, payload) = (payload[:slen], payload[slen:slen + 4 * count], payload[slen + 4 * count:])
 			times = struct.unpack('!' + str(count) + 'L', times)
-			times = filter(lambda t: t < 2**32 - 1, times)
+			times = filter(lambda t: t < 2**31 - 1, times)
 		else:
 			times = []
 			ip = None
@@ -50,10 +50,10 @@ def submit_data(client, payload, hosts, batch_time):
 			ma = None
 			mi = None
 			avg = None
-		data.append((batch_time, rid, ip, recv, mi, ma, avg, client))
+		data.append((batch_time, now, rid, ip, recv, mi, ma, avg, client))
 	logger.trace('Submitting data: ' + repr(data))
 	with database.transaction() as t:
-		t.executemany("INSERT INTO pings (batch, client, timestamp, request, ip, received, min, max, avg) SELECT %s, clients.id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', %s, %s, %s, %s, %s, %s FROM clients WHERE name = %s", data);
+		t.executemany("INSERT INTO pings (batch, client, timestamp, request, ip, received, min, max, avg) SELECT %s, clients.id, %s, %s, %s, %s, %s, %s, %s FROM clients WHERE name = %s", data);
 
 class PingTask(Task):
 	def __init__(self, message, hosts):
@@ -71,7 +71,7 @@ class PingTask(Task):
 		return self.__message
 
 	def success(self, client, payload):
-		reactor.callInThread(submit_data, client, payload, self.__hosts, self.__batch_time)
+		reactor.callInThread(submit_data, client, payload, self.__hosts, self.__batch_time, database.now())
 		log_activity(client, 'pings')
 
 def encode_host(hostname, proto, count, size):

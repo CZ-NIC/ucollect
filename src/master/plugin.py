@@ -18,10 +18,15 @@
 #
 
 from protocol import format_string
+from twisted.python.threadpool import ThreadPool
 import logging
 import time
 
 logger = logging.getLogger(name='plugin')
+
+pool = ThreadPool()
+pool.adjustPoolsize(1)
+pool.start()
 
 class Plugin:
 	"""
@@ -89,6 +94,9 @@ class Plugin:
 		Return the version of this plugin in given client, if any.
 		"""
 		return self.__plugins.plugin_version(self.name(), client)
+
+	def plugins(self):
+		return self.__plugins
 
 class Plugins:
 	"""

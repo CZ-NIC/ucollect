@@ -76,13 +76,15 @@ Connection::Connection(int sock, QSslConfiguration &config) :
 	inReady(false),
 	outReady(false)
 {
+	memset(&zStreamCompress, 0, sizeof zStreamCompress);
+	memset(&zStreamDecompress, 0, sizeof zStreamDecompress);
+	zStreamCompress.zalloc = Z_NULL;
+	zStreamCompress.zfree = Z_NULL;
+	zStreamCompress.opaque = Z_NULL;
+	zStreamDecompress.zalloc = Z_NULL;
+	zStreamDecompress.zfree = Z_NULL;
+	zStreamDecompress.opaque = Z_NULL;
 	if (Connection::enableCompression) {
-		zStreamCompress.zalloc = Z_NULL;
-		zStreamCompress.zfree = Z_NULL;
-		zStreamCompress.opaque = Z_NULL;
-		zStreamDecompress.zalloc = Z_NULL;
-		zStreamDecompress.zfree = Z_NULL;
-		zStreamDecompress.opaque = Z_NULL;
 		if (deflateInit(&zStreamCompress, COMPRESSION_LEVEL) != Z_OK) {
 			error("Could not initialize zlib (compression stream)");
 			return;
