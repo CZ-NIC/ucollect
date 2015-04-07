@@ -217,7 +217,7 @@ static void log_send(struct context *context) {
 	uplink_plugin_send_message(context, msg, msg_size);
 }
 
-#define MAX_INFOS 2
+#define MAX_INFOS 4
 
 static void push_info(struct event_info *infos, size_t *pos, const char *content, enum event_info_type type) {
 	if (content) {
@@ -230,20 +230,22 @@ static void push_info(struct event_info *infos, size_t *pos, const char *content
 	}
 }
 
-static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_type type, const char *reason) {
+static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_type type, const char *reason, const char *username, const char *password) {
 	ulog(LLOG_DEBUG, "Logging event %hhu for tag %p\n", (uint8_t)type, (void *)tag);
 	struct user_data *u = context->user_data;
 	assert(tag->addr.sin6_family == AF_INET6);
 	struct event_info infos[MAX_INFOS] = { [0] = { .type = EI_LAST } };
 	size_t evpos = 0;
 	push_info(infos, &evpos, reason, EI_REASON);
+	push_info(infos, &evpos, username, EI_NAME);
+	push_info(infos, &evpos, password, EI_PASSWORD);
 	if (log_event(context, u->log, tag->desc->code, tag->addr.sin6_addr.s6_addr, 16, type, infos))
 		log_send(context);
 }
 
 void conn_closed(struct context *context, struct fd_tag *tag, bool error, const char *reason) {
 	if (!tag->closed)
-		log_wrapper(context, tag, error ? EVENT_LOST : EVENT_DISCONNECT, reason);
+		log_wrapper(context, tag, error ? EVENT_LOST : EVENT_DISCONNECT, reason, NULL, NULL);
 	tag->closed = true;
 	if (tag->inactivity_timeout_active) {
 		tag->inactivity_timeout_active = false;
@@ -255,9 +257,9 @@ void conn_closed(struct context *context, struct fd_tag *tag, bool error, const 
 	tag->fd = 0;
 }
 
-void conn_log_attempt(struct context *context, struct fd_tag *tag) {
+void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password) {
 	ulog(LLOG_DEBUG, "Login attempt on %p from %s\n", (void *)tag, addr2str(context->temp_pool, (struct sockaddr *)&tag->addr, tag->addr_len));
-	log_wrapper(context, tag, EVENT_LOGIN, NULL);
+	log_wrapper(context, tag, EVENT_LOGIN, NULL, username, password);
 }
 
 static void conn_inactive(struct context *context, void *data, size_t id) {
@@ -265,7 +267,7 @@ static void conn_inactive(struct context *context, void *data, size_t id) {
 	assert(tag->inactivity_timeout == id);
 	ulog(LLOG_DEBUG, "Connection %p/%p with FD %d of fake server %s timed out after %u ms\n", (void *)tag->conn, (void *)tag, tag->fd, tag->desc->name, tag->desc->conn_timeout);
 	tag->inactivity_timeout_active = false; // It fired, no longer active.
-	log_wrapper(context, tag, EVENT_TIMEOUT, NULL);
+	log_wrapper(context, tag, EVENT_TIMEOUT, NULL, NULL, NULL);
 	tag->closed = true;
 	conn_closed(context, tag, false, "timeout");
 }
@@ -306,7 +308,7 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			empty->closed = false;
 			if (empty->desc->conn_set_fd_cb)
 				empty->desc->conn_set_fd_cb(context, empty, empty->server, empty->conn, new);
-			log_wrapper(context, empty, EVENT_CONNECT, NULL);
+			log_wrapper(context, empty, EVENT_CONNECT, NULL, NULL, NULL);
 			activity(context, empty);
 		} else {
 			// No place to put it into.
@@ -322,7 +324,7 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 				ulog(LLOG_ERROR, "Error throwing newly accepted connection %d from %s accepted on %d of fake server %s: %s\n", new, addr2str(context->temp_pool, addr_p, aux_tag.addr_len), fd, t->desc->name, strerror(errno));
 				return;
 			}
-			log_wrapper(context, &aux_tag, EVENT_CONNECT_EXTRA, NULL);
+			log_wrapper(context, &aux_tag, EVENT_CONNECT_EXTRA, NULL, NULL, NULL);
 		}
 	} else {
 		if (t->desc->server_ready_cb)

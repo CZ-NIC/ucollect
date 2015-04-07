@@ -34,9 +34,7 @@ struct fd_tag *tag;
 void conn_closed(struct context *context, struct fd_tag *tag, bool error, const char *reason);
 /*
  * Log that the other side attemted connection.
- *
- * TODO: Password or other info?
  */
-void conn_log_attempt(struct context *context, struct fd_tag *tag);
+void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password);
 
 #endif

@@ -68,6 +68,7 @@ enum position {
 
 const size_t denial_timeout = 1000;
 const size_t max_attempts = 3;
+#define LINE_MAX 256
 
 struct conn_data {
 	int fd;
@@ -79,6 +80,8 @@ struct conn_data {
 	size_t denial_timeout;
 	size_t attempts; // Number of attempts the other side tried
 	struct fd_tag *tag;
+	char username[LINE_MAX + 1], password[LINE_MAX + 1];
+	char *line_base, *line;
 };
 
 struct conn_data *telnet_conn_alloc(struct context *context, struct fd_tag *tag, struct mem_pool *pool, struct server_data *server) {
@@ -130,6 +133,7 @@ void telnet_conn_set_fd(struct context *context, struct fd_tag *tag, struct serv
 	conn->expect = EXPECT_NONE;
 	conn->protocol_error = false;
 	conn->position = WANT_LOGIN;
+	conn->line = conn->line_base = conn->username;
 	conn->fd = fd;
 	ulog(LLOG_DEBUG, "Accepted to telnet connection %p on tag %p, fd %d\n", (void *)conn, (void *)tag, fd);
 	if (!ask_for(context, conn, "login"))
@@ -169,6 +173,7 @@ static void send_denial(struct context *context, void *data, size_t id) {
 		do_close(context, conn, false);
 		return;
 	}
+	conn->line = conn->line_base = conn->username;
 	if (!ask_for(context, conn, "login")) {
 		do_close(context, conn, true);
 		return;
@@ -179,6 +184,9 @@ static bool process_line(struct context *context, struct fd_tag *tag, struct con
 	(void)tag;
 	switch (conn->position) {
 		case WANT_LOGIN:
+			assert(conn->line);
+			*conn->line = '\0';
+			conn->line = conn->line_base = conn->password;
 			if (!ask_for(context, conn, "password"))
 				return false;
 			conn->position = WANT_PASSWORD;
@@ -186,7 +194,10 @@ static bool process_line(struct context *context, struct fd_tag *tag, struct con
 		case WANT_PASSWORD:
 			conn->position = WAIT_DENIAL;
 			conn->denial_timeout = loop_timeout_add(context->loop, denial_timeout, context, conn, send_denial);
-			conn_log_attempt(context, tag);
+			assert(conn->line);
+			*conn->line = '\0';
+			conn_log_attempt(context, tag, conn->username, conn->password);
+			conn->line = conn->line_base = NULL;
 			break;
 		case WAIT_DENIAL:
 			ulog(LLOG_DEBUG, "Data when expecting none on telnet connection %p on tag %p with fd %d\n", (void *)conn, (void *)tag, conn->fd);
@@ -203,8 +214,6 @@ static bool cmd_handle(struct context *context, struct conn_data *conn, uint8_t 
 		case CMD_BREAK: // Break - just strange character
 		case CMD_AO: // Abort output - not implemented
 		case CMD_AYT: // Are You There - not implemented
-		case CMD_EC: // Erase character - ignored
-		case CMD_EL: // Erase Line - ignored
 		case CMD_GA: // Go Ahead - not interesting to us
 			conn->expect = EXPECT_NONE;
 			return true;
@@ -220,6 +229,14 @@ static bool cmd_handle(struct context *context, struct conn_data *conn, uint8_t 
 			return true;
 		case CMD_IP: // Interrupt process - abort connection
 			return protocol_error(context, conn, "Interrupted");
+		case CMD_EC: // Erase character
+			if (conn->line && conn->line > conn->line_base)
+				conn->line --;
+			conn->expect = EXPECT_NONE;
+			return true;
+		case CMD_EL: // Erase Line - ignored
+			conn->line = conn->line_base;
+			return true;
 		default:
 			return protocol_error(context, conn, mem_pool_printf(context->temp_pool, "Unknown telnet command %hhu\n", cmd));
 	}
@@ -269,7 +286,10 @@ static bool char_handle(struct context *context, struct fd_tag *tag, struct conn
 		case '\r':
 			conn->expect = EXPECT_LF;
 			break;
-		// Otherwise - just some data
+		default:
+			if (conn->line && conn->line - conn->line_base + 1 < LINE_MAX)
+				*(conn->line ++) = ch;
+			break;
 	}
 	return true;
 }
