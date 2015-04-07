@@ -58,6 +58,7 @@ struct user_data {
 	struct fd_tag *tags;
 	size_t *tag_indices;
 	size_t server_count, tag_count;
+	bool log_credentials_candidate;
 	struct log *log;
 	struct mem_pool *log_pool;
 };
@@ -169,6 +170,26 @@ static bool config(struct context *context) {
 			t->candidate = sock;
 		} // Otherwise, the port is different than before, but 0 ‒ means desable this service ‒ nothing allocated
 	}
+	const struct config_node *opt = loop_plugin_option_get(context, "log_credentials");
+	if (opt) {
+		if (opt->value_count != 1) {
+			ulog(LLOG_ERROR, "Option log_credentials must have single value, not %zu\n", opt->value_count);
+			return false;
+		}
+		if (!opt->values[0]) {
+			ulog(LLOG_ERROR, "Option log_credentials is empty\n");
+			return false;
+		}
+		char *end;
+		long p = strtol(opt->values[0], &end, 10);
+		if (end && *end) {
+			ulog(LLOG_ERROR, "Error parsing log_credentials, must be 0 or 1\n");
+			return false;
+		}
+		u->log_credentials_candidate = p;
+	} else {
+		u->log_credentials_candidate = false;
+	}
 	return true;
 }
 
@@ -188,6 +209,7 @@ static void config_finish(struct context *context, bool activate) {
 				t->port = t->port_candidate;
 				t->fd = t->candidate;
 			}
+			log_set_send_credentials(u->log, u->log_credentials_candidate);
 		} else if (t->candidate) {
 			loop_plugin_unregister_fd(context, t->candidate);
 			if (close(t->candidate) == -1)

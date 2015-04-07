@@ -76,4 +76,10 @@ bool log_event(struct context *context, struct log *log, char server_code, const
  */
 uint8_t *log_dump(struct context *context, struct log *log, size_t *size) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
 
+/*
+ * Set if the login credentials (password and username) should be sent
+ * to the server. Defaults to no.
+ */
+void log_set_send_credentials(struct log *log, bool send) __attribute__((nonnull));
+
 #endif

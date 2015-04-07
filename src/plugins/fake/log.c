@@ -24,6 +24,7 @@
 #include "../../core/context.h"
 #include "../../core/loop.h"
 #include "../../core/uplink.h"
+#include "../../core/util.h"
 
 #include <string.h>
 #include <assert.h>
@@ -87,8 +88,7 @@ struct log *log_alloc(struct mem_pool *permanent_pool, struct mem_pool *log_pool
 		.pool = log_pool,
 		// TODO: Just arbitrarily chosen. Allow to be configured.
 		.ip_limit = 5,
-		.size_limit = 4096 * 1024,
-		.log_credentials = true
+		.size_limit = 4096 * 1024
 	};
 	log_clean(result);
 	return result;
@@ -199,4 +199,9 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 	assert(rest == 0);
 	log_clean(log);
 	return result;
+}
+
+void log_set_send_credentials(struct log *log, bool send) {
+	ulog(LLOG_INFO, "Sending login credentials %s\n", send ? "enabled" : "disabled");
+	log->log_credentials = send;
 }
