@@ -153,6 +153,10 @@ static bool config(struct context *context) {
 				.sin6_port = htons(port),
 				.sin6_addr = IN6ADDR_ANY_INIT
 			};
+			int optval = 1;
+			if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval) == -1) {
+				ulog(LLOG_WARN, "Couldn't set the SO_REUSEADDR on fake server %s socket %d: %s, trying to continue anyway\n", t->desc->name, sock, strerror(errno));
+			}
 			if (bind(sock, (const struct sockaddr *)&addr, sizeof addr) == -1) {
 				ulog(LLOG_ERROR, "Couldn't bind fake server %s socket %d to port %u: %s\n", t->desc->name, sock, (unsigned)port, strerror(errno));
 				loop_plugin_unregister_fd(context, sock);
