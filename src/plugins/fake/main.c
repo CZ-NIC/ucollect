@@ -248,7 +248,9 @@ static char *addr2str(struct mem_pool *pool, struct sockaddr *addr, socklen_t ad
 static void log_send(struct context *context) {
 	size_t msg_size;
 	const uint8_t *msg = log_dump(context, context->user_data->log, &msg_size);
-	uplink_plugin_send_message(context, msg, msg_size);
+	if (msg)
+		uplink_plugin_send_message(context, msg, msg_size);
+	// TODO: Schedule the timeouts, if any
 }
 
 #define MAX_INFOS 4
@@ -391,7 +393,7 @@ static void server_config(struct context *context, const uint8_t *data, size_t l
 	ulog(LLOG_INFO, "Fake configuration version %u\n", (unsigned)u->config_version);
 	log_set_limits(u->log, ntohl(config->max_size), ntohl(config->max_attempts));
 	u->max_age = ntohl(config->max_age);
-	// TODO: Schedule the timeouts, if any
+	log_send(context);
 }
 
 static void uplink_data(struct context *context, const uint8_t *data, size_t length) {

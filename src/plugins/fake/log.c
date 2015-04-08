@@ -164,6 +164,10 @@ bool log_event(struct context *context, struct log *log, char server_code, const
 }
 
 uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
+	if (!log->expected_serialized_size) {
+		*size = 0;
+		return NULL;
+	}
 	uint64_t now = loop_now(context->loop);
 	uint64_t limit = 0x100000000;
 	*size = log->expected_serialized_size + 1;
