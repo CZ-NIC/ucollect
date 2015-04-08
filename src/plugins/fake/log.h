@@ -82,4 +82,12 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) __attr
  */
 void log_set_send_credentials(struct log *log, bool send) __attribute__((nonnull));
 
+/*
+ * Set the limits on when to force sending of data to server. The size is
+ * in bytes the message should not overgrow (or, only a little, it is sent
+ * once that size is reached or exceeded). The max_attemps say how many
+ * attempts from the same source is considered to be enough to trigger the send.
+ */
+void log_set_limits(struct log *log, uint32_t max_size, uint32_t max_attempts) __attribute__((nonnull));
+
 #endif

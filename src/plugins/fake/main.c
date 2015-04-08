@@ -58,10 +58,16 @@ struct user_data {
 	struct fd_tag *tags;
 	size_t *tag_indices;
 	size_t server_count, tag_count;
+	uint32_t config_version;
+	uint32_t max_age;
 	bool log_credentials_candidate;
 	struct log *log;
 	struct mem_pool *log_pool;
 };
+
+static void connected(struct context *context) {
+	uplink_plugin_send_message(context, "C", 1);
+}
 
 static void initialize(struct context *context) {
 	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
@@ -104,6 +110,8 @@ static void initialize(struct context *context) {
 	u->tag_indices[i] = pos;
 	u->server_count = server_count;
 	u->tag_count = tag_count;
+	// We may be initialized after connection is made, ask for config
+	connected(context);
 }
 
 static bool config(struct context *context) {
@@ -359,6 +367,48 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 	}
 }
 
+struct config_packet {
+	uint32_t version;
+	uint32_t max_age;
+	uint32_t max_size;
+	uint32_t max_attempts;
+} __attribute__((packed));
+
+static void server_config(struct context *context, const uint8_t *data, size_t length) {
+	const struct config_packet *config = (const struct config_packet *)data;
+	if (length < sizeof *config) {
+		ulog(LLOG_ERROR, "Config data too short for the Fake plugin, need %zu bytes and have only %zu\n", sizeof *config, length);
+		abort();
+	}
+	if (length > sizeof *config)
+		ulog(LLOG_ERROR, "Too much data for the Fake plugin, need only %zu bytes, but %zu arrived (ignoring for forward compatibility)\n", sizeof *config, length);
+	struct user_data *u = context->user_data;
+	if (u->config_version == ntohl(config->version)) {
+		ulog(LLOG_DEBUG, "Not updating Fake config, version matches at %u\n", (unsigned)u->config_version);
+		return;
+	}
+	u->config_version = ntohl(config->version);
+	ulog(LLOG_INFO, "Fake configuration version %u\n", (unsigned)u->config_version);
+	log_set_limits(u->log, ntohl(config->max_size), ntohl(config->max_attempts));
+	u->max_age = ntohl(config->max_age);
+	// TODO: Schedule the timeouts, if any
+}
+
+static void uplink_data(struct context *context, const uint8_t *data, size_t length) {
+	if (!length) {
+		ulog(LLOG_ERROR, "Empty message for the Fake plugin\n");
+		abort();
+	}
+	switch (*data) {
+		case 'C':
+			server_config(context, data + 1, length - 1);
+			break;
+		default:
+			ulog(LLOG_ERROR, "Invalid opcode for Fake plugin (ignorig for forward compatibility): %c\n", (char)*data);
+			break;
+	}
+}
+
 #ifdef STATIC
 struct plugin *plugin_info_fake(void) {
 #else
@@ -368,6 +418,8 @@ struct plugin *plugin_info(void) {
 		.name = "Fake",
 		.version = 1,
 		.init_callback = initialize,
+		.uplink_connected_callback = connected,
+		.uplink_data_callback = uplink_data,
 		.config_check_callback = config,
 		.config_finish_callback = config_finish,
 		.fd_callback = fd_ready
