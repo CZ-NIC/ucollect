@@ -61,6 +61,8 @@ struct user_data {
 	uint32_t config_version;
 	uint32_t max_age;
 	bool log_credentials_candidate;
+	bool timeout_scheduled;
+	size_t timeout_id;
 	struct log *log;
 	struct mem_pool *log_pool;
 };
@@ -247,10 +249,14 @@ static char *addr2str(struct mem_pool *pool, struct sockaddr *addr, socklen_t ad
 
 static void log_send(struct context *context) {
 	size_t msg_size;
-	const uint8_t *msg = log_dump(context, context->user_data->log, &msg_size);
+	struct user_data *u = context->user_data;
+	const uint8_t *msg = log_dump(context, u->log, &msg_size);
 	if (msg)
 		uplink_plugin_send_message(context, msg, msg_size);
-	// TODO: Schedule the timeouts, if any
+	if (u->timeout_scheduled) {
+		loop_timeout_cancel(context->loop, u->timeout_id);
+		u->timeout_scheduled = false;
+	}
 }
 
 #define MAX_INFOS 4
@@ -266,6 +272,13 @@ static void push_info(struct event_info *infos, size_t *pos, const char *content
 	}
 }
 
+static void send_timeout(struct context *context, void *data, size_t id) {
+	(void)data;
+	(void)id;
+	context->user_data->timeout_scheduled = false;
+	log_send(context);
+}
+
 static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_type type, const char *reason, const char *username, const char *password) {
 	ulog(LLOG_DEBUG, "Logging event %hhu for tag %p\n", (uint8_t)type, (void *)tag);
 	struct user_data *u = context->user_data;
@@ -277,6 +290,10 @@ static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_
 	push_info(infos, &evpos, password, EI_PASSWORD);
 	if (log_event(context, u->log, tag->desc->code, tag->addr.sin6_addr.s6_addr, 16, type, infos))
 		log_send(context);
+	if (!u->timeout_scheduled && u->max_age) {
+		u->timeout_scheduled = true;
+		u->timeout_id = loop_timeout_add(context->loop, u->max_age, context, NULL, send_timeout);
+	}
 }
 
 void conn_closed(struct context *context, struct fd_tag *tag, bool error, const char *reason) {
