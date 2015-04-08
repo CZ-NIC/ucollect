@@ -60,7 +60,7 @@ struct log {
 	struct log_event *head, *tail;
 	struct trie *limit_trie;
 	size_t expected_serialized_size; // How large the result will be when we dump it.
-	size_t ip_limit, size_limit;     // Limits on when to send.
+	uint32_t ip_limit, size_limit;     // Limits on when to send.
 	bool log_credentials;		 // Should we send the login name and password?
 };
 
@@ -86,7 +86,7 @@ struct log *log_alloc(struct mem_pool *permanent_pool, struct mem_pool *log_pool
 	struct log *result = mem_pool_alloc(permanent_pool, sizeof *result);
 	*result = (struct log) {
 		.pool = log_pool,
-		// TODO: Just arbitrarily chosen. Allow to be configured.
+		// Some arbitrary defaults, it should be overwritten by server config
 		.ip_limit = 5,
 		.size_limit = 4096 * 1024
 	};
@@ -208,4 +208,9 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 void log_set_send_credentials(struct log *log, bool send) {
 	ulog(LLOG_INFO, "Sending login credentials %s\n", send ? "enabled" : "disabled");
 	log->log_credentials = send;
+}
+
+void log_set_limits(struct log *log, uint32_t max_size, uint32_t max_attempts) {
+	log->size_limit = max_size;
+	log->ip_limit = max_attempts;
 }
