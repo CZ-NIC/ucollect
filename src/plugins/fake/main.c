@@ -297,6 +297,7 @@ static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_
 }
 
 void conn_closed(struct context *context, struct fd_tag *tag, bool error, const char *reason) {
+	ulog(LLOG_DEBUG, "Close connection %p/%p with FD %d on fake server %s\n", (void *)tag->conn, (void *)tag, tag->fd, tag->desc->name);
 	if (!tag->closed)
 		log_wrapper(context, tag, error ? EVENT_LOST : EVENT_DISCONNECT, reason, NULL, NULL);
 	tag->closed = true;
@@ -326,8 +327,9 @@ static void conn_inactive(struct context *context, void *data, size_t id) {
 }
 
 static void activity(struct context *context, struct fd_tag *tag) {
-	if (tag->ignore_inactivity)
+	if (tag->ignore_inactivity || tag->closed)
 		return;
+	ulog(LLOG_DEBUG, "Activity on connection %p/%p with FD %d on fake server %s\n", (void *)tag->conn, (void *)tag, tag->fd, tag->desc->name);
 	if (tag->inactivity_timeout_active)
 		loop_timeout_cancel(context->loop, tag->inactivity_timeout);
 	tag->inactivity_timeout = loop_timeout_add(context->loop, tag->desc->conn_timeout, context, tag, conn_inactive);
@@ -380,9 +382,9 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			log_wrapper(context, &aux_tag, EVENT_CONNECT_EXTRA, NULL, NULL, NULL);
 		}
 	} else {
+		activity(context, t);
 		if (t->desc->server_ready_cb)
 			t->desc->server_ready_cb(context, t, t->server, t->conn);
-		activity(context, t);
 	}
 }
 
