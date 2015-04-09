@@ -111,33 +111,7 @@ for my $port (sort keys %data) {
 $filter .= ')';
 
 my $range_filter;
-my @interesting_remote_ports = (
-	21,	# ftp
-	22,	# ssh
-	23,	# telnet
-	25,	# smtp
-	53,	# dns
-	109,	# pop2
-	110,	# pop3
-	123,	# ntp
-	143,	# imap
-	161,	# snmp
-	194,	# irc
-	445,	# smb
-	465,	# smtps
-	587,	# submission
-	993,	# imaps
-	994,	# ircs
-	995,	# pop3s
-	1443,	# mssql
-	3306,	# mysql
-	3389,	# rdp
-	5060,	# sip
-	5432,	# postgres
-	5900,	# vnc
-	8767,	# teamspeak
-);
-my $ports = 'P(' . (join ',', @interesting_remote_ports) . ')';
+my $ports = 'P(25,465,587,143,993,110,995)';
 if (%ranges) {
 	$range_filter = "|($ports,D(addresses)," . join ',', map "R($_)", sort keys %ranges;
 	$range_filter .= ')';
