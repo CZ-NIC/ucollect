@@ -60,7 +60,8 @@ struct log {
 	struct log_event *head, *tail;
 	struct trie *limit_trie;
 	size_t expected_serialized_size; // How large the result will be when we dump it.
-	uint32_t ip_limit, size_limit;     // Limits on when to send.
+	uint32_t ip_limit, size_limit;   // Limits on when to send.
+	uint32_t throttle_holdback;	 // How long to wait until sending logs because of some IP address again
 	bool log_credentials;		 // Should we send the login name and password?
 };
 
@@ -88,7 +89,8 @@ struct log *log_alloc(struct mem_pool *permanent_pool, struct mem_pool *log_pool
 		.pool = log_pool,
 		// Some arbitrary defaults, it should be overwritten by server config
 		.ip_limit = 5,
-		.size_limit = 4096 * 1024
+		.size_limit = 4096 * 1024,
+		.throttle_holdback = 120000, // Two minutes
 	};
 	log_clean(result);
 	return result;
@@ -210,7 +212,8 @@ void log_set_send_credentials(struct log *log, bool send) {
 	log->log_credentials = send;
 }
 
-void log_set_limits(struct log *log, uint32_t max_size, uint32_t max_attempts) {
+void log_set_limits(struct log *log, uint32_t max_size, uint32_t max_attempts, uint32_t throttle_holdback) {
 	log->size_limit = max_size;
 	log->ip_limit = max_attempts;
+	log->throttle_holdback = throttle_holdback;
 }

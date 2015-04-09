@@ -76,7 +76,7 @@ class FakePlugin(plugin.Plugin):
 			activity.log_activity(client, 'fake')
 			reactor.callInThread(store_logs, message[1:], client, database.now())
 		if message[0] == 'C':
-			config = struct.pack('!IIII', *map(lambda name: int(self.__config[name]), ['version', 'max_age', 'max_size', 'max_attempts']))
+			config = struct.pack('!IIIII', *map(lambda name: int(self.__config[name]), ['version', 'max_age', 'max_size', 'max_attempts', 'throttle_holdback']))
 			self.send('C' + config, client)
 		else:
 			logger.error("Unknown message from client %s: %s", client, message)

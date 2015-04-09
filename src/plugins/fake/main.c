@@ -393,6 +393,7 @@ struct config_packet {
 	uint32_t max_age;
 	uint32_t max_size;
 	uint32_t max_attempts;
+	uint32_t throttle_holdback;
 } __attribute__((packed));
 
 static void server_config(struct context *context, const uint8_t *data, size_t length) {
@@ -410,7 +411,7 @@ static void server_config(struct context *context, const uint8_t *data, size_t l
 	}
 	u->config_version = ntohl(config->version);
 	ulog(LLOG_INFO, "Fake configuration version %u\n", (unsigned)u->config_version);
-	log_set_limits(u->log, ntohl(config->max_size), ntohl(config->max_attempts));
+	log_set_limits(u->log, ntohl(config->max_size), ntohl(config->max_attempts), ntohl(config->throttle_holdback));
 	u->max_age = ntohl(config->max_age);
 	log_send(context);
 }

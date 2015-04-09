@@ -87,7 +87,9 @@ void log_set_send_credentials(struct log *log, bool send) __attribute__((nonnull
  * in bytes the message should not overgrow (or, only a little, it is sent
  * once that size is reached or exceeded). The max_attemps say how many
  * attempts from the same source is considered to be enough to trigger the send.
+ * The throttle_holdback says how long attempts from an IP address will
+ * not cause sending if it caused sending previously.
  */
-void log_set_limits(struct log *log, uint32_t max_size, uint32_t max_attempts) __attribute__((nonnull));
+void log_set_limits(struct log *log, uint32_t max_size, uint32_t max_attempts, uint32_t throttle_holdback) __attribute__((nonnull));
 
 #endif
