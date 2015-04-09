@@ -35,7 +35,7 @@
  */
 struct log_event {
 	struct log_event *next;		// For linked list managment
-	char code;		// The server name/code that generated the event
+	char code;			// The server name/code that generated the event
 	const uint8_t *addr;		// Which address was the remote
 	uint64_t timestamp;		// When it happened
 	uint8_t addr_len;
@@ -67,6 +67,7 @@ struct log {
 
 struct trie_data {
 	unsigned attempt_count;
+	uint64_t holdback_until;
 };
 
 #define LIST_NODE struct log_event
@@ -128,11 +129,12 @@ bool log_event(struct context *context, struct log *log, char server_code, const
 	struct log_event *event = mem_pool_alloc(log->pool, sizeof *event + info_count * sizeof event->extra_info[0]);
 	uint8_t *addr_cp = mem_pool_alloc(log->pool, addr_len);
 	memcpy(addr_cp, address, addr_len);
+	uint64_t now = loop_now(context->loop);
 	*event = (struct log_event) {
 		.code = server_code,
 		.addr = addr_cp,
 		.addr_len = addr_len,
-		.timestamp = loop_now(context->loop),
+		.timestamp = now,
 		.type = type,
 		.info_count = info_count
 	};
@@ -148,7 +150,7 @@ bool log_event(struct context *context, struct log *log, char server_code, const
 	}
 	log_insert_after(log, event, log->tail);
 	log->expected_serialized_size += expected_size;
-	unsigned attempt_count = 0;
+	bool attempts_reached = false;
 	if (type == EVENT_LOGIN) {
 		size_t id_len = 1 + addr_len;
 		uint8_t login_id[id_len];
@@ -157,12 +159,17 @@ bool log_event(struct context *context, struct log *log, char server_code, const
 		struct trie_data **data = trie_index(log->limit_trie, login_id, id_len);
 		if (!*data) {
 			*data = mem_pool_alloc(log->pool, sizeof **data);
-			attempt_count = (*data)->attempt_count = 1;
+			(*data)->attempt_count = 1;
+			(*data)->holdback_until = 0;
 		} else {
-			attempt_count = ++ (*data)->attempt_count;
+			(*data)->attempt_count ++;
+		}
+		if ((*data)->attempt_count >= log->ip_limit && (*data)->holdback_until <= now) {
+			(*data)->holdback_until = now + log->throttle_holdback;
+			attempts_reached = true;
 		}
 	}
-	return attempt_count >= log->ip_limit || log->expected_serialized_size >= log->size_limit;
+	return attempts_reached || log->expected_serialized_size >= log->size_limit;
 }
 
 uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
