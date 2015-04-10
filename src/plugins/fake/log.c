@@ -50,8 +50,6 @@ struct log_event {
  *   the server.
  * • A trie with login IDs (server name+remote IP address), each holding number of
  *   login attempts on that ID. This is to check if anythig exceeds the limit.
- *   TODO: Ability to ignore some in that limit, so we don't send too often. Maybe
- *   trigerred for some time after first dump caused by this? Or updated from server?
  *
  * Then there's some metadata.
  */
@@ -77,11 +75,63 @@ struct trie_data {
 #define LIST_WANT_LFOR
 #include "../../core/link_list.h"
 
-static void log_clean(struct log *log) {
+struct holdback_item {
+	struct holdback_item *next;
+	uint64_t holdback_until;
+	size_t key_size;
+	uint8_t key[];
+};
+
+struct holdback_tmp {
+	struct holdback_item *head, *tail;
+	struct mem_pool *tmp_pool;
+	uint64_t now;
+};
+
+#define LIST_NODE struct holdback_item
+#define LIST_BASE struct holdback_tmp
+#define LIST_NAME(X) holdback_##X
+#define LIST_WANT_INSERT_AFTER
+#define LIST_WANT_LFOR
+#include "../../core/link_list.h"
+
+static void holdback_store(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
+	struct holdback_tmp *tmp = userdata;
+	if (data && data->holdback_until > tmp->now) {
+		struct holdback_item *item = mem_pool_alloc(tmp->tmp_pool, sizeof *item + key_size);
+		*item = (struct holdback_item) {
+			.holdback_until = data->holdback_until,
+			.key_size = key_size
+		};
+		memcpy(item->key, key, key_size);
+		holdback_insert_after(tmp, item, tmp->tail);
+	}
+}
+
+static void log_clean(struct log *log, struct mem_pool *tmp_pool, uint64_t now) {
+	struct holdback_tmp tmp = {
+		.tmp_pool = tmp_pool,
+		.now = now
+	};
+	if (log->limit_trie) {
+		assert(tmp_pool);
+		trie_walk(log->limit_trie, holdback_store, &tmp, tmp_pool);
+	}
 	mem_pool_reset(log->pool);
 	log->head = log->tail = NULL;
 	log->expected_serialized_size = 0;
 	log->limit_trie = trie_alloc(log->pool);
+	if (tmp.head) {
+		ulog(LLOG_DEBUG_VERBOSE, "Copying holdback times, now %llu\n", (long long unsigned)now);
+		LFOR(holdback, item, &tmp) {
+			ulog(LLOG_DEBUG_VERBOSE, "Copy holdback time %llu for %s\n", (long long unsigned)item->holdback_until, mem_pool_hex(tmp_pool, item->key, item->key_size));
+			struct trie_data **data = trie_index(log->limit_trie, item->key, item->key_size);
+			*data = mem_pool_alloc(log->pool, sizeof **data);
+			**data = (struct trie_data) {
+				.holdback_until = item->holdback_until
+			};
+		}
+	}
 }
 
 struct log *log_alloc(struct mem_pool *permanent_pool, struct mem_pool *log_pool) {
@@ -93,7 +143,7 @@ struct log *log_alloc(struct mem_pool *permanent_pool, struct mem_pool *log_pool
 		.size_limit = 4096 * 1024,
 		.throttle_holdback = 120000, // Two minutes
 	};
-	log_clean(result);
+	log_clean(result, NULL, 0);
 	return result;
 }
 
@@ -210,7 +260,7 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 	}
 	assert(pos == result + *size);
 	assert(rest == 0);
-	log_clean(log);
+	log_clean(log, context->temp_pool, now);
 	return result;
 }
 
