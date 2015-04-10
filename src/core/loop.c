@@ -1090,15 +1090,28 @@ size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *conte
 	}
 	/*
 	 * We let the id wrap around. We expect the old one with the same value already
-	 * timet out a long time ago.
+	 * timed out a long time ago. But we still check it is OK and fix it if not.
 	 */
 	static size_t id = 0;
+	bool ok;
+	do {
+		ok = true;
+		id ++;
+		for (size_t i = 0; i <= loop->timeout_count; i ++) {
+			if (i == pos)
+				continue;
+			if (loop->timeouts[i].id == id) {
+				ok = false;
+				break;
+			}
+		}
+	} while (!ok);
 	loop->timeouts[pos] = (struct timeout) {
 		.when = when,
 		.callback = callback,
 		.context = context,
 		.data = data,
-		.id = id ++
+		.id = id
 	};
 	ulog(LLOG_DEBUG, "Adding timeout for %lu milliseconds, expected to fire at %llu, now %llu as ID %zu\n", (unsigned long) after,  (unsigned long long) when, (unsigned long long) loop->now, loop->timeouts[pos].id);
 	assert(loop->now < when);
