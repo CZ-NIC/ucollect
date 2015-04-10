@@ -392,7 +392,7 @@ static void uplink_data(struct context *context, const uint8_t *data, size_t len
 	}
 	switch (*data) {
 		case 'C': {
-			struct config_packet *packet = (struct config_packet *)(data + 1);
+			const struct config_packet *packet = (const struct config_packet *)(data + 1);
 			if (length - 1 < sizeof *packet) {
 				ulog(LLOG_ERROR, "Config data too short for Refused plugin, need %zu, have only %zu\n", sizeof *packet, length - 1);
 				abort();

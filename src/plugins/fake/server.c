@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,20 +17,32 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#ifndef UCOLLECT_CONFIGURE_H
-#define UCOLLECT_CONFIGURE_H
+#include "server.h"
 
-#include <stdbool.h>
+#include "telnet.h"
 
-struct loop;
+#include <stdlib.h>
+#include <sys/socket.h>
 
-/*
- * Set the configuration directory. Not copied, should be preserved for the
- * whole lifetime of the program.
- */
-void config_set_dir(const char *dir) __attribute__((nonnull));
-void config_set_package(const char *package_name) __attribute__((nonnull));
-void config_allow_null_uplink(void);
-bool load_config(struct loop *loop) __attribute__((nonnull));
+#define SECOND (1000)
 
-#endif
+const struct server_desc server_descs_intern[] = {
+	{
+		.name = "telnet",
+		.code = 'T',
+		.sock_type = SOCK_STREAM,
+		.default_port = 23,
+		// No server-scope data, so skip server_alloc and server_set_fd
+		.conn_alloc_cb = telnet_conn_alloc,
+		.conn_set_fd_cb = telnet_conn_set_fd,
+		.server_ready_cb = telnet_data,
+		.max_conn = 20,
+		.conn_timeout = 30 * SECOND
+		// TODO: The internals
+	},
+	{
+		.name = NULL
+	}
+};
+
+const struct server_desc *server_descs = server_descs_intern;

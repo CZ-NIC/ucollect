@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -51,7 +51,7 @@ struct mem_pool;
  *
  * There's no deallocation routine for trie. You have to reset the memory pool.
  */
-struct trie *trie_alloc(struct mem_pool *pool) __attribute__((nonnull));
+struct trie *trie_alloc(struct mem_pool *pool) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
 /*
  * Access a position in the trie. It is allowed (and expected) for the caller to change the data pointer.
  *
@@ -69,9 +69,9 @@ struct trie_data **trie_index(struct trie *trie, const uint8_t *key, size_t key_
  * Returs the pointer directly, not pointer to pointer, so you can't use it to exchange the data.
  * This is read-only function in some sense, however it does change internal representation.
  */
-struct trie_data *trie_lookup(struct trie *trie, const uint8_t *key, size_t key_size) __attribute__((nonnull(1)));
+struct trie_data *trie_lookup(struct trie *trie, const uint8_t *key, size_t key_size) __attribute__((nonnull(1))) __attribute__((pure));
 // Return count of different positions accessed by trie_index
-size_t trie_size(struct trie *trie) __attribute__((nonnull));
+size_t trie_size(struct trie *trie) __attribute__((nonnull)) __attribute__((pure));
 /*
  * Walk the whole trie and call the callback for each key previously accessed
  * by trie_index. The value in key pointer will change (it is not valid after

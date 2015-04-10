@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,20 +17,18 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#ifndef UCOLLECT_CONFIGURE_H
-#define UCOLLECT_CONFIGURE_H
+#ifndef UCOLLECT_FAKE_TELNET_H
+#define UCOLLECT_FAKE_TELNET_H
 
-#include <stdbool.h>
+struct context;
+struct mem_pool;
 
-struct loop;
+struct server_data; // Not used here at all. No need to coordinate through central data structure
+struct conn_data;
+struct fd_tag;
 
-/*
- * Set the configuration directory. Not copied, should be preserved for the
- * whole lifetime of the program.
- */
-void config_set_dir(const char *dir) __attribute__((nonnull));
-void config_set_package(const char *package_name) __attribute__((nonnull));
-void config_allow_null_uplink(void);
-bool load_config(struct loop *loop) __attribute__((nonnull));
+struct conn_data *telnet_conn_alloc(struct context *context, struct fd_tag *tag, struct mem_pool *pool, struct server_data *server);
+void telnet_conn_set_fd(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn, int fd);
+void telnet_data(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn);
 
 #endif

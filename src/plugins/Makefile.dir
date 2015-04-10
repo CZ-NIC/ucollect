@@ -9,6 +9,7 @@ UCOLLECT_PLUGINS:= \
 	majordomo \
 	cfgtest \
 	spoof \
-	refused
+	refused \
+	fake
 
 include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,$(UCOLLECT_PLUGINS))

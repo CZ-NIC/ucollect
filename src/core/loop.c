@@ -421,7 +421,6 @@ static void self_reconfigure(struct context *context, void *data, size_t id) {
 
 static void pcap_read(struct pcap_sub_interface *sub, uint32_t unused) {
 	(void) unused;
-	ulog(LLOG_DEBUG_VERBOSE, "Read on interface %s\n", sub->interface->name);
 	sub->interface->in = sub == &sub->interface->directions[0];
 	int result = pcap_dispatch(sub->pcap, MAX_PACKETS, (pcap_handler) packet_handler, (unsigned char *) sub->interface);
 	if (result == -1) {
@@ -430,7 +429,8 @@ static void pcap_read(struct pcap_sub_interface *sub, uint32_t unused) {
 		self_reconfigure(NULL, NULL, 0); // Try to reconfigure on the next loop iteration
 	}
 	sub->interface->watchdog_received = true;
-	ulog(LLOG_DEBUG_VERBOSE, "Handled %d packets on %s/%p\n", result, sub->interface->name, (void *) sub);
+	if (result)
+		ulog(LLOG_DEBUG_VERBOSE, "Handled %d packets on %s/%p\n", result, sub->interface->name, (void *) sub);
 }
 
 static void epoll_register_pcap(struct loop *loop, struct pcap_interface *interface, int op) {
@@ -1090,15 +1090,28 @@ size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *conte
 	}
 	/*
 	 * We let the id wrap around. We expect the old one with the same value already
-	 * timet out a long time ago.
+	 * timed out a long time ago. But we still check it is OK and fix it if not.
 	 */
 	static size_t id = 0;
+	bool ok;
+	do {
+		ok = true;
+		id ++;
+		for (size_t i = 0; i <= loop->timeout_count; i ++) {
+			if (i == pos)
+				continue;
+			if (loop->timeouts[i].id == id) {
+				ok = false;
+				break;
+			}
+		}
+	} while (!ok);
 	loop->timeouts[pos] = (struct timeout) {
 		.when = when,
 		.callback = callback,
 		.context = context,
 		.data = data,
-		.id = id ++
+		.id = id
 	};
 	ulog(LLOG_DEBUG, "Adding timeout for %lu milliseconds, expected to fire at %llu, now %llu as ID %zu\n", (unsigned long) after,  (unsigned long long) when, (unsigned long long) loop->now, loop->timeouts[pos].id);
 	assert(loop->now < when);

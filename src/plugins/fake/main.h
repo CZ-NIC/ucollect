@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,20 +17,24 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#ifndef UCOLLECT_CONFIGURE_H
-#define UCOLLECT_CONFIGURE_H
+#ifndef UCOLLECT_TELNET_MAIN_H
+#define UCOLLECT_TELNET_MAIN_H
 
 #include <stdbool.h>
 
-struct loop;
+struct context *context;
+struct fd_tag *tag;
 
 /*
- * Set the configuration directory. Not copied, should be preserved for the
- * whole lifetime of the program.
+ * Report that the connection was closed by either side.
+ *
+ * The error indicates if it was in some error (no matter what) or
+ * if it was clean shutdown.
  */
-void config_set_dir(const char *dir) __attribute__((nonnull));
-void config_set_package(const char *package_name) __attribute__((nonnull));
-void config_allow_null_uplink(void);
-bool load_config(struct loop *loop) __attribute__((nonnull));
+void conn_closed(struct context *context, struct fd_tag *tag, bool error, const char *reason);
+/*
+ * Log that the other side attemted connection.
+ */
+void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password);
 
 #endif

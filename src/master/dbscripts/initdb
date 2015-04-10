@@ -5,6 +5,8 @@
 psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
+DROP TABLE IF EXISTS fake_logs;
+DROP TABLE IF EXISTS fake_server_names;
 DROP TABLE IF EXISTS ssh_commands;
 DROP TABLE IF EXISTS ssh_sessions;
 DROP TABLE IF EXISTS refused;
@@ -33,6 +35,8 @@ DROP TABLE IF EXISTS cert_requests;
 DROP TABLE IF EXISTS starttls_protos;
 DROP TABLE IF EXISTS clients;
 DROP TABLE IF EXISTS config;
+DROP TYPE IF EXISTS fake_log_type;
+DROP TYPE IF EXISTS fake_server;
 
 CREATE TABLE clients (
 	id INT PRIMARY KEY NOT NULL,
@@ -227,7 +231,7 @@ CREATE TABLE biflows (
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start_in <= stop_in),
 	CHECK(start_out <= stop_out),
-	CHECK((start_in IS NOT NULL AND end_in IS NOT NULL) OR (start_out IS NOT NULL AND end_out IS NOT NULL))
+	CHECK((start_in IS NOT NULL AND stop_in IS NOT NULL) OR (start_out IS NOT NULL AND stop_out IS NOT NULL))
 );
 CREATE SEQUENCE biflow_ids OWNED BY biflows.id;
 ALTER TABLE biflows ALTER COLUMN id SET DEFAULT NEXTVAL('biflow_ids');
@@ -235,7 +239,7 @@ CREATE INDEX ON biflows (ip_remote);
 CREATE INDEX ON biflows (tag);
 CREATE INDEX ON biflows (tagged_on);
 
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat'), ('spoof'), ('refused');
+INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat'), ('spoof'), ('refused'), ('fake');
 CREATE TABLE starttls_protos (
 	id SMALLINT NOT NULL PRIMARY KEY,
 	name TEXT NOT NULL,
@@ -327,6 +331,32 @@ CREATE TABLE flow_filters (
 	address TEXT NOT NULL
 );
 
+CREATE TYPE fake_log_type AS ENUM ('connect', 'disconnect', 'lost', 'extra', 'timeout', 'login');
+CREATE TYPE fake_server AS ENUM ('telnet');
+
+CREATE TABLE fake_server_names (
+	name TEXT NOT NULL,
+	code CHAR NOT NULL,
+	type fake_server NOT NULL,
+	UNIQUE(name),
+	UNIQUE(code),
+	UNIQUE(type)
+);
+
+INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet');
+
+CREATE TABLE fake_logs (
+	client INT NOT NULL,
+	timestamp TIMESTAMP NOT NULL,
+	event fake_log_type NOT NULL,
+	remote INET NOT NULL,
+	server fake_server NOT NULL,
+	name TEXT,
+	password TEXT,
+	reason TEXT,
+	FOREIGN KEY (client) REFERENCES clients(id)
+);
+
 CREATE TABLE spoof (
 	client INT NOT NULL,
 	batch TIMESTAMP NOT NULL,
@@ -347,7 +377,7 @@ CREATE TABLE refused (
 	reason CHAR NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
-CREATE SEQUENCE refused_ids OWNED BY refused;
+CREATE SEQUENCE refused_ids OWNED BY refused.id;
 ALTER TABLE refused ALTER COLUMN id SET DEFAULT NEXTVAL('refused_ids');
 
 CREATE TABLE ssh_sessions (
@@ -409,6 +439,9 @@ GRANT ALL ON biflow_ids TO $DBUPDATER;
 GRANT INSERT ON nats TO $DBUPDATER;
 GRANT SELECT (batch) ON nats TO $DBUPDATER;
 GRANT SELECT ON config TO $DBUPDATER;
+GRANT SELECT ON flow_filters TO $DBUPDATER;
+GRANT SELECT ON fake_server_names TO $DBUPDATER;
+GRANT INSERT ON fake_logs TO $DBUPDATER;
 GRANT SELECT ON flow_filters to $DBUPDATER;
 GRANT SELECT (batch) ON spoof TO $DBUPDATER;
 GRANT INSERT ON spoof TO $DBUPDATER;
@@ -430,6 +463,7 @@ GRANT SELECT (batch, id) ON certs TO $DBCLEANER;
 GRANT SELECT (cert) ON cert_chains TO $DBCLEANER;
 GRANT SELECT (start_in, start_out) ON biflows TO $DBCLEANER;
 GRANT SELECT (batch) ON nats TO $DBCLEANER;
+GRANT SELECT (timestamp) ON fake_logs TO $DBCLEANER;
 GRANT SELECT (batch) ON spoof TO $DBCLEANER;
 GRANT SELECT (timestamp) ON refused TO $DBCLEANER;
 GRANT SELECT (start_time, id) ON ssh_sessions TO $DBCLEANER;
@@ -445,6 +479,7 @@ GRANT DELETE ON certs TO $DBCLEANER;
 GRANT DELETE ON cert_chains TO $DBCLEANER;
 GRANT DELETE ON biflows TO $DBCLEANER;
 GRANT DELETE ON nats TO $DBCLEANER;
+GRANT DELETE ON fake_logs TO $DBCLEANER;
 GRANT DELETE ON spoof TO $DBCLEANER;
 GRANT DELETE ON refused TO $DBCLEANER;
 GRANT DELETE ON ssh_sessions TO $DBCLEANER;
@@ -469,6 +504,7 @@ GRANT SELECT ON biflows TO $DBARCHIVIST;
 GRANT SELECT ON bandwidth TO $DBARCHIVIST;
 GRANT SELECT ON bandwidth_stats TO $DBARCHIVIST;
 GRANT SELECT ON nats TO $DBARCHIVIST;
+GRANT SELECT ON fake_logs TO $DBARCHIVIST;
 GRANT SELECT ON spoof TO $DBARCHIVIST;
 GRANT SELECT ON refused TO $DBARCHIVIST;
 GRANT SELECT ON ssh_sessions TO $DBARCHIVIST;

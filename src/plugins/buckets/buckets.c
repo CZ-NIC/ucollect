@@ -130,7 +130,7 @@ struct config_header {
 	uint32_t max_timeslots;
 	uint32_t time_granularity;
 	char criteria[];
-} __attribute__((__packed__));
+} __attribute__((packed));
 
 static void generation_activate(struct user_data *u, size_t generation, uint64_t timestamp, uint64_t loop_now) {
 	struct generation *g = &u->generations[generation];
