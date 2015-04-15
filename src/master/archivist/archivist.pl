@@ -150,7 +150,7 @@ if (fork == 0) {
 	# (we could solve it by some kind of outer join, but the condition
 	# at the WHERE part would get complicated, handling NULL columns).
 	my $get_packets = $source->prepare("
-			SELECT router_loggedpacket.id, group_members.in_group, router_loggedpacket.rule_id, router_loggedpacket.time, router_loggedpacket.direction, router_loggedpacket.remote_port, router_loggedpacket.remote_address, router_loggedpacket.local_port, router_loggedpacket.protocol, router_loggedpacket.count FROM router_loggedpacket
+			SELECT router_loggedpacket.id, group_members.in_group, router_loggedpacket.rule_id, router_loggedpacket.time, router_loggedpacket.direction, router_loggedpacket.remote_port, router_loggedpacket.remote_address, router_loggedpacket.local_port, router_loggedpacket.protocol, router_loggedpacket.count, router_loggedpacket.tcp_flags FROM router_loggedpacket
 			JOIN router_router ON router_loggedpacket.router_id = router_router.id
 			JOIN group_members ON router_router.client_id = group_members.client
 			JOIN groups ON group_members.in_group = groups.id
@@ -159,7 +159,7 @@ if (fork == 0) {
 			");
 	print "Getting new firewall packets\n";
 	$get_packets->execute;
-	my $store_packet = $destination->prepare('INSERT INTO firewall_packets (rule_id, time, direction, port_rem, addr_rem, port_loc, protocol, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+	my $store_packet = $destination->prepare('INSERT INTO firewall_packets (rule_id, time, direction, port_rem, addr_rem, port_loc, protocol, count, tcp_flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
 	my $packet_group = $destination->prepare('INSERT INTO firewall_groups (packet, for_group) VALUES (?, ?)');
 	my $update_archived = $source->prepare('UPDATE router_loggedpacket SET archived = TRUE WHERE id = ?');
 	my ($last_id, $id_dest);

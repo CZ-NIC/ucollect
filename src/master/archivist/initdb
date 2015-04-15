@@ -107,7 +107,8 @@ CREATE TABLE firewall_packets (
 	port_rem INTEGER,
 	addr_rem INET NOT NULL,
 	protocol VARCHAR(10),
-	count INTEGER NOT NULL
+	count INTEGER NOT NULL,
+	tcp_flags SMALLINT,
 	CHECK(port_loc >= 0),
 	CHECK(port_rem >= 0),
 	CHECK(count >= 0),
