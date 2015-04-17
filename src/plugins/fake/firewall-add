@@ -1,0 +1,5 @@
+#!/bin/sh
+
+while read line ; do
+	eval $(echo "$line" | sed -ne 's/.*ucollect-fake-open-\([^:]*\).*SRC=\([^ ]*\).*DST=\([^ ]*\).*PROTO=\([^ ]*\).*DPT=\([^ ]*\).*/ipset add ucollect_fake_exc_\1 \2,\4:\5,\3/p')
+done

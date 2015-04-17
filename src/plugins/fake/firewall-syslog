@@ -1,0 +1,13 @@
+destination ucollect_fake {
+    program("/usr/share/ucollect/scripts/ucollect-add-firewall");
+};
+
+filter f_ucollect_fake {
+    match(".*ucollect-fake-open-.*: .*" value(MESSAGE));
+};
+
+log {
+    source(kernel);
+    filter(f_ucollect_fake);
+    destination(ucollect_fake);
+};
