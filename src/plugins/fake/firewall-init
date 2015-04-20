@@ -10,7 +10,10 @@ REDIR_OFFSET=1369
 # TODO: Skip some ports from configuration
 PORTS="21tcp"
 
-# TODO: Locking
+# Locking. This may remove
+CODE=1
+trap 'rm -rf /tmp/fake-firewall.lock; exit $CODE' EXIT ABRT HUP INT QUIT PIPE TERM
+mkdir /tmp/fake-firewall.lock || exit 1
 
 initialize() {
 	# Prepare some empty chains to fill in and then switch
@@ -18,7 +21,7 @@ initialize() {
 	FAMILY="$2"
 	shift 2
 	for T in mangle nat filter ; do
-		$COMMAND -t $T -F ucollect_fake_new
+		$COMMAND -t $T -F ucollect_fake_new >/dev/null 2>&1 # The chain likely doesn't exist
 		$COMMAND -t $T -N ucollect_fake_new
 	done
 
@@ -93,3 +96,5 @@ LOCAL_IPS6=$(ip addr | sed -ne '/ *inet6 \([^ /]*\).*/s//\1/p')
 
 initialize iptables inet $LOCAL_IPS
 initialize ip6tables inet6 $LOCAL_IPS6
+
+CODE=0
