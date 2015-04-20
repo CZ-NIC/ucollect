@@ -1,0 +1,117 @@
+Firewall configuration for the fake ucollect plugin
+===================================================
+
+It is possible to simply run the plugin on the destination ports, like
+any other service. This is, however, impractical in the router Turris
+scenario, since the user might have the real service enabled.
+Requiring the user to configure it is also undesirable.
+
+Therefore we want a system where the real service gets the connection
+if it is there and not firewalled, and the fake one gets the
+connection as a fallback.
+
+Requirements
+------------
+
+ * Traffic routed to other destinations, that simply pass through the
+   router, is not affected.
+ * If the real service runs and is reachable through the firewall, it
+   gets the connection.
+ * If the real service is on another computer and the port is
+   redirected, the connection gets redirected.
+ * If the real service doesn't run anywhere, the plugin gets the
+   connection.
+ * If the real service runs, but is firewalled, the connection falls
+   back to the plugin.
+
+High level overview
+-------------------
+
+The decision is done in the `PREROUTING` chain of the `mangle` table.
+Packets to be redirected are marked with the `MARK` target.
+
+The corresponding packets are then redirected with the `REDIRECT` target
+in `PREROUTING` of the `nat` table.
+
+If the packet is not redirected, because the real service is believed
+to be running, but the packet is rejected by firewall (in the `reject`
+chain in `filter` table), the combination of source IP address and
+destination service is added to set of exceptions and the packet is
+dropped, not rejected. This causes sender to retransmit the packet and
+the next packet is redirected.
+
+Rationale
+---------
+
+To decide if a real service runs, the `socket` packet match is used.
+That one, however, doesn't distinguish if the port is open through
+firewall. As a result, we want to discover if packets are rejected
+when they were sent to the firewalled real service. We mark packets
+based on the decision and check for the mark in the `reject` chain. If
+such packet is found, we log it and the information is piped through
+syslog to separate script, that sets up an exception for the given
+source. When the packet is resent by the source, it is redirected to
+the fake service.
+
+Whenever the firewall is reloaded, the firewalled ports might change.
+Therefore, all the exceptions are wiped upon the reloadd and need to
+be generated again.
+
+Also, because marks of packets can be set only in the `mangle` table
+and before the `PREROUTING` of `nat` table (which is where the
+redirection takes place), we need to decide if the packet should be
+redirected even before the kernel does routing. This means we need to
+sort the packets to routed and non-routed (local) ones. We do it by
+feeding the firewall list of local IP addresses and ignoring packets
+destined for different ones.
+
+Allowing the firewall to redirect packets to different machines works
+out of the box, since we add the redirection towards the end of the
+`PREROUTING` chain of the `nat` table. This way the redirection to
+other host happens before it reaches us.
+
+Scenarios
+---------
+
+Routed packet
+~~~~~~~~~~~~~
+
+Routed packet is not marked for redirection, since it has different
+destination address than one of the listed.
+
+Packet for a real service
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Such packet is marked as belonging to the correct address and port.
+But then it matches the `socket` match and it is not marked for
+redirection. So it naturally reaches the destination.
+
+Packet redirected to other host
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The packet is marked, but the redirection to the other host happens
+first.
+
+Packet for service that is not running
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The packet is marked as correct address and port. Then, the `socket`
+match fails, so it is marked for redirection. The redirection happens
+in `PREROUTING` of `nat`.
+
+Packet for firewalled service
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This is similar to the case of real service. However, some rule in
+`INPUT` chain of `filter` table rejects the packet, sending it through
+the `reject` chain. We look for packets marked by the correct port and
+address (but not for redirection). If it is found, the packet is
+logged and dropped (not rejected, so it seems lost).
+
+The log message is forwarded by syslog to a script that adds the
+exception. The next packet skips the `socket` match check and proceeds
+directly to the fake service.
+
+The exception is for the tripple source address, destination address,
+destination port, since the firewalling may be different on different
+services and interfaces and it can differ by the sender.
