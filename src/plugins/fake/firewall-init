@@ -63,7 +63,8 @@ initialize() {
 	$ADD -j MARK --set-mark "$REDIR"
 
 	# After being marked, the packet proceeds to the nat table where we do the actual redirection.
-	# It'll enter the correct chain only when marked with the proper mark, so we don't have to check it here.
+	# We check the mark is there and skip the rest of rules otherwise.
+	$COMMAND -t nat -A ucollect_fake_new -m mark '!' --mark "$REDIR" -j RETURN
 	# We have a rule for each port/protocol.
 	for P in $PORTS ; do
 		PORT=$(echo $P | sed -e 's/...$//')
@@ -84,11 +85,11 @@ initialize() {
 	$COMMAND -t mangle -E ucollect_fake_new ucollect_fake
 	$COMMAND -t mangle -A PREROUTING -j ucollect_fake
 
-	$COMMAND -t nat -D PREROUTING -m mark --mark "$REDIR" -j ucollect_fake
+	$COMMAND -t nat -D PREROUTING -j ucollect_fake
 	$COMMAND -t nat -F ucollect_fake
 	$COMMAND -t nat -X ucollect_fake
 	$COMMAND -t nat -E ucollect_fake_new ucollect_fake
-	$COMMAND -t nat -A PREROUTING -m mark --mark "$REDIR" -j ucollect_fake
+	$COMMAND -t nat -A PREROUTING -j ucollect_fake
 
 	$COMMAND -D reject -j ucollect_fake
 	$COMMAND -F ucollect_fake
