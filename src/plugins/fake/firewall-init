@@ -1,0 +1,107 @@
+#!/bin/sh
+
+MARK_MASK=$(uci get -q ucollect.@fakes[0].mark_mask || echo 0xC0000)
+PORT_OK="$(uci get -q ucollect.@fakes[0].mark_port_ok || echo 0x40000/$MARK_MASK)"
+ADDR_OK="$(uci get -q ucollect.@fakes[0].mark_addr_ok || echo 0x80000/$MARK_MASK)"
+REDIR="$(uci get -q ucollect.@fakes[0].mark_redir || echo 0xC0000/$MARK_MASK)"
+REDIR_OFFSET="$(uci get -q ucollect.@fakes[0].redir_offset || echo 1369)"
+
+# Get the list of ports and remove the ones that are disabled. We remove them by making sure
+# that everything that is disabled appears at least twice and then take only the unique lines.
+PORTS=`(
+	echo '23tcp'
+	uci get -q -d '
+' ucollect.@fakes[0].disable
+	uci get -q -d '
+' ucollect.@fakes[0].disable
+) | sort | uniq -u`
+
+# Locking. This may remove lock-file of other instance, but it does ensure we clean stray one eventually
+CODE=1
+trap 'rm -rf /tmp/fake-firewall.lock; exit $CODE' EXIT ABRT HUP INT QUIT PIPE TERM
+mkdir /tmp/fake-firewall.lock || exit 1
+
+initialize() {
+	# Prepare some empty chains to fill in and then switch
+	COMMAND="$1"
+	FAMILY="$2"
+	shift 2
+	for T in mangle nat filter ; do
+		$COMMAND -t $T -F ucollect_fake_new >/dev/null 2>&1 # The chain likely doesn't exist
+		$COMMAND -t $T -N ucollect_fake_new
+	done
+
+	# We do some marking of packets in the mangle table. That's where the decision is made.
+	ADD="$COMMAND -t mangle -A ucollect_fake_new"
+	$ADD -j MARK --set-mark "0/$MARK_MASK"
+	# First, mark packets with the correct ports and ignore the rest
+	for P in $PORTS ; do
+		PORT=$(echo $P | sed -e 's/...$//')
+		PROTO=$(echo $P | sed -e 's/[0-9]//g')
+		$ADD -p $PROTO --dport $PORT -j MARK --set-mark "$PORT_OK"
+	done
+	$ADD -m mark '!' --mark "$PORT_OK" -j RETURN
+
+	# Do the same with destination IP addresses, to filter out packets that are to be routed, not delivered to us
+	for IP in "$@" ; do
+		$ADD -d "$IP" -j MARK --set-mark "$ADDR_OK"
+	done
+	$ADD -m mark '!' --mark "$ADDR_OK" -j RETURN
+
+	# Now we process exceptions, where we should not check for local listening socket.
+	# If the packet matches, it'll set the REDIR mark right away.
+	# The exception set will be flushed at the end of this function, and filled in later on by a different script.
+	ipset create -! ucollect_fake_exc_$FAMILY hash:ip,port,ip family $FAMILY
+	ipset flush ucollect_fake_exc_$FAMILY
+	$ADD -m set --match-set ucollect_fake_exc_$FAMILY src,dst,dst -j MARK --set-mark "$REDIR"
+	# Don't do any more processing if already decided
+	$ADD -m mark --mark "$REDIR" -j RETURN
+
+	# If there's something listening on that port, don't redirect, leave it up for that socket (by leaving the ADDR_OK mark set)
+	$ADD -m socket --nowildcard -j RETURN
+	# And if nothing is listening, mark the packet for redirection.
+	$ADD -j MARK --set-mark "$REDIR"
+
+	# After being marked, the packet proceeds to the nat table where we do the actual redirection.
+	# We check the mark is there and skip the rest of rules otherwise.
+	$COMMAND -t nat -A ucollect_fake_new -m mark '!' --mark "$REDIR" -j RETURN
+	# We have a rule for each port/protocol.
+	for P in $PORTS ; do
+		PORT=$(echo $P | sed -e 's/...$//')
+		PROTO=$(echo $P | sed -e 's/[0-9]//g')
+		$COMMAND -t nat -A ucollect_fake_new -p $PROTO --dport $PORT -j REDIRECT --to-ports $(($PORT + $REDIR_OFFSET))
+	done
+
+	# If the packet had the correct port and address, didn't get redirected because there was something listening, but it was rejected, it means
+	# the packet is firewalled on that interface, so we shall log it and pass to the exception-generating script to handle.
+	# We then drop the packet, to simulate a lost packet instead of rejecting it. The other side will resend it and pass inside this time.
+	$COMMAND -A ucollect_fake_new -m mark --mark "$ADDR_OK" -m limit --limit 100/s --limit-burst 200 -j LOG --log-prefix "ucollect-fake-open-$FAMILY: " --log-level 7
+	$COMMAND -A ucollect_fake_new -m mark --mark "$ADDR_OK" -j DROP
+
+	# Now drop any instances of the previous chains, rename the current ones and load them in
+	$COMMAND -t mangle -D PREROUTING -j ucollect_fake
+	$COMMAND -t mangle -F ucollect_fake
+	$COMMAND -t mangle -X ucollect_fake
+	$COMMAND -t mangle -E ucollect_fake_new ucollect_fake
+	$COMMAND -t mangle -A PREROUTING -j ucollect_fake
+
+	$COMMAND -t nat -D PREROUTING -j ucollect_fake
+	$COMMAND -t nat -F ucollect_fake
+	$COMMAND -t nat -X ucollect_fake
+	$COMMAND -t nat -E ucollect_fake_new ucollect_fake
+	$COMMAND -t nat -A PREROUTING -j ucollect_fake
+
+	$COMMAND -D reject -j ucollect_fake
+	$COMMAND -F ucollect_fake
+	$COMMAND -X ucollect_fake
+	$COMMAND -E ucollect_fake_new ucollect_fake
+	$COMMAND -I reject 2 -j ucollect_fake
+}
+
+LOCAL_IPS=$(ip addr | sed -ne '/ *inet \([^ /]*\).*/s//\1/p')
+LOCAL_IPS6=$(ip addr | sed -ne '/ *inet6 \([^ /]*\).*/s//\1/p')
+
+initialize iptables inet $LOCAL_IPS
+initialize ip6tables inet6 $LOCAL_IPS6
+
+CODE=0
