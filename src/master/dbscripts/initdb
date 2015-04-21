@@ -95,6 +95,7 @@ CREATE TABLE anomalies (
 	relevance_count SMALLINT NOT NULL,
 	relevance_of SMALLINT NOT NULL,
 	strength REAL DEFAULT 0,
+	country VARCHAR(2),
 	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE,
 	FOREIGN KEY (type) REFERENCES anomaly_types(code),
 	CHECK(relevance_count <= relevance_of)
@@ -227,6 +228,7 @@ CREATE TABLE biflows (
 	seen_start_out BOOL NOT NULL,
 	tag TEXT,
 	tagged_on TIMESTAMP,
+	country_remote VARCHAR(2),
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start_in <= stop_in),
