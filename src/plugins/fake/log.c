@@ -160,8 +160,8 @@ struct event_header {
 	char code;
 } __attribute__((packed));
 
-// The IPv6 mapped IPv4 addresses are 0000:0000:FFFF:<IP>.
-static const uint8_t mapped_prefix[] = { [8] = 0xFF, [9] = 0xFF, [10] = 0xFF, [11] = 0xFF };
+// The IPv6 mapped IPv4 addresses are ::FFFF:<IP>.
+static const uint8_t mapped_prefix[] = { [10] = 0xFF, [11] = 0xFF };
 
 bool log_event(struct context *context, struct log *log, char server_code, const uint8_t *address, size_t addr_len, enum event_type type, struct event_info *info) {
 	// If it's IPv6 mapped IPv4, store it as IPv4 only
