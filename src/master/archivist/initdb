@@ -3,6 +3,9 @@
 psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
 BEGIN;
 
+DROP TABLE IF EXISTS fake_attackers;
+DROP TABLE IF EXISTS fake_server_activity;
+DROP TABLE IF EXISTS fake_passwords;
 DROP TABLE IF EXISTS ssh_commands;
 DROP TABLE IF EXISTS ssh_sessions;
 DROP TABLE IF EXISTS refused_clients;
@@ -27,6 +30,7 @@ DROP TABLE IF EXISTS groups;
 DROP TABLE IF EXISTS ping_ips;
 DROP TABLE IF EXISTS ping_stats;
 DROP TABLE IF EXISTS ping_requests;
+DROP TYPE IF EXISTS fake_server;
 
 CREATE TABLE groups (
 	id INT PRIMARY KEY NOT NULL,
@@ -319,6 +323,34 @@ CREATE TABLE refused_addrs (
 );
 CREATE INDEX ON refused_addrs(since);
 
+CREATE TYPE fake_server AS ENUM ('telnet');
+CREATE TABLE fake_attackers (
+	date DATE NOT NULL,
+	server fake_server NOT NULL,
+	remote INET NOT NULL,
+	attempt_count INT NOT NULL,
+	connect_count INT NOT NULL,
+	UNIQUE(date, server, remote),
+	CHECK(attempt_count >= 0),
+	CHECK(connect_count >= 0)
+);
+CREATE TABLE fake_passwords (
+	timestamp TIMESTAMP NOT NULL,
+	server fake_server NOT NULL,
+	remote INET NOT NULL,
+	name TEXT NOT NULL,
+	password TEXT NOT NULL
+);
+CREATE TABLE fake_server_activity (
+	date DATE NOT NULL,
+	server fake_server NOT NULL,
+	client INT NOT NULL,
+	attempt_count INT NOT NULL,
+	connect_count INT NOT NULL,
+	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
+	UNIQUE(date, server, client)
+);
+
 CREATE TABLE ssh_sessions (
 	id INT NOT NULL PRIMARY KEY,
 	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -394,6 +426,15 @@ GRANT DELETE ON refused_addrs TO archivist;
 GRANT DELETE ON refused_clients TO archivist;
 GRANT SELECT (since) ON refused_addrs TO archivist;
 GRANT SELECT (since) ON refused_clients TO archivist;
+GRANT INSERT ON fake_attackers TO archivist;
+GRANT INSERT ON fake_server_activity TO archivist;
+GRANT INSERT ON fake_passwords TO archivist;
+GRANT SELECT (date) ON fake_attackers TO archivist;
+GRANT SELECT (date) ON fake_server_activity TO archivist;
+GRANT SELECT (timestamp) ON fake_passwords TO archivist;
+GRANT DELETE ON fake_attackers TO archivist;
+GRANT DELETE ON fake_server_activity TO archivist;
+GRANT DELETE ON fake_passwords TO archivist;
 GRANT INSERT ON ssh_sessions TO archivist;
 GRANT SELECT ON ssh_sessions TO archivist;
 GRANT UPDATE ON ssh_sessions TO archivist;
