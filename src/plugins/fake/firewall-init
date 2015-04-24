@@ -30,6 +30,8 @@ initialize() {
 		$COMMAND -t $T -F ucollect_fake_new >/dev/null 2>&1 # The chain likely doesn't exist
 		$COMMAND -t $T -N ucollect_fake_new
 	done
+	$COMMAND -F ucollect_fake_accept_new >/dev/null 2>&1
+	$COMMAND -N ucollect_fake_accept_new
 
 	# We do some marking of packets in the mangle table. That's where the decision is made.
 	ADD="$COMMAND -t mangle -A ucollect_fake_new"
@@ -78,6 +80,13 @@ initialize() {
 	$COMMAND -A ucollect_fake_new -m mark --mark "$ADDR_OK" -m limit --limit 100/s --limit-burst 200 -j LOG --log-prefix "ucollect-fake-open-$FAMILY: " --log-level 7
 	$COMMAND -A ucollect_fake_new -m mark --mark "$ADDR_OK" -j DROP
 
+	# Make sure the redirected packets are allowed in
+	for P in $PORTS ; do
+		PORT=$(echo $P | sed -e 's/...$//')
+		PROTO=$(echo $P | sed -e 's/[0-9]//g')
+		$COMMAND -A ucollect_fake_accept_new -p $PROTO --dport $(($PORT + $REDIR_OFFSET)) -m mark --mark "$REDIR" -j ACCEPT
+	done
+
 	# Now drop any instances of the previous chains, rename the current ones and load them in
 	$COMMAND -t mangle -D PREROUTING -j ucollect_fake
 	$COMMAND -t mangle -F ucollect_fake
@@ -96,6 +105,12 @@ initialize() {
 	$COMMAND -X ucollect_fake
 	$COMMAND -E ucollect_fake_new ucollect_fake
 	$COMMAND -I reject 2 -j ucollect_fake
+
+	$COMMAND -D delegate_input -j ucollect_fake_accept
+	$COMMAND -F ucollect_fake_accept
+	$COMMAND -X ucollect_fake_accept
+	$COMMAND -E ucollect_fake_accept_new ucollect_fake_accept
+	$COMMAND -I delegate_input 5 -j ucollect_fake_accept
 }
 
 LOCAL_IPS=$(ip addr | sed -ne '/ *inet \([^ /]*\).*/s//\1/p')
