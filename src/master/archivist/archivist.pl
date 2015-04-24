@@ -493,7 +493,7 @@ if (fork == 0) {
 if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
-	my ($max_date) = $destination->selectrow_array("SELECT DATE(COALESCE(MAX(since), TO_TIMESTAMP(0))) FROM fake_attackers");
+	my ($max_date) = $destination->selectrow_array("SELECT DATE(COALESCE(MAX(date), TO_TIMESTAMP(0))) FROM fake_attackers");
 	$destination->do("DELETE FROM fake_attackers WHERE date >= ?", undef, $max_date);
 	my $get_attackers = $source->prepare("SELECT DATE(timestamp), server, remote, COUNT(CASE WHEN event = 'login' THEN true END), COUNT(CASE WHEN event = 'connect' THEN true END) FROM fake_logs WHERE DATE(timestamp) >= ? GROUP BY remote, server, DATE(timestamp)");
 	$get_attackers->execute($max_date);
@@ -514,7 +514,7 @@ if (fork == 0) {
 		return $get_passwords->fetchrow_arrayref;
 	});
 	print "Archived $passwords password attempts\n";
-	$destination->do("DELETE FROM fake_server_activity WHERE timestamp >= ?", undef, $max_date);
+	$destination->do("DELETE FROM fake_server_activity WHERE date >= ?", undef, $max_date);
 	my $get_activity = $source->prepare("SELECT DATE(timestamp), server, client, COUNT(CASE WHEN event = 'login' THEN true END), COUNT(CASE WHEN event = 'connect' THEN true END) FROM fake_logs WHERE timestamp >= ? GROUP BY DATE(timestamp), server, client");
 	$get_activity->execute($max_date);
 	my $put_activity = $destination->prepare("INSERT INTO fake_server_activity (date, server, client, attempt_count, connect_count) VALUES (?, ?, ?, ?, ?)");
