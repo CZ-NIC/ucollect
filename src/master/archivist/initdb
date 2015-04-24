@@ -348,7 +348,9 @@ CREATE TABLE fake_server_activity (
 	attempt_count INT NOT NULL,
 	connect_count INT NOT NULL,
 	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
-	UNIQUE(date, server, client)
+	UNIQUE(date, server, client),
+	CHECK(attempt_count >= 0),
+	CHECK(connect_count >= 0)
 );
 
 CREATE TABLE ssh_sessions (

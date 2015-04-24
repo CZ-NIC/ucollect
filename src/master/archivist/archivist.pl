@@ -490,4 +490,43 @@ if (fork == 0) {
 	exit;
 }
 
-wait for (1..12);
+if (fork == 0) {
+	my $source = connect_db 'source';
+	my $destination = connect_db 'destination';
+	my ($max_date) = $destination->selectrow_array("SELECT DATE(COALESCE(MAX(since), TO_TIMESTAMP(0))) FROM fake_attackers");
+	$destination->do("DELETE FROM fake_attackers WHERE date >= ?", undef, $max_date);
+	my $get_attackers = $source->prepare("SELECT DATE(timestamp), server, remote, COUNT(CASE WHEN event = 'login' THEN true END), COUNT(CASE WHEN event = 'connect' THEN true END) FROM fake_logs WHERE DATE(timestamp) >= ? GROUP BY remote, server, DATE(timestamp)");
+	$get_attackers->execute($max_date);
+	my $put_attacker = $destination->prepare("INSERT INTO fake_attackers (date, server, remote, attempt_count, connect_count) VALUES (?, ?, ?, ?, ?)");
+	my $attackers = -1;
+	$put_attacker->execute_for_fetch(sub {
+		$attackers ++;
+		return $get_attackers->fetchrow_arrayref;
+	});
+	print "Archived $attackers fake attacker stats\n";
+	$destination->do("DELETE FROM fake_passwords WHERE timestamp >= ?", undef, $max_date);
+	my $get_passwords = $source->prepare("SELECT timestamp, server, remote, name, password FROM fake_logs WHERE name IS NOT NULL AND password IS NOT NULL AND event = 'login' AND timestamp >= ?");
+	$get_passwords->execute($max_date);
+	my $put_password = $destination->prepare("INSERT INTO fake_passwords (timestamp, server, remote, name, password) VALUES (?, ?, ?, ?, ?)");
+	my $passwords = -1;
+	$put_password->execute_for_fetch(sub {
+		$passwords ++;
+		return $get_passwords->fetchrow_arrayref;
+	});
+	print "Archived $passwords password attempts\n";
+	$destination->do("DELETE FROM fake_server_activity WHERE timestamp >= ?", undef, $max_date);
+	my $get_activity = $source->prepare("SELECT DATE(timestamp), server, client, COUNT(CASE WHEN event = 'login' THEN true END), COUNT(CASE WHEN event = 'connect' THEN true END) FROM fake_logs WHERE timestamp >= ? GROUP BY DATE(timestamp), server, client");
+	$get_activity->execute($max_date);
+	my $put_activity = $destination->prepare("INSERT INTO fake_server_activity (date, server, client, attempt_count, connect_count) VALUES (?, ?, ?, ?, ?)");
+	my $activity_count = -1;
+	$put_activity->execute_for_fetch(sub {
+		$activity_count ++;
+		return $get_activity->fetchrow_arrayref;
+	});
+	print "Archived $activity_count fake server activity statistics\n";
+	$destination->commit;
+	$source->commit;
+	exit;
+}
+
+wait for (1..13);
