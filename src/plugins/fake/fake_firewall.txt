@@ -31,7 +31,8 @@ The decision is done in the `PREROUTING` chain of the `mangle` table.
 Packets to be redirected are marked with the `MARK` target.
 
 The corresponding packets are then redirected with the `REDIRECT` target
-in `PREROUTING` of the `nat` table.
+in `PREROUTING` of the `nat` table. It is then allowed in through the
+`firewall` table.
 
 If the packet is not redirected, because the real service is believed
 to be running, but the packet is rejected by firewall (in the `reject`
@@ -49,7 +50,7 @@ firewall. As a result, we want to discover if packets are rejected
 when they were sent to the firewalled real service. We mark packets
 based on the decision and check for the mark in the `reject` chain. If
 such packet is found, we log it and the information is piped through
-syslog to separate script, that sets up an exception for the given
+syslog to a separate script, that sets up an exception for the given
 source. When the packet is resent by the source, it is redirected to
 the fake service.
 
@@ -62,7 +63,7 @@ and before the `PREROUTING` of `nat` table (which is where the
 redirection takes place), we need to decide if the packet should be
 redirected even before the kernel does routing. This means we need to
 sort the packets to routed and non-routed (local) ones. We do it by
-feeding the firewall list of local IP addresses and ignoring packets
+feeding the firewall a list of local IP addresses and ignoring packets
 destined for different ones.
 
 Allowing the firewall to redirect packets to different machines works
@@ -112,6 +113,6 @@ The log message is forwarded by syslog to a script that adds the
 exception. The next packet skips the `socket` match check and proceeds
 directly to the fake service.
 
-The exception is for the tripple source address, destination address,
+The exception is for the triple source address, destination address,
 destination port, since the firewalling may be different on different
 services and interfaces and it can differ by the sender.
