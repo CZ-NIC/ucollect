@@ -240,6 +240,8 @@ ALTER TABLE biflows ALTER COLUMN id SET DEFAULT NEXTVAL('biflow_ids');
 CREATE INDEX ON biflows (ip_remote);
 CREATE INDEX ON biflows (tag);
 CREATE INDEX ON biflows (tagged_on);
+CREATE INDEX ON biflows (client);
+CREATE INDEX ON biflows (port_remote, proto);
 
 INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat'), ('spoof'), ('refused'), ('fake');
 CREATE TABLE starttls_protos (
