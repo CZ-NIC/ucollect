@@ -1,0 +1,107 @@
+The `fake` plugin
+=================
+
+The plugin pretends to be bunch of services listening for users to
+authenticate. All it does is logging the attempts (and, if configured,
+the passwords) and tells the „users“ the password is wrong.
+
+This is a trap for all the password-guessing bots, so we get to know
+their IP addresses and block them.
+
+Internal architecture
+---------------------
+
+There's a generic central part of the plugin. It manages sockets of
+the connections and timeouts on them. It also contains the log cache
+and sends the logs to the server whenever necessary. The generic part
+reads configuration and modifies the services accordingly.
+
+Implementation of a service provides some descriptions (eg. if the
+socket is UDP or TCP and on which port it usually runs) and set of
+callbacks. The callbacks are called whenever there's data from a
+connected client, a connection is made, etc. It is up to the service
+callbacks to log events.
+
+Communication protocol
+----------------------
+
+There are just two tasks that are done over the wire. It's configuring
+the client and reporting events.
+
+Configuration
+~~~~~~~~~~~~~
+
+After connecting, the client sends a message containing just the
+opcode `C`. This is request for configuration.
+
+The server responds with a message with opcode `C` and the
+configuration. The configuration consists of these items, all are
+`uint32_t` in network byte order:
+
+  `version`:: Opaque version number of the config. The
+    server guarantees that configuration with the same number is the
+    same.
+  `max_age`:: Maximum number of milliseconds an event can
+    have and still not be sent for storage on the server. It doesn't
+    mandate that the server shall be contacted at least that often ‒
+    there may be no events, therefore nothing would be too old.
+  `max_size`:: The number of bytes the message with log events which
+    prompts the client to submit them. This is not strict limit on the
+    size ‒ the message may be actually larger, usually by the last
+    event.
+  `max_attempts`:: How many attempts from a single attacker are enough
+    to trigger sending of the log events. If someone is attacking, it
+    is important for the server to know about it soon.
+  `throttle_holdback`:: When the `max_attempts` is reached, the same
+    attacker doesn't provoke sending of the logs again for this many
+    milliseconds. The events are still logged, only the server is
+    already informed about that one and it doesn't need to hear it so
+    often.
+
+The server may send the configuration at any time, it doesn't need to
+be prompted to do so (though it currently sends it only when asked).
+
+Submission of logs
+~~~~~~~~~~~~~~~~~~
+
+Whenever the client thinks it is a good time, it submits the logs to
+the server. They are all sent inside a single message, prefixed by the
+`L` opcode. The events are simply put together linearly.
+
+Each event starts with a header:
+
+  `timestamp`:: `uint32_t`, number of milliseconds specifying the age
+    of the event.
+  `event_type`:: `uint8_t` which says what kind of event happened:
+    connect (0);; The specified client connected.
+    disconnect (1);; The connection was terminated gracefully (whatever it
+      means for the given protocol).
+    lost (2);; The connection was terminated in some erroneous way.
+    connect extra (3);; Another attempt to connect happened while the
+      limit of connections for given protocol was already reached.
+      Such connection was refused.
+    timeout (4);; The client was silent for too long. This implies
+      termination of the connection.
+    login (5);; The client tried to log in.
+  `addr_type`:: `uint8_t`, the type of address. Currently, IPv4 (0)
+    and IPv6 (1) addresses are known.
+  `info_count`:: `uint8_t`, number of additional records accompanying
+    this log event.
+  `code`:: `char`, representing which service generated the event.
+    Currently known ones are:
+    `T`;; Telnet service.
+
+The header is followed by address (the length depends on the address
+type, which is specified in the header).
+
+The address is followed by corresponding number of additional records.
+Each record is prefixed by single `uint8_t` type. Current types are:
+
+  name (0):: The login name tried by the attacker.
+  password (1):: The password tried by the attacker.
+  reason (2):: The reason for the event. Not all events have reasons,
+    this is usually with some kind of connection termination.
+
+The type of the record is followed by a single string, encoded in the
+usual uplink format (`uint32_t` length, followed by so many
+characters).

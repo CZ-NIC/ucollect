@@ -38,7 +38,6 @@ const struct server_desc server_descs_intern[] = {
 		.server_ready_cb = telnet_data,
 		.max_conn = 20,
 		.conn_timeout = 30 * SECOND
-		// TODO: The internals
 	},
 	{
 		.name = NULL
