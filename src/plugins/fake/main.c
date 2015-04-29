@@ -62,7 +62,9 @@ struct user_data {
 	uint32_t max_age;
 	bool log_credentials_candidate;
 	bool timeout_scheduled;
+	bool config_retry_scheduled;
 	size_t timeout_id;
+	size_t config_retry_timeout_id;
 	struct log *log;
 	struct mem_pool *log_pool;
 };
@@ -90,6 +92,8 @@ static void initialize(struct context *context) {
 		u->tags[pos].desc = desc;
 		u->tags[pos].server_index = i;
 		u->tags[pos].ignore_inactivity = true;
+		u->tags[pos].candidate = -1;
+		u->tags[pos].fd = -1;
 		u->tag_indices[i ++] = pos;
 		if (desc->server_alloc_cb)
 			u->tags[pos].server = desc->server_alloc_cb(context, &u->tags[pos], context->permanent_pool, desc);
@@ -99,6 +103,7 @@ static void initialize(struct context *context) {
 				u->tags[j].desc = desc;
 				u->tags[j].server_index = u->tags[pos].server_index;
 				u->tags[j].server = u->tags[pos].server;
+				u->tags[j].fd = -1;
 				// But a connection structure is for each of them
 				if (desc->conn_alloc_cb)
 					u->tags[j].conn = desc->conn_alloc_cb(context, &u->tags[j], context->permanent_pool, u->tags[pos].server);
@@ -116,8 +121,15 @@ static void initialize(struct context *context) {
 	connected(context);
 }
 
+static void config_retry_now(struct context *context, void *data, size_t id);
+
 static bool config(struct context *context) {
 	struct user_data *u = context->user_data;
+	if (u->config_retry_scheduled) {
+		loop_timeout_cancel(context->loop, u->config_retry_timeout_id);
+		u->config_retry_scheduled = false;
+	}
+	bool config_retry = false; // In case we can't get some of the ports, try again in a short moment
 	for (size_t i = 0; i < u->server_count; i ++) {
 		struct fd_tag *t = &u->tags[u->tag_indices[i]];
 		char *opt_name = mem_pool_printf(context->temp_pool, "%s_port", t->desc->name);
@@ -147,8 +159,7 @@ static bool config(struct context *context) {
 			port = t->desc->default_port;
 			ulog(LLOG_WARN, "Option %s not present, using default %u\n", opt_name, (unsigned)port);
 		}
-		t->port_candidate = port;
-		if (port == t->port) {
+		if (port == t->port && t->fd != -1) {
 			t->candidate = t->fd;
 		} else if (port) {
 			int sock = socket(AF_INET6, t->desc->sock_type, 0);
@@ -172,7 +183,9 @@ static bool config(struct context *context) {
 				loop_plugin_unregister_fd(context, sock);
 				if (close(sock) == -1)
 					ulog(LLOG_ERROR, "Error closing fake server %s socket %d after unsuccessful bind to port %u: %s\n", t->desc->name, sock, (unsigned)port, strerror(errno));
-				return false;
+				config_retry = true;
+				t->candidate = -1;
+				continue;
 			}
 			if (listen(sock, 20) == -1) {
 				ulog(LLOG_ERROR, "Could't listen on socket %d of fake server %s: %s\n", sock, t->desc->name, strerror(errno));
@@ -183,6 +196,7 @@ static bool config(struct context *context) {
 			}
 			t->candidate = sock;
 		} // Otherwise, the port is different than before, but 0 ‒ means desable this service ‒ nothing allocated
+		t->port_candidate = port;
 	}
 	const struct config_node *opt = loop_plugin_option_get(context, "log_credentials");
 	if (opt) {
@@ -204,6 +218,10 @@ static bool config(struct context *context) {
 	} else {
 		u->log_credentials_candidate = false;
 	}
+	if (config_retry) {
+		u->config_retry_timeout_id = loop_timeout_add(context->loop, 15000 /* quarter of minute */, context, NULL, config_retry_now);
+		u->config_retry_scheduled = true;
+	}
 	return true;
 }
 
@@ -213,9 +231,9 @@ static void config_finish(struct context *context, bool activate) {
 		struct fd_tag *t = &u->tags[u->tag_indices[i]];
 		if (activate) {
 			if (t->fd != t->candidate) {
-				if (t->desc->server_set_fd_cb)
+				if (t->candidate != -1 && t->desc->server_set_fd_cb)
 					t->desc->server_set_fd_cb(context, t, t->server, t->candidate, t->port_candidate);
-				if (t->fd) {
+				if (t->fd != -1) {
 					loop_plugin_unregister_fd(context, t->fd);
 					if (close(t->fd) == -1)
 						ulog(LLOG_ERROR, "Error closing old server FD %d of %s: %s\n", t->fd, t->desc->name, strerror(errno));
@@ -224,14 +242,22 @@ static void config_finish(struct context *context, bool activate) {
 				t->fd = t->candidate;
 			}
 			log_set_send_credentials(u->log, u->log_credentials_candidate);
-		} else if (t->candidate) {
+		} else if (t->candidate != -1) {
 			loop_plugin_unregister_fd(context, t->candidate);
 			if (close(t->candidate) == -1)
 				ulog(LLOG_ERROR, "Error closing candidate FD %d of server %s: %s\n", t->candidate, t->desc->name, strerror(errno));
 		}
 		t->port_candidate = 0;
-		t->candidate = 0;
+		t->candidate = -1;
 	}
+}
+
+static void config_retry_now(struct context *context, void *data __attribute__((unused)), size_t id __attribute__((unused))) {
+	ulog(LLOG_INFO, "Retrying fake server configuration now\n");
+	struct user_data *u = context->user_data;
+	u->config_retry_scheduled = false;
+	bool success = config(context);
+	config_finish(context, success);
 }
 
 static char *addr2str(struct mem_pool *pool, struct sockaddr *addr, socklen_t addr_len) {
@@ -308,7 +334,7 @@ void conn_closed(struct context *context, struct fd_tag *tag, bool error, const 
 	loop_plugin_unregister_fd(context, tag->fd);
 	if (close(tag->fd) == -1)
 		ulog(LLOG_ERROR, "Failed to close FD %d of connection %p/%p of fake server %s: %s\n", tag->fd, (void *)tag->conn, (void *)tag, tag->desc->name, strerror(errno));
-	tag->fd = 0;
+	tag->fd = -1;
 }
 
 void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password) {
