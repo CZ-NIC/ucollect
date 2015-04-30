@@ -38,6 +38,9 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#define CONFIG_RETRY_COUNT 10
+#define CONFIG_RETRY_TIME 60000
+
 struct fd_tag {
 	const struct server_desc *desc;
 	struct server_data *server;
@@ -65,6 +68,7 @@ struct user_data {
 	bool config_retry_scheduled;
 	size_t timeout_id;
 	size_t config_retry_timeout_id;
+	size_t allow_retries;
 	struct log *log;
 	struct mem_pool *log_pool;
 };
@@ -123,7 +127,7 @@ static void initialize(struct context *context) {
 
 static void config_retry_now(struct context *context, void *data, size_t id);
 
-static bool config(struct context *context) {
+static bool config_internal(struct context *context) {
 	struct user_data *u = context->user_data;
 	if (u->config_retry_scheduled) {
 		loop_timeout_cancel(context->loop, u->config_retry_timeout_id);
@@ -218,11 +222,17 @@ static bool config(struct context *context) {
 	} else {
 		u->log_credentials_candidate = false;
 	}
-	if (config_retry) {
-		u->config_retry_timeout_id = loop_timeout_add(context->loop, 15000 /* quarter of minute */, context, NULL, config_retry_now);
+	if (config_retry && u->allow_retries) {
+		u->config_retry_timeout_id = loop_timeout_add(context->loop, CONFIG_RETRY_TIME, context, NULL, config_retry_now);
 		u->config_retry_scheduled = true;
+		u->allow_retries --;
 	}
 	return true;
+}
+
+static bool config(struct context *context) {
+	context->user_data->allow_retries = CONFIG_RETRY_COUNT;
+	return config_internal(context);
 }
 
 static void config_finish(struct context *context, bool activate) {
@@ -256,7 +266,7 @@ static void config_retry_now(struct context *context, void *data __attribute__((
 	ulog(LLOG_INFO, "Retrying fake server configuration now\n");
 	struct user_data *u = context->user_data;
 	u->config_retry_scheduled = false;
-	bool success = config(context);
+	bool success = config_internal(context);
 	config_finish(context, success);
 }
 
