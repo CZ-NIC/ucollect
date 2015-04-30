@@ -380,7 +380,7 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 		size_t ti = u->tag_indices[si], te = u->tag_indices[si+1];
 		struct fd_tag *empty = NULL;
 		for (size_t i = ti + 1; i < te; i ++)
-			if (!u->tags[i].fd) {
+			if (u->tags[i].fd == -1) {
 				empty = &u->tags[i];
 				break;
 			}
@@ -392,6 +392,7 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			int new = accept(fd, addr_p, &empty->addr_len);
 			if (new == -1) {
 				ulog(LLOG_ERROR, "Failed to accept connection on FD %d for fake server %s: %s\n", fd, t->desc->name, strerror(errno));
+				return;
 			}
 			loop_plugin_register_fd(context, new, empty);
 			ulog(LLOG_DEBUG, "Accepted connecion %d from %s on FD %d for fake server %s\n", new, addr2str(context->temp_pool, addr_p, empty->addr_len), fd, t->desc->name);
@@ -403,8 +404,10 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			activity(context, empty);
 		} else {
 			// No place to put it into.
-			struct fd_tag aux_tag;
+			struct fd_tag aux_tag = *t;
+			aux_tag.accept_here = false;
 			struct sockaddr *addr_p = (struct sockaddr *)&aux_tag.addr;
+			aux_tag.addr_len = sizeof aux_tag.addr;
 			int new = accept(fd, addr_p, &aux_tag.addr_len);
 			if (new == -1) {
 				ulog(LLOG_ERROR, "Failed to accept extra connection on FD %d for fake server %s: %s\n", fd, t->desc->name, strerror(errno));
@@ -413,7 +416,6 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			ulog(LLOG_WARN, "Throwing out connection %d from %s accepted on %d of fake server %s, too many opened ones\n", fd, addr2str(context->temp_pool, addr_p, aux_tag.addr_len), fd, t->desc->name);
 			if (close(new) == -1) {
 				ulog(LLOG_ERROR, "Error throwing newly accepted connection %d from %s accepted on %d of fake server %s: %s\n", new, addr2str(context->temp_pool, addr_p, aux_tag.addr_len), fd, t->desc->name, strerror(errno));
-				return;
 			}
 			log_wrapper(context, &aux_tag, EVENT_CONNECT_EXTRA, NULL, NULL, NULL);
 		}
