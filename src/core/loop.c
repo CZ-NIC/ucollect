@@ -80,31 +80,7 @@ static void abort_safe(void) {
 	kill(getpid(), SIGKILL);
 }
 
-static void sig_handler(int signal) {
-#ifdef SIGNAL_REINIT
-	if (jump_ready && current_context) {
-		jump_ready = 0; // Don't try to jump twice in a row if anything goes bad
-		// There's a handler
-		jump_signum = signal;
-#ifdef DEBUG
-		ulog(LLOG_WARN, "Trying to create a core dump (if they are enabled)\n");
-		/*
-		 * Create a core dump. Do it by copying the process by fork and then
-		 * aborting the child. Abort creates a core dump, if it is enabled.
-		 */
-		if (fork() == 0)
-			abort_safe();
-#endif
-		longjmp(jump_env, 1);
-	} else {
-#else
-	{
-#endif
-		ulog(LLOG_DIE, "Got signal %d with context %p, aborting\n", signal, (void *)current_context);
-		// Not ready to jump. Abort.
-		abort_safe();
-	}
-}
+static void sig_handler(int signal);
 
 static const int signals[] = {
 	SIGILL,
@@ -326,6 +302,36 @@ GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
 GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
 GEN_CALL_WRAPPER_PARAM_2(fd, int, void *)
 GEN_CALL_WRAPPER_PARAM(config_finish, bool)
+
+static void sig_handler(int signal) {
+#ifdef SIGNAL_REINIT
+	if (jump_ready && current_context) {
+		jump_ready = 0; // Don't try to jump twice in a row if anything goes bad
+		// There's a handler
+		jump_signum = signal;
+#ifdef DEBUG
+		ulog(LLOG_WARN, "Trying to create a core dump (if they are enabled)\n");
+		/*
+		 * Create a core dump. Do it by copying the process by fork and then
+		 * aborting the child. Abort creates a core dump, if it is enabled.
+		 */
+		if (fork() == 0)
+			abort_safe();
+#endif
+		longjmp(jump_env, 1);
+	} else {
+#else
+	{
+#endif
+		struct plugin_holder *holder = (struct plugin_holder *) current_context;
+#ifdef DEBUG
+		assert(!holder || holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+		ulog(LLOG_DIE, "Got signal %d with context %p (%s), aborting\n", signal, (void *)current_context, holder ? holder->plugin.name : "<none>");
+		// Not ready to jump. Abort.
+		abort_safe();
+	}
+}
 
 static bool plugin_config_check(struct plugin_holder *plugin) {
 	if (!plugin->plugin.config_check_callback)
