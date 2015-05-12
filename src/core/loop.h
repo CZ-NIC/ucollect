@@ -75,7 +75,7 @@ struct loop_configurator *loop_config_start(struct loop *loop) __attribute__((no
 void loop_config_commit(struct loop_configurator *configurator) __attribute__((nonnull));
 void loop_config_abort(struct loop_configurator *configurator) __attribute__((nonnull));
 
-bool loop_add_pcap(struct loop_configurator *configurator, const char *interface) __attribute__((nonnull));
+bool loop_add_pcap(struct loop_configurator *configurator, const char *interface, bool promiscuous) __attribute__((nonnull));
 // Add a plugin. Provide the name of the library to load.
 bool loop_add_plugin(struct loop_configurator *configurator, const char *plugin) __attribute__((nonnull));
 // Set the remote endpoint of the uplink

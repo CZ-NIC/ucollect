@@ -162,6 +162,7 @@ struct pcap_interface {
 	// Link back to the loop owning this pcap. For epoll handler.
 	struct loop *loop;
 	const char *name;
+	bool promiscuous;
 	struct pcap_sub_interface directions[2];
 	size_t offset;
 	int datalink;
@@ -626,7 +627,7 @@ void loop_run(struct loop *loop) {
 				}
 			}
 			LFOR(pcap, interface, &loop->pcap_interfaces) {
-				if (!loop_add_pcap(configurator, interface->name))
+				if (!loop_add_pcap(configurator, interface->name, interface->promiscuous))
 					die("Copy of %s failed\n", interface->name);
 			}
 			loop_config_commit(configurator);
@@ -752,7 +753,7 @@ void loop_destroy(struct loop *loop) {
 }
 
 // Open one direction of the capture.
-static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char *interface, const char *dir_txt) {
+static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char *interface, const char *dir_txt, bool promiscuous) {
 	ulog(LLOG_INFO, "Initializing PCAP (%s) on %s\n", dir_txt, interface);
 	// Open the pcap
 	char errbuf[PCAP_ERRBUF_SIZE];
@@ -762,7 +763,7 @@ static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char
 		return -1;
 	}
 	// Set parameters.
-	int result = pcap_set_promisc(*pcap, 0); // No promiscuous mode (we don't need that)
+	int result = pcap_set_promisc(*pcap, promiscuous);
 	assert(result == 0); // Can error only on code errors
 	result = pcap_set_timeout(*pcap, PCAP_TIMEOUT); // 100 milliseconds
 	assert(result == 0);
@@ -812,10 +813,10 @@ static int pcap_create_dir(pcap_t **pcap, pcap_direction_t direction, const char
 	return fd;
 }
 
-bool loop_add_pcap(struct loop_configurator *configurator, const char *interface) {
+bool loop_add_pcap(struct loop_configurator *configurator, const char *interface, bool promiscuous) {
 	// First, go through the old ones and copy it if is there.
 	LFOR(pcap, old, &configurator->loop->pcap_interfaces)
-		if (strcmp(interface, old->name) == 0) {
+		if (strcmp(interface, old->name) == 0 && old->promiscuous == promiscuous) {
 			old->mark = false; // We copy it, don't close it at commit
 			struct pcap_interface *new = pcap_append_pool(&configurator->pcap_interfaces, configurator->config_pool);
 			*new = *old;
@@ -826,12 +827,12 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 			return true;
 		}
 	pcap_t *pcap_in;
-	int fd_in = pcap_create_dir(&pcap_in, PCAP_D_IN, interface, "in");
+	int fd_in = pcap_create_dir(&pcap_in, PCAP_D_IN, interface, "in", promiscuous);
 	if (fd_in == -1)
 		return false; // Error already reported
 
 	pcap_t *pcap_out;
-	int fd_out = pcap_create_dir(&pcap_out, PCAP_D_OUT, interface, "out");
+	int fd_out = pcap_create_dir(&pcap_out, PCAP_D_OUT, interface, "out", promiscuous);
 	if (fd_out == -1) {
 		pcap_close(pcap_in);
 		return false;
@@ -842,6 +843,7 @@ bool loop_add_pcap(struct loop_configurator *configurator, const char *interface
 	*new = (struct pcap_interface) {
 		.loop = configurator->loop,
 		.name = mem_pool_strdup(configurator->config_pool, interface),
+		.promiscuous = promiscuous,
 		.directions = {
 			[PCAP_DIR_IN] = {
 				.handler = pcap_read,

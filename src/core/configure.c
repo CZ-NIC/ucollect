@@ -44,7 +44,19 @@ static bool load_interface(struct loop_configurator *configurator, struct uci_se
 		ulog(LLOG_ERROR, "Failed to load ifname of interface %s\n", section->e.name);
 		return false;
 	}
-	if (!loop_add_pcap(configurator, name))
+	const char *promiscuous = uci_lookup_option_string(ctx, section, "promiscuous");
+	bool promisc_conv = true;
+	if (promiscuous) {
+		if (strcmp(promiscuous, "0") == 0)
+			promisc_conv = false;
+		else if (strcmp(promiscuous, "1") == 0)
+			promisc_conv = true;
+		else {
+			ulog(LLOG_ERROR, "Value of promiscuous for interface %s must be 0 or 1, not '%s'\n", name, promiscuous);
+			return false;
+		}
+	}
+	if (!loop_add_pcap(configurator, name, promisc_conv))
 		return false;
 	return true;
 }
