@@ -116,12 +116,14 @@ my @interesting_remote_ports = (
 	22,	# ssh
 	23,	# telnet
 	25,	# smtp
+	80,	# http
 	109,	# pop2
 	110,	# pop3
 	123,	# ntp
 	143,	# imap
 	161,	# snmp
 	194,	# irc
+	443,	# https
 	445,	# smb
 	465,	# smtps
 	587,	# submission
