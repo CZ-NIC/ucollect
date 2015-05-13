@@ -26,6 +26,7 @@ config would look like this:
 
   config interface
       option ifname 'eth0'
+      option promiscuous 1
 
   config plugin
       option libname 'libplugin_count.so'
@@ -46,7 +47,9 @@ The `interface` section
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 This describes one interface to listen on. The option `ifname` specifies
-the name of the interface on the system.
+the name of the interface on the system. The option `promiscuous` may
+be set to 0 or 1 and specifies if promiscuous mode should be on on the
+device. It defaults to 1.
 
 The `plugin` section
 ~~~~~~~~~~~~~~~~~~~~
