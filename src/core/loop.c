@@ -323,6 +323,11 @@ static void sig_handler(int signal) {
 #else
 	{
 #endif
+		// Avoid signal loop
+		struct sigaction sa = {
+			.sa_handler = SIG_DFL
+		};
+		sigaction(signal, &sa, NULL);
 		struct plugin_holder *holder = (struct plugin_holder *) current_context;
 #ifdef DEBUG
 		assert(!holder || holder->canary == PLUGIN_HOLDER_CANARY);
