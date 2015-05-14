@@ -387,12 +387,12 @@ ALTER TABLE refused ALTER COLUMN id SET DEFAULT NEXTVAL('refused_ids');
 CREATE TABLE ssh_sessions (
 	id INT NOT NULL PRIMARY KEY,
 	long_id CHAR(32) NOT NULL,
-	client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+	client_id NOT NULL INTEGER REFERENCES clients(id) ON DELETE CASCADE,
 	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
 	end_time TIMESTAMP WITH TIME ZONE DEFAULT NULL,
 	login TEXT NOT NULL,
 	password TEXT NOT NULL,
-	remote INET
+	remote NOT NULL INET
 );
 CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
 ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
@@ -400,7 +400,7 @@ CREATE INDEX ssh_sessions_long_id_idx ON ssh_sessions (long_id);
 
 CREATE TABLE ssh_commands (
 	id SERIAL PRIMARY KEY,
-	session_id INTEGER REFERENCES ssh_sessions(id) ON DELETE CASCADE,
+	session_id INTEGER NOT NULL REFERENCES ssh_sessions(id) ON DELETE CASCADE,
 	ts TIMESTAMP WITH TIME ZONE NOT NULL,
 	success BOOLEAN NOT NULL,
 	command TEXT NOT NULL,
