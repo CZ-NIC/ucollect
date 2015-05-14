@@ -91,8 +91,7 @@ static const int signals[] = {
 	SIGSEGV,
 	SIGALRM,
 	SIGTTIN,
-	SIGTTOU,
-	SIGHUP
+	SIGTTOU
 };
 
 static void chld_handler(int unused) {
