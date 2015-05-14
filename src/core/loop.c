@@ -62,7 +62,8 @@
  */
 
 static volatile sig_atomic_t jump_ready = 0;
-static jmp_buf jump_env;
+static volatile sig_atomic_t abort_ready = 0;
+static jmp_buf jump_env, abort_env;
 static volatile struct context *current_context = NULL;
 static int jump_signum = 0;
 static bool sig_initialized;
@@ -304,38 +305,30 @@ GEN_CALL_WRAPPER_PARAM_2(fd, int, void *)
 GEN_CALL_WRAPPER_PARAM(config_finish, bool)
 
 static void sig_handler(int signal) {
+	jump_signum = signal;
 #ifdef SIGNAL_REINIT
 	if (jump_ready && current_context) {
 		jump_ready = 0; // Don't try to jump twice in a row if anything goes bad
 		// There's a handler
-		jump_signum = signal;
 #ifdef DEBUG
-		ulog(LLOG_WARN, "Trying to create a core dump (if they are enabled)\n");
 		/*
 		 * Create a core dump. Do it by copying the process by fork and then
 		 * aborting the child. Abort creates a core dump, if it is enabled.
 		 */
-		if (fork() == 0)
+		if (fork() == 0) {
+			ulog(LLOG_WARN, "Trying to create a core dump (if they are enabled)\n");
 			abort_safe();
+		}
 #endif
 		longjmp(jump_env, 1);
 	} else {
 #else
 	{
 #endif
-		// Avoid signal loop
-		struct sigaction sa = {
-			.sa_handler = SIG_DFL
-		};
-		sigaction(signal, &sa, NULL);
-		struct plugin_holder *holder = (struct plugin_holder *) current_context;
-#ifdef DEBUG
-		assert(!holder || holder->canary == PLUGIN_HOLDER_CANARY);
-#endif
-		ulog(LLOG_DIE, "Got signal %d with context %p (%s), aborting\n", signal, (void *)current_context, holder ? holder->plugin.name : "<none>");
-		// Not ready to jump. Abort.
-		abort_safe();
+		if (abort_ready)
+			longjmp(abort_env, 1);
 	}
+	abort_safe();
 }
 
 static bool plugin_config_check(struct plugin_holder *plugin) {
@@ -575,6 +568,22 @@ static void config_copy(struct loop_configurator *configurator, struct plugin_ho
 }
 
 void loop_run(struct loop *loop) {
+	if (setjmp(abort_env)) {
+		abort_ready = 0;
+		// Avoid signal loop
+		struct sigaction sa = {
+			.sa_handler = SIG_DFL
+		};
+		sigaction(jump_signum, &sa, NULL);
+		struct plugin_holder *holder = (struct plugin_holder *) current_context;
+#ifdef DEBUG
+		assert(!holder || holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+		ulog(LLOG_DIE, "Got signal %d with context %p (%s), aborting\n", jump_signum, (void *)current_context, holder ? holder->plugin.name : "<none>");
+		// Not ready to jump. Abort.
+		abort_safe();
+	}
+	abort_ready = 1;
 	ulog(LLOG_INFO, "Running the main loop\n");
 	sigset_t blocked;
 	// Block signals during actions, and let them only during the epoll
@@ -726,6 +735,7 @@ void loop_run(struct loop *loop) {
 	current_loop = NULL;
 	if (sigprocmask(SIG_SETMASK, &blocked, &original_mask) == -1)
 		die("Could not restore sigprocmask (%s)\n", strerror(errno));
+	abort_ready = 0;
 }
 
 static void pcap_destroy(struct pcap_interface *interface) {
