@@ -164,10 +164,13 @@ static struct pool_page *page_get(size_t size, const char *name) {
 // Release a given page (previously allocated by page_get).
 static void page_return(struct pool_page *page, const char *name) {
 	ulog(LLOG_DEBUG, "Releasing page %zu large from pool '%s' (%p)%s\n", page->size, name, (void *) page, (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE) ? " (cached)" : "");
-	if (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE)
+	if (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE) {
+#ifdef DEBUG
+		memset(page, '~', PAGE_SIZE);
+#endif
 		// A single page can be put into the cache, if it is not already full
 		page_cache[page_cache_size ++] = page;
-	else if (munmap(page, page->size) != 0)
+	} else if (munmap(page, page->size) != 0)
 		die("Couldn't return page %p of %zu bytes from pool '%s' (%s)\n", (void *) page, page->size, name, strerror(errno));
 }
 
@@ -292,6 +295,9 @@ void mem_pool_reset(struct mem_pool *pool) {
 	// Allocate the pool (again) from the page. It is already there.
 	struct mem_pool *the_pool = page_alloc(&pool->pos, &pool->available, sizeof *pool + 1 + strlen(pool->name));
 	assert(pool == the_pool); // It should be the same pool.
+#ifdef DEBUG
+	memset(pool->pos, '*', pool->available);
+#endif
 }
 
 #endif
