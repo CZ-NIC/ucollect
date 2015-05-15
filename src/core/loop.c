@@ -306,20 +306,20 @@ GEN_CALL_WRAPPER_PARAM(config_finish, bool)
 
 static void sig_handler(int signal) {
 	jump_signum = signal;
+#ifdef DEBUG
+	/*
+	 * Create a core dump. Do it by copying the process by fork and then
+	 * aborting the child. Abort creates a core dump, if it is enabled.
+	 */
+	if (fork() == 0) {
+		sleep(1); // Just wait so we overwrite the core dump created by the abort_safe in loop_run, if we jump there
+		abort_safe();
+	}
+#endif
 #ifdef SIGNAL_REINIT
 	if (jump_ready && current_context) {
 		jump_ready = 0; // Don't try to jump twice in a row if anything goes bad
 		// There's a handler
-#ifdef DEBUG
-		/*
-		 * Create a core dump. Do it by copying the process by fork and then
-		 * aborting the child. Abort creates a core dump, if it is enabled.
-		 */
-		if (fork() == 0) {
-			ulog(LLOG_WARN, "Trying to create a core dump (if they are enabled)\n");
-			abort_safe();
-		}
-#endif
 		longjmp(jump_env, 1);
 	} else {
 #else
