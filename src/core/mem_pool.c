@@ -157,13 +157,13 @@ static struct pool_page *page_get(size_t size, const char *name) {
 		result->size = size;
 	}
 	result->next = NULL;
-	ulog(LLOG_DEBUG, "Got page %zu large for pool '%s' (%p) %s\n", size, name, (void *) result, cached);
+	ulog(LLOG_DEBUG, "Got page %zu large for pool '%s' (%p)%s\n", size, name, (void *) result, cached);
 	return result;
 }
 
 // Release a given page (previously allocated by page_get).
 static void page_return(struct pool_page *page, const char *name) {
-	ulog(LLOG_DEBUG, "Releasing page %zu large from pool '%s' (%p) %s\n", page->size, name, (void *) page, (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE) ? " (cached)" : "");
+	ulog(LLOG_DEBUG, "Releasing page %zu large from pool '%s' (%p)%s\n", page->size, name, (void *) page, (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE) ? " (cached)" : "");
 	if (page->size == PAGE_SIZE && page_cache_size < PAGE_CACHE_SIZE)
 		// A single page can be put into the cache, if it is not already full
 		page_cache[page_cache_size ++] = page;
