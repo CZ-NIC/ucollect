@@ -1237,10 +1237,14 @@ void loop_config_commit(struct loop_configurator *configurator) {
 			pcap_destroy(interface);
 	// Migrate the copied ones, register the new ones.
 	LFOR(plugin, plugin, &configurator->plugins)
-		if (!plugin->mark)
+		if (!plugin->mark) {
 			for (size_t i = 0; i < loop->timeout_count; i ++)
 				if (loop->timeouts[i].context == &plugin->original->context)
 					loop->timeouts[i].context = &plugin->context;
+			// Update pointers inside its FDs. The FDs are allocated from the plugin's pool, so they survive, but the kept context/plugin holder there would be outdated.
+			LFOR(plugin_fds, fd_holder, plugin)
+				fd_holder->plugin = plugin;
+		}
 	LFOR(pcap, interface, &configurator->pcap_interfaces) {
 		epoll_register_pcap(loop, interface, interface->mark ? EPOLL_CTL_ADD : EPOLL_CTL_MOD);
 		interface->registered = true;
