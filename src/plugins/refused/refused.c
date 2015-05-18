@@ -301,7 +301,7 @@ static void handle_event(struct context *context, enum event_type type, char nak
 	if (!*node) { // First access to that thing, create it
 		assert(type != EVENT_TIMEOUT); // Only existing items may time out
 		if (u->undecided >= u->undecided_limit) {
-			ulog(LLOG_ERROR, "Too many undecided connections, droping\n");
+			ulog(LLOG_ERROR, "Too many undecided connections, dropping\n");
 			return;
 		}
 		u->undecided ++;
