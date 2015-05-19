@@ -234,7 +234,7 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 		ulog(LLOG_ERROR, "Couldn't create error sockets: %s\n", strerror(errno));
 		return false;
 	}
-	pid_t socat = fork();
+	pid_t socat = loop_fork(uplink->loop);
 	if (socat == -1) {
 		close(sockets[0]);
 		close(sockets[1]);
@@ -288,7 +288,7 @@ static bool uplink_connect_internal(struct uplink *uplink) {
 		const char *remote = mem_pool_printf(loop_temp_pool(uplink->loop), "OPENSSL:%s:%s,cafile=%s,cipher=HIGH:!LOW:!MEDIUM:!SSLv2:!aNULL:!eNULL:!DES:!3DES:!AES128:!CAMELLIA128,method=TLS,pf=ip%d", uplink->remote_name, uplink->service, uplink->cert, uplink->last_ipv6 ? 6 : 4);
 		ulog(LLOG_DEBUG, "Starting socat with %s\n", remote);
 		execlp("socat", "socat", "STDIO", remote, (char *) NULL);
-		die("Exec should never exit but it did: %s\n", strerror(errno));
+		die("Exec should never have exited but it did: %s\n", strerror(errno));
 	}
 }
 
