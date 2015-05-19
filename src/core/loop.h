@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <unistd.h>
 
 struct loop;
 struct loop_configurator;
@@ -41,6 +42,8 @@ struct loop *loop_create() __attribute__((malloc)) __attribute__((returns_nonnul
 void loop_run(struct loop *loop) __attribute__((nonnull));
 void loop_break(struct loop *loop) __attribute__((nonnull));
 void loop_destroy(struct loop *loop) __attribute__((nonnull));
+// Like fork, but closes FDs and stuff in the child. Do not use the loop in the child! Designed to exec in child afterwards.
+pid_t loop_fork(struct loop *loop) __attribute__((nonnull));
 
 /*
  * Get statistics of the interfaces of the loop.

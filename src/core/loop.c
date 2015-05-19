@@ -1371,3 +1371,26 @@ void loop_plugin_unregister_fd(struct context *context, int fd) {
 		}
 	ulog(LLOG_WARN, "Asked to unregister plugin's %s fd %d, but it is not present; ignoring request\n", holder->plugin.name, fd);
 }
+
+pid_t loop_fork(struct loop *loop) {
+	pid_t result = fork();
+	if (result == 0) {
+		// The child. Do bunch of closing.
+		jump_ready = 0;
+		abort_ready = 0;
+		LFOR(plugin, plugin, &loop->plugins) {
+			LFOR(plugin_fds, handler, plugin) {
+				assert(handler->fd != -1);
+				close(handler->fd);
+			}
+		}
+		LFOR(pcap, interface, &loop->pcap_interfaces) {
+			for (size_t i = 0; i < 2; i ++)
+				pcap_close(interface->directions[i].pcap);
+		}
+		if (loop->uplink)
+			uplink_close(loop->uplink);
+		close(loop->epoll_fd);
+	}
+	return result;
+}

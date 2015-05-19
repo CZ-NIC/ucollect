@@ -62,6 +62,8 @@ void uplink_reconnect(struct uplink *uplink) __attribute__((nonnull));
  * is destroyed.
  */
 void uplink_destroy(struct uplink *uplink) __attribute__((nonnull));
+// Disconnect the plugin. Used from within the child in loop_fork. It leaves the uplink in inconsistent state, so don't use it afterwards.
+void uplink_close(struct uplink *uplink) __attribute__((nonnull));
 
 /*
  * Send a single message to the server through the uplink connection.

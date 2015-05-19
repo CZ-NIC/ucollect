@@ -918,3 +918,8 @@ void uplink_realloc_config(struct uplink *uplink, struct mem_pool *pool) {
 struct addrinfo *uplink_addrinfo(struct uplink *uplink) {
 	return uplink->addrinfo;
 }
+
+void uplink_close(struct uplink *uplink) {
+	if (uplink->fd != -1)
+		close(uplink->fd);
+}
