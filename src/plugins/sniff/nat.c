@@ -46,7 +46,7 @@ struct task_data *start_nat(struct context *context, struct mem_pool *pool, cons
 	argv[3] = mem_pool_strdup(context->temp_pool, nat_program);
 	argv[4] = "sniff-nat";
 	argv[5] = NULL;
-	data->ok = fork_task("/bin/busybox", argv, "nat", output, pid);
+	data->ok = fork_task(context->loop, "/bin/busybox", argv, "nat", output, pid);
 	return data;
 }
 

@@ -58,6 +58,6 @@ struct task_data *input_parse(struct context *context, struct mem_pool *pool, co
 			data->input_ok = false;
 			return data;
 		}
-	data->system_ok = fork_task("/bin/busybox", argv, name, output, pid);
+	data->system_ok = fork_task(context->loop, "/bin/busybox", argv, name, output, pid);
 	return data;
 }

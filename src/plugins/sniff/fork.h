@@ -23,6 +23,8 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-bool fork_task(const char *program, char **argv, const char *name, int *output, pid_t *pid);
+struct loop;
+
+bool fork_task(struct loop *loop, const char *program, char **argv, const char *name, int *output, pid_t *pid);
 
 #endif

@@ -20,21 +20,21 @@
 #include "fork.h"
 
 #include "../../core/util.h"
+#include "../../core/loop.h"
 
-#include <unistd.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 
 #define D(MESSAGE, ...) do { ulog(LLOG_ERROR, MESSAGE, __VA_ARGS__); exit(1); } while (0)
 
-bool fork_task(const char *program, char **argv, const char *name, int *output, pid_t *pid) {
+bool fork_task(struct loop *loop, const char *program, char **argv, const char *name, int *output, pid_t *pid) {
 	int pipes[2];
 	if (pipe(pipes) == -1) {
 		ulog(LLOG_ERROR, "Couldn't create %s pipes: %s\n", name, strerror(errno));
 		return false;
 	}
-	pid_t new_pid = fork();
+	pid_t new_pid = loop_fork(loop);
 	if (new_pid == -1) {
 		ulog(LLOG_ERROR, "Couldn't create new %s process: %s\n", name, strerror(errno));
 		if (close(pipes[0]) == -1)
