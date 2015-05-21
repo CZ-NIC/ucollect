@@ -392,9 +392,9 @@ INSERT INTO fake_blacklist_limits (server, client_pass, score_total, clients_tot
 CREATE OR REPLACE VIEW fake_blacklist AS SELECT
   t.server,
   t.remote,
-  MAX(t.clients_total) clients_total,
-  MAX(t.score_total) score_total,
-  MAX(l.mode)
+  MAX(t.clients_total) AS clients_total,
+  MAX(t.score_total) AS score_total,
+  MAX(l.mode) AS mode
 FROM
   (SELECT
     s.server,
