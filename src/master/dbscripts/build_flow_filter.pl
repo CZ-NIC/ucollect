@@ -82,6 +82,12 @@ while (my ($ip, $ano_type) = $an_stm->fetchrow_array) {
 	$data{$type . $port}->{$ip} = 1;
 }
 
+my $fb_stm = $dbh->prepare('SELECT DISTINCT remote FROM fake_blacklist');
+$fb_stm->execute;
+while (my ($ip) = $fb_stm->fetchrow_array) {
+	$data{''}->{$ip} = 1;
+}
+
 # Drop IP addresses from specific rules if they are in the generic one
 while (my ($port, $ips) = each %data) {
 	delete @{$data{$port}}{keys %blacklist};
