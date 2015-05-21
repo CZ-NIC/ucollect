@@ -22,6 +22,12 @@ my $dbh = DBI->connect("dbi:Pg:dbname=turris", "tagger", "", { RaiseError => 1, 
 my $read = $dbh->prepare('SELECT id, ip_remote, port_remote FROM biflows WHERE tag IS NULL LIMIT 100000');
 my $update = $dbh->prepare('UPDATE biflows SET tag = ?, tagged_on = ? WHERE id = ?');
 
+my $fake_blacklist = $dbh->prepare('SELECT server, remote FROM fake_blacklist');
+$fake_blacklist->execute;
+while (my ($server, $ip) = $fake_blacklist->fetchrow_array) {
+	$tags{$ip} //= "fake-$server";
+}
+
 my $found = 1;
 my $count = 0;
 while ($found) {
