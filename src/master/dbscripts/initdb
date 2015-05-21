@@ -5,8 +5,11 @@
 psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
+DROP VIEW IF EXISTS fake_blacklist;
 DROP TABLE IF EXISTS fake_logs;
 DROP TABLE IF EXISTS fake_server_names;
+DROP TABLE IF EXISTS fake_blacklist_limits;
+DROP TABLE IF EXISTS fake_blacklist_scores;
 DROP TABLE IF EXISTS ssh_commands;
 DROP TABLE IF EXISTS ssh_sessions;
 DROP TABLE IF EXISTS refused;
@@ -37,6 +40,7 @@ DROP TABLE IF EXISTS clients;
 DROP TABLE IF EXISTS config;
 DROP TYPE IF EXISTS fake_log_type;
 DROP TYPE IF EXISTS fake_server;
+DROP TYPE IF EXISTS blacklist_mode;
 
 CREATE TABLE clients (
 	id INT PRIMARY KEY NOT NULL,
@@ -337,7 +341,6 @@ CREATE TABLE flow_filters (
 
 CREATE TYPE fake_log_type AS ENUM ('connect', 'disconnect', 'lost', 'extra', 'timeout', 'login');
 CREATE TYPE fake_server AS ENUM ('telnet');
-
 CREATE TABLE fake_server_names (
 	name TEXT NOT NULL,
 	code CHAR NOT NULL,
@@ -346,9 +349,7 @@ CREATE TABLE fake_server_names (
 	UNIQUE(code),
 	UNIQUE(type)
 );
-
 INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet');
-
 CREATE TABLE fake_logs (
 	client INT NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
@@ -360,6 +361,95 @@ CREATE TABLE fake_logs (
 	reason TEXT,
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
+CREATE INDEX fake_logs_server_idx ON fake_logs(server);
+CREATE INDEX fake_logs_client_idx ON fake_logs(client);
+CREATE INDEX fake_logs_compound_idx ON fake_logs(server, remote, client);
+CREATE TABLE fake_blacklist_scores (
+	server fake_server NOT NULL,
+	event fake_log_type NOT NULL,
+	score BIGINT NOT NULL,
+	UNIQUE(server, event)
+);
+INSERT INTO fake_blacklist_scores (server, event, score) VALUES
+	('telnet', 'connect', 1),
+	('telnet', 'login', 5);
+CRATE TYPE AS ENUM ('soft', 'hard');
+CREATE TABLE fake_blacklist_limits (
+	server fake_server NOT NULL,
+	client_pass BIGINT NOT NULL,
+	score_total BIGINT NOT NULL,
+	clients_total INT NOT NULL,
+	score_passed BIGINT NOT NULL,
+	clients_passed INT NOT NULL,
+	mode blacklist_mode NOT NULL
+);
+CREATE INDEX fake_blacklist_limit_sc_idx ON fake_blacklist_limits (server, client_pass);
+CREATE INDEX fake_blacklist_limit_s_idx ON fake_blacklist_limits (server);
+INSERT INTO fake_blacklist_limits (server, client_pass, score_total, clients_total, score_passed, clients_passed, mode) VALUES
+	('telnet', 25, 100, 0, 0, 3, 'hard'),
+	('telnet', 25, 75, 0, 0, 2, 'soft'),
+	('telnet', 200, 0, 0, 0, 1, 'soft');
+CREATE OR REPLACE VIEW fake_blacklist AS SELECT
+  t.server,
+  t.remote,
+  MAX(t.clients_total) clients_total,
+  MAX(t.score_total) score_total,
+  MAX(l.mode)
+FROM
+  (SELECT
+    s.server,
+    s.remote,
+    s.client_pass,
+    COUNT(s.client) AS clients_total,
+    SUM(s.passed) AS clients_passed,
+    SUM(s.score) AS score_total,
+    SUM(s.score * s.passed) AS score_passed
+  FROM
+    (SELECT
+      fake_logs.server,
+      fake_logs.remote,
+      fake_logs.client,
+      fake_blacklist_limits.client_pass,
+      SUM(fake_blacklist_scores.score) AS score,
+      (SUM(fake_blacklist_scores.score) >= fake_blacklist_limits.client_pass)::INT AS passed
+    FROM
+      fake_logs
+    JOIN
+      fake_blacklist_scores
+    ON
+      fake_logs.server = fake_blacklist_scores.server AND
+      fake_logs.event = fake_blacklist_scores.event
+    JOIN
+      fake_blacklist_limits
+    ON
+      fake_logs.server = fake_blacklist_limits.server
+    GROUP BY
+      fake_logs.server,
+      fake_logs.remote,
+      fake_logs.client,
+      fake_blacklist_limits.client_pass
+    ) AS s
+  GROUP BY
+    s.server,
+    s.remote,
+    s.client_pass
+  ) AS t
+JOIN
+  fake_blacklist_limits AS l
+ON
+  t.server = l.server AND
+  t.client_pass = l.client_pass
+WHERE
+  t.clients_total >= l.clients_total AND
+  t.clients_passed >= l.clients_passed AND
+  t.score_total >= l.score_total AND
+  t.score_passed >= l.score_passed
+GROUP BY
+  t.server,
+  t.remote
+ORDER BY
+  t.server,
+  t.remote;
 
 CREATE TABLE spoof (
 	client INT NOT NULL,
