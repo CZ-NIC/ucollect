@@ -25,7 +25,7 @@ my $update = $dbh->prepare('UPDATE biflows SET tag = ?, tagged_on = ? WHERE id =
 my $fake_blacklist = $dbh->prepare('SELECT server, remote FROM fake_blacklist');
 $fake_blacklist->execute;
 while (my ($server, $ip) = $fake_blacklist->fetchrow_array) {
-	$tags{$ip} //= "fake-$server";
+	$tags{$ip}->{values} //= "fake-$server";
 }
 
 my $found = 1;
