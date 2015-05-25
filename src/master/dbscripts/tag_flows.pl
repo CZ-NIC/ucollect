@@ -1,6 +1,10 @@
 #!/usr/bin/perl
 use common::sense;
 use DBI;
+use Config::IniFiles;
+
+my $cfg = Config::IniFiles->new(-file => $ARGV[0]);
+shift @ARGV;
 
 my %tags;
 
@@ -22,10 +26,16 @@ my $dbh = DBI->connect("dbi:Pg:dbname=turris", "tagger", "", { RaiseError => 1, 
 my $read = $dbh->prepare('SELECT id, ip_remote, port_remote FROM biflows WHERE tag IS NULL LIMIT 100000');
 my $update = $dbh->prepare('UPDATE biflows SET tag = ?, tagged_on = ? WHERE id = ?');
 
+my $anomalies = $dbh->prepare('SELECT DISTINCT value, type FROM anomalies WHERE relevance_count >= ?');
+$anomalies->execute($cfg->val('anomalies', 'client_treshold'));
+while (my ($ip, $type) = $anomalies->fetchrow_array) {
+	$tags{$ip}->{values} = "anom-$type";
+}
+
 my $fake_blacklist = $dbh->prepare('SELECT server, remote FROM fake_blacklist');
 $fake_blacklist->execute;
 while (my ($server, $ip) = $fake_blacklist->fetchrow_array) {
-	$tags{$ip}->{values} //= "fake-$server";
+	$tags{$ip}->{values} = "fake-$server";
 }
 
 my $found = 1;
