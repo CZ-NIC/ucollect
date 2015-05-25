@@ -1,0 +1,8 @@
+#!/bin/sh
+
+set -ex
+
+cd $HOME/ucollect/src/master/analyze
+./fake.pl analyze.ini >$HOME/fake.csv.tmp
+chmod a+r $HOME/fake.csv.tmp
+mv $HOME/fake.csv.tmp $HOME/fake.csv
