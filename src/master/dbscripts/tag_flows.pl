@@ -29,6 +29,8 @@ my $update = $dbh->prepare('UPDATE biflows SET tag = ?, tagged_on = ? WHERE id =
 my $anomalies = $dbh->prepare('SELECT DISTINCT value, type FROM anomalies WHERE relevance_count >= ?');
 $anomalies->execute($cfg->val('anomalies', 'client_treshold'));
 while (my ($ip, $type) = $anomalies->fetchrow_array) {
+	$ip =~ s/(:|->)\d+//;
+	next if lc $type eq 'p';
 	$tags{$ip}->{values} = "anom-$type";
 }
 
