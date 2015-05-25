@@ -105,3 +105,29 @@ Each record is prefixed by single `uint8_t` type. Current types are:
 The type of the record is followed by a single string, encoded in the
 usual uplink format (`uint32_t` length, followed by so many
 characters).
+
+Uci configuration
+-----------------
+
+There are two levels of configuration. One is read directly by the
+plugin and it is part of the `plugin` section. This one is generated
+by the init script and isn't expected to be edited by user.
+
+The other is in a separate section of type `fakes` and it is expected
+to be edited by user. This provides information to the init script.
+
+The `plugin` section
+~~~~~~~~~~~~~~~~~~~~
+
+This is the same `plugin` section that tells ucollect to load this
+plugin. There are, however, additional options:
+
+ `log_credentials`:: If this is set to 1, the login names and
+   passwords the attackers try are sent together with the events. If
+   it is set to 0, only the events are logged, but without this
+   additional info. If the option is not present, it defaults to 0.
+ `telnet_port`:: The port on which the plugin listens on the telnet
+   protocol. If it is set to 0, listening to telnet protocol is
+   disabled.
+
+Further service-specific port options are to come with the services.
