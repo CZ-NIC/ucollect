@@ -24,6 +24,9 @@ eval {
 	$whois_cache = retrieve 'whois.cache';
 };
 
+my $t = time - 3600*24*10; # If the data is older than 10 days, it is considered expired
+delete @$whois_cache{grep { $whois_cache->{$_}->{time} < $t } keys %$whois_cache};
+
 sub getwhois($) {
 	my ($ip) = @_;
 	if (not exists $whois_cache->{$ip}) {
