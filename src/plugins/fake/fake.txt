@@ -122,12 +122,51 @@ The `plugin` section
 This is the same `plugin` section that tells ucollect to load this
 plugin. There are, however, additional options:
 
- `log_credentials`:: If this is set to 1, the login names and
-   passwords the attackers try are sent together with the events. If
-   it is set to 0, only the events are logged, but without this
-   additional info. If the option is not present, it defaults to 0.
- `telnet_port`:: The port on which the plugin listens on the telnet
-   protocol. If it is set to 0, listening to telnet protocol is
-   disabled.
+ `log_credentials`::
+   If this is set to 1, the login names and passwords the attackers
+   try are sent together with the events. If it is set to 0, only the
+   events are logged, but without this additional info. If the option
+   is not present, it defaults to 0.
+ `telnet_port`::
+   The port on which the plugin listens on the telnet protocol. If it
+   is set to 0, listening to telnet protocol is disabled.
 
 Further service-specific port options are to come with the services.
+
+The `fakes` section
+~~~~~~~~~~~~~~~~~~~
+
+This section is not directly processed by the plugin code. It is used
+to feed the firewall and to create the above configuration.
+
+The section is of type `fakes` and its name is also `fakes`.
+
+The options are:
+
+  `disable`:: This is actually a list. Each item marks one port and
+    protocol which should be left alone. All items are in the form of
+    port number directly followed by `tcp` or `udp` (without any
+    separator). So, to disable telnet, you'd put `23tcp` into the list.
+  `redir_offset`::
+    The real port, where ucollect listens, is different than the one
+    the attacker connects to. It is then redirected by the firewall.
+    The `redir_offset` specifies the distance of the ports (the real
+    one is by this amount higher). You may want to change it if the
+    real port collides with a service on the router.
+  `mark_mask`::
+    The firewall uses the mark mechanism of iptables. It needs two
+    bits of information and it uses the bits specified by mask
+    `0xC0000` by default. If this collides with some other system
+    using the marks, you can change the mask and the values in the
+    following options.
+  `mark_port_ok`::
+    A value marking packets with a port to one of the interesting
+    services. It must be non-zero value composed from the bits of
+    `mark_mask` and distinct from the others.
+  `mark_addr_ok`::
+    A value marking packets with matching port and address. It is
+    similar to the `mark_port_ok` value, but it needs a distinct
+    value.
+  `mark_redir`::
+    A value marking packets selected for redirection. Again, similar
+    to the above two and needs a distinct value.
