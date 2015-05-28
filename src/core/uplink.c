@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -524,19 +524,10 @@ static void handle_buffer(struct uplink *uplink) {
 #define HALF_SIZE 16
 					atsha_big_int server_challenge, client_response;
 					uint8_t local_half[HALF_SIZE] = PASSWD_HALF;
-					loop_xor_plugins(uplink->loop, local_half);
 					assert(HALF_SIZE + uplink->buffer_size == sizeof(server_challenge.data));
 					server_challenge.bytes = HALF_SIZE + uplink->buffer_size;
 					memcpy(server_challenge.data, local_half, HALF_SIZE);
 					memcpy(server_challenge.data + HALF_SIZE, uplink->buffer, uplink->buffer_size);
-					// Log our xor
-					uint8_t pure_plugins[HALF_SIZE] = { 0 };
-					loop_xor_plugins(uplink->loop, pure_plugins);
-					char hash_str[2 * HALF_SIZE + 1];
-					hash_str[2 * HALF_SIZE] = '\0';
-					for (size_t i = 0; i < HALF_SIZE; i ++)
-						sprintf(hash_str + 2 * i, "%02hhX", pure_plugins[i]);
-					ulog(LLOG_INFO, "Trying to log in with plugin hash %s\n", hash_str);
 					// Get the chip handle
 					atsha_set_log_callback(atsha_log_callback);
 					struct atsha_handle *cryptochip = atsha_open();

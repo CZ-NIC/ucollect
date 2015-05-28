@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013,2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -1323,13 +1323,6 @@ void loop_uplink_configure(struct loop_configurator *configurator, const char *r
 
 uint64_t loop_now(struct loop *loop) {
 	return loop->now;
-}
-
-void loop_xor_plugins(struct loop *loop, uint8_t *hash) {
-	LFOR(plugin, plugin, &loop->plugins) {
-		for (size_t i = 0; i < CHALLENGE_LEN / 2; i ++)
-			hash[i] ^= plugin->hash[i];
-	}
 }
 
 static void plugin_fd_event(struct plugin_fd *fd, uint32_t events) {

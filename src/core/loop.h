@@ -171,7 +171,4 @@ void loop_timeout_cancel(struct loop *loop, size_t id) __attribute__((nonnull));
 // Return number of milliseconds since some unspecified time in the past
 uint64_t loop_now(struct loop *loop) __attribute__((pure));
 
-// XOR the hash of all the plugins together and to the hash here.
-void loop_xor_plugins(struct loop *loop, uint8_t *hash) __attribute__((nonnull));
-
 #endif
