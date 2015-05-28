@@ -562,7 +562,8 @@ static void handle_buffer(struct uplink *uplink) {
 					 * list of plugins and possibly other things too.
 					 */
 					uplink->auth_status = AUTHENTICATED;
-					uplink_send_message(uplink, 'H', NULL, 0);
+					uint8_t proto_version = PROTOCOL_VERSION;
+					uplink_send_message(uplink, 'H', &proto_version, sizeof proto_version);
 					loop_uplink_connected(uplink->loop);
 				} else
 					// This is an insult, and we won't talk to the other side any more!

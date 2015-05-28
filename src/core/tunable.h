@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -80,5 +80,8 @@
 
 // Dump stats every hour
 #define STAT_DUMP_TIMEOUT (3600 * 1000)
+
+// Base protocol version
+#define PROTOCOL_VERSION 1
 
 #endif
