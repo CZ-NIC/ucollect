@@ -1276,11 +1276,21 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	}
 }
 
+static const char *libname(const struct plugin_holder *plugin) {
+	const char *libname = rindex(plugin->libname, '/');
+	if (libname)
+		libname ++;
+	else
+		libname = plugin->libname;
+	return libname;
+}
+
 static void send_plugin_versions(struct loop *loop) {
 	ulog(LLOG_DEBUG, "Sending list of plugins\n");
 	size_t message_size = 0; // For the 'L'
-	LFOR(plugin, plugin, &loop->plugins)
-		message_size += sizeof(uint32_t) + sizeof(uint16_t) + strlen(plugin->plugin.name); // Size prefix of the string and the plugin version
+	LFOR(plugin, plugin, &loop->plugins) {
+		message_size += 2*sizeof(uint32_t) + sizeof(uint16_t) + strlen(plugin->plugin.name) + sizeof plugin->hash + strlen(libname(plugin)); // Size prefix of the string and the plugin version
+	}
 	uint8_t *message = mem_pool_alloc(loop->temp_pool, message_size);
 	uint8_t *pos = message;
 	size_t rest = message_size;
@@ -1291,6 +1301,11 @@ static void send_plugin_versions(struct loop *loop) {
 		memcpy(pos, &version, sizeof version);
 		rest -= sizeof version;
 		pos += sizeof version;
+		memcpy(pos, plugin->hash, sizeof plugin->hash);
+		rest -= sizeof plugin->hash;
+		pos += sizeof plugin->hash;
+		const char *ln = libname(plugin);
+		uplink_render_string(ln, strlen(ln), &pos, &rest);
 	}
 	assert(rest == 0);
 	uplink_send_message(loop->uplink, 'V', message, message_size);
