@@ -154,7 +154,7 @@ static bool config_internal(struct context *context) {
 				ulog(LLOG_ERROR, "Option %s must be integer\n", opt_name);
 				return false;
 			}
-			if (!p || p >= 65536) {
+			if (p < 0 || p >= 65536) {
 				ulog(LLOG_ERROR, "Option %s of value %ld out of range (valid ports are 1-65535)\n", opt_name, p);
 				return false;
 			}
