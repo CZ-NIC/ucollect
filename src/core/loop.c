@@ -223,6 +223,7 @@ struct plugin_holder {
 	struct plugin_fd *fd_head, *fd_tail, *fd_unused;
 	struct trie *config_trie, *config_candidate;
 	bool mark; // Mark for configurator.
+	bool active; // Is the plugin activated? Is it allowed to talk to the server?
 	size_t failed;
 	uint8_t hash[CHALLENGE_LEN / 2];
 };
@@ -392,7 +393,7 @@ struct loop_configurator {
 	struct plugin_list plugins;
 	const char *remote_name, *remote_service, *login, *password, *cert;
 	struct trie *config_trie;
-	bool need_reconnect;
+	bool need_new_versions;
 };
 
 // Handle one packet.
@@ -1009,7 +1010,7 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	jump_ready = 0;
 	// Store the plugin structure.
 	plugin_insert_after(&configurator->plugins, new, configurator->plugins.tail);
-	configurator->need_reconnect = true;
+	configurator->need_new_versions = true;
 	return plugin_config_check(new);
 }
 
@@ -1220,6 +1221,42 @@ static void pcap_watchdog(struct context *context_unused, void *data, size_t id_
 	interface->watchdog_timer = loop_timeout_add(interface->loop, PCAP_WATCHDOG_TIME, NULL, interface, pcap_watchdog);
 }
 
+static const char *libname(const struct plugin_holder *plugin) {
+	const char *libname = rindex(plugin->libname, '/');
+	if (libname)
+		libname ++;
+	else
+		libname = plugin->libname;
+	return libname;
+}
+
+static void send_plugin_versions(struct loop *loop) {
+	ulog(LLOG_DEBUG, "Sending list of plugins\n");
+	size_t message_size = 0;
+	LFOR(plugin, plugin, &loop->plugins) {
+		message_size += 2*sizeof(uint32_t) + sizeof(uint16_t) + strlen(plugin->plugin.name) + sizeof plugin->hash + strlen(libname(plugin)) + 1; // Size prefix of the string and the plugin version
+	}
+	uint8_t *message = mem_pool_alloc(loop->temp_pool, message_size);
+	uint8_t *pos = message;
+	size_t rest = message_size;
+	LFOR(plugin, plugin, &loop->plugins) {
+		uplink_render_string(plugin->plugin.name, strlen(plugin->plugin.name), &pos, &rest);
+		uint16_t version = htons(plugin->plugin.version);
+		assert(rest >= sizeof version);
+		memcpy(pos, &version, sizeof version);
+		rest -= sizeof version;
+		pos += sizeof version;
+		memcpy(pos, plugin->hash, sizeof plugin->hash);
+		rest -= sizeof plugin->hash;
+		pos += sizeof plugin->hash;
+		const char *ln = libname(plugin);
+		uplink_render_string(ln, strlen(ln), &pos, &rest);
+		*pos = plugin->active ? 'A' : 'I';
+	}
+	assert(rest == 0);
+	uplink_send_message(loop->uplink, 'V', message, message_size);
+}
+
 void loop_config_commit(struct loop_configurator *configurator) {
 	struct loop *loop = configurator->loop;
 	/*
@@ -1230,7 +1267,7 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	LFOR(plugin, plugin, &loop->plugins)
 		if (plugin->mark) {
 			plugin_destroy(plugin, false);
-			configurator->need_reconnect = true;
+			configurator->need_new_versions = true;
 		}
 	LFOR(pcap, interface, &loop->pcap_interfaces)
 		if (interface->mark)
@@ -1259,8 +1296,8 @@ void loop_config_commit(struct loop_configurator *configurator) {
 			uplink_configure(loop->uplink, configurator->remote_name, configurator->remote_service, configurator->login, configurator->password, configurator->cert);
 		else
 			uplink_realloc_config(loop->uplink, configurator->config_pool);
-		if (configurator->need_reconnect)
-			uplink_reconnect(loop->uplink);
+		if (configurator->need_new_versions && uplink_connected(loop->uplink))
+			send_plugin_versions(loop);
 	}
 	// Destroy the old configuration and merge the new one
 	if (loop->config_pool)
@@ -1276,50 +1313,16 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	}
 }
 
-static const char *libname(const struct plugin_holder *plugin) {
-	const char *libname = rindex(plugin->libname, '/');
-	if (libname)
-		libname ++;
-	else
-		libname = plugin->libname;
-	return libname;
-}
-
-static void send_plugin_versions(struct loop *loop) {
-	ulog(LLOG_DEBUG, "Sending list of plugins\n");
-	size_t message_size = 0; // For the 'L'
-	LFOR(plugin, plugin, &loop->plugins) {
-		message_size += 2*sizeof(uint32_t) + sizeof(uint16_t) + strlen(plugin->plugin.name) + sizeof plugin->hash + strlen(libname(plugin)); // Size prefix of the string and the plugin version
-	}
-	uint8_t *message = mem_pool_alloc(loop->temp_pool, message_size);
-	uint8_t *pos = message;
-	size_t rest = message_size;
-	LFOR(plugin, plugin, &loop->plugins) {
-		uplink_render_string(plugin->plugin.name, strlen(plugin->plugin.name), &pos, &rest);
-		uint16_t version = htons(plugin->plugin.version);
-		assert(rest >= sizeof version);
-		memcpy(pos, &version, sizeof version);
-		rest -= sizeof version;
-		pos += sizeof version;
-		memcpy(pos, plugin->hash, sizeof plugin->hash);
-		rest -= sizeof plugin->hash;
-		pos += sizeof plugin->hash;
-		const char *ln = libname(plugin);
-		uplink_render_string(ln, strlen(ln), &pos, &rest);
-	}
-	assert(rest == 0);
-	uplink_send_message(loop->uplink, 'V', message, message_size);
-}
-
 void loop_uplink_connected(struct loop *loop) {
 	send_plugin_versions(loop);
-	LFOR(plugin, plugin, &loop->plugins)
-		plugin_uplink_connected(plugin);
 }
 
 void loop_uplink_disconnected(struct loop *loop) {
-	LFOR(plugin, plugin, &loop->plugins)
-		plugin_uplink_disconnected(plugin);
+	LFOR(plugin, plugin, &loop->plugins) {
+		if (plugin->active)
+			plugin_uplink_disconnected(plugin);
+		plugin->active = false;
+	}
 }
 
 void loop_plugin_reinit(struct context *context) {
