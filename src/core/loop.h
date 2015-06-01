@@ -142,7 +142,7 @@ struct mem_pool *loop_temp_pool(struct loop *loop) __attribute__((nonnull)) __at
 
 /*
  * Send some data from uplink to a plugin. Plugin is specified by name.
- * Returns true if the plugin exists, false if not.
+ * Returns true if the plugin exists and is active, false if not.
  */
 bool loop_plugin_send_data(struct loop *loop, const char *plugin, const uint8_t *data, size_t length) __attribute__((nonnull));
 

@@ -1066,6 +1066,9 @@ bool loop_plugin_send_data(struct loop *loop, const char *name, const uint8_t *d
 	assert(loop->uplink);
 	LFOR(plugin, plugin, &loop->plugins)
 		if (strcmp(plugin->plugin.name, name) == 0) {
+			// Skip inactive plugins. There might, in theory, be another active version with the same name, so don't abort yet.
+			if (!plugin->active)
+				continue;
 			plugin_uplink_data(plugin, data, length);
 			return true;
 		}
