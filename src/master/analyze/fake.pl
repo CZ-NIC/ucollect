@@ -77,7 +77,7 @@ while (my ($server, $remote, @rest) = $bl_stm->fetchrow_array) {
 	}
 	my $whois = getwhois $remote;
 	my %whois = map { lc $_ => $whois->{$_} } keys %$whois;
-	print (join ',', $server, $remote, @rest, $whois{origin} // $whois{originas}, $whois{source}, $whois{"abuse-mailbox"} // $whois{"e-mail"} // $whois{orgabuseemail} // $whois{rabusemail}, $gi->country_code_by_addr($remote));
+	print (join ',', $server, $remote, @rest, '"' . ($whois{origin} // $whois{originas}) . '"', $whois{source}, $whois{"abuse-mailbox"} // $whois{"e-mail"} // $whois{orgabuseemail} // $whois{rabusemail}, $gi->country_code_by_addr($remote));
 	print "\n";
 }
 
