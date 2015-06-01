@@ -1080,6 +1080,14 @@ const char *loop_plugin_get_name(const struct context *context) {
 	return holder->plugin.name;
 }
 
+bool loop_plugin_active(const struct context *context) {
+	const struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+	assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+	return holder->active;
+}
+
 size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *context, void *data, void (*callback)(struct context *context, void *data, size_t id)) {
 	if (after == 0)
 		/*

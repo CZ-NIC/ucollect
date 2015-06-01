@@ -882,6 +882,8 @@ bool uplink_send_message(struct uplink *uplink, char type, const void *data, siz
 }
 
 bool uplink_plugin_send_message(struct context *context, const void *data, size_t size) {
+	if (!loop_plugin_active(context))
+		return false;
 	const char *name = loop_plugin_get_name(context);
 	ulog(LLOG_DEBUG, "Sending message of size %zu from plugin %s\n", size, name);
 	uint32_t name_length = strlen(name);

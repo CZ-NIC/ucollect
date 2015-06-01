@@ -105,6 +105,7 @@ const struct config_node *loop_plugin_option_get(struct context *context, const 
 void loop_plugin_reinit(struct context *context) __attribute__((nonnull)) __attribute__((noreturn));
 
 const char *loop_plugin_get_name(const struct context *context) __attribute__((nonnull)) __attribute__((const));
+bool loop_plugin_active(const struct context *context) __attribute__((nonnull));
 /*
  * Set the uplink used by this loop. This may be called at most once on
  * a given loop.
