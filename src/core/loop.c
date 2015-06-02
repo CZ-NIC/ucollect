@@ -1416,3 +1416,41 @@ pid_t loop_fork(struct loop *loop) {
 	}
 	return result;
 }
+
+void loop_plugin_activation(struct loop *loop, struct plugin_activation *plugins, size_t count) {
+	bool changed = false;
+	for (size_t i = 0; i < count; i ++) {
+		struct plugin_holder *candidate = NULL;
+		LFOR(plugin, plugin, &loop->plugins) {
+			if (strcmp(plugin->plugin.name, plugins[i].name) == 0 && memcmp(plugin->hash, plugins[i].hash, sizeof plugins[i].hash) == 0) {
+				candidate = plugin;
+				break;
+			}
+		}
+		if (candidate) {
+			if (plugins[i].activate != candidate->active) {
+				if (plugins[i].activate)
+					plugin_uplink_connected(candidate);
+				else
+					plugin_uplink_disconnected(candidate);
+				changed = true;
+				candidate->active = plugins[i].activate;
+			}
+		} else {
+			size_t len = strlen(plugins[i].name);
+			size_t size = 1 /* Error header */ + 4 /* String length */ + len + sizeof plugins[i].hash;
+			uint8_t *buffer = mem_pool_alloc(loop->temp_pool, size);
+			uint8_t *pos = buffer;
+			size_t rest = size;
+			*buffer = 'A'; // Error during activation
+			buffer ++;
+			rest --;
+			uplink_render_string(plugins[i].name, len, &pos, &rest);
+			assert(rest == sizeof plugins[i].hash);
+			memcpy(pos, plugins[i].hash, sizeof plugins[i].hash);
+			uplink_send_message(loop->uplink, 'E', buffer, size);
+		}
+	}
+	if (changed)
+		send_plugin_versions(loop);
+}

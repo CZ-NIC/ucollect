@@ -20,6 +20,8 @@
 #ifndef UCOLLECT_UPLINK_H
 #define UCOLLECT_UPLINK_H
 
+#include "tunable.h"
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -28,6 +30,12 @@ struct uplink;
 struct loop;
 struct mem_pool;
 struct context;
+
+struct plugin_activation {
+	const char *name;
+	uint8_t hash[CHALLENGE_LEN / 2];
+	bool activate;
+};
 
 /*
  * Create an uplink. It is expected to be called only once on a given loop.

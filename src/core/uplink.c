@@ -22,7 +22,6 @@
 #include "loop.h"
 #include "util.h"
 #include "context.h"
-#include "tunable.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -453,6 +452,42 @@ void uplink_render_uint32(uint32_t value, uint8_t **buffer_pos, size_t *buffer_l
 	*buffer_len -= sizeof value;
 }
 
+static void handle_activation(struct uplink *uplink) {
+	const uint8_t *buffer = uplink->buffer;
+	size_t rest = uplink->buffer_size;
+	struct mem_pool *temp_pool = loop_temp_pool(uplink->loop);
+	uint32_t amount = uplink_parse_uint32(&buffer, &rest);
+	if (amount == 0) {
+		ulog(LLOG_WARN, "Empty activation message. Why?\n");
+		return;
+	}
+	struct plugin_activation *plugins = mem_pool_alloc(temp_pool, amount * sizeof *plugins);
+	for (size_t i = 0; i < amount; i ++) {
+		plugins[i].name = uplink_parse_string(temp_pool, &buffer, &rest);
+		if (rest <= sizeof plugins[i].hash) {// One more for the activation flag
+			ulog(LLOG_ERROR, "Activation message buffer too short to read plugin hash and bool (%zu available)\n", rest);
+			abort();
+		}
+		memcpy(plugins[i].hash, buffer, sizeof plugins[i].hash);
+		buffer += sizeof plugins[i].hash;
+		rest -= sizeof plugins[i].hash;
+		plugins[i].activate = *buffer;
+		buffer ++;
+		rest --;
+	}
+	if (rest != 0) {
+		ulog(LLOG_WARN, "Extra %zu bytes in activation message, ignoring\n", rest);
+	}
+	/*
+	 * Reset the buffer and clean up before calling the loop.
+	 * It may contain callbacks to the plugins. If they contained an error,
+	 * They are handled by a longjump directly to the loop, so the end of the
+	 * function might not be called.
+	 */
+	buffer_reset(uplink);
+	loop_plugin_activation(uplink->loop, plugins, amount);
+}
+
 static void handle_buffer(struct uplink *uplink) {
 	if (uplink->has_size) {
 		// If we already have the size, it is the real message
@@ -513,6 +548,9 @@ static void handle_buffer(struct uplink *uplink) {
 						  uplink->auth_status = FAILED;
 						  connect_fail(uplink);
 						  break;
+					case 'A':
+						handle_activation(uplink);
+						break;
 					default:
 						  ulog(LLOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
 						  break;

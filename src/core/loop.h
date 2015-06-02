@@ -29,6 +29,7 @@ struct loop;
 struct loop_configurator;
 
 struct plugin;
+struct plugin_activation;
 struct context;
 struct uplink;
 struct config_node;
@@ -171,5 +172,8 @@ size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *conte
 void loop_timeout_cancel(struct loop *loop, size_t id) __attribute__((nonnull));
 // Return number of milliseconds since some unspecified time in the past
 uint64_t loop_now(struct loop *loop) __attribute__((pure));
+
+// Activate or deactivate plugins. If needed, send update of plugin versions and/or errors.
+void loop_plugin_activation(struct loop *loop, struct plugin_activation *plugins, size_t count) __attribute__((nonnull));
 
 #endif
