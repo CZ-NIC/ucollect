@@ -471,7 +471,7 @@ static void handle_activation(struct uplink *uplink) {
 		memcpy(plugins[i].hash, buffer, sizeof plugins[i].hash);
 		buffer += sizeof plugins[i].hash;
 		rest -= sizeof plugins[i].hash;
-		plugins[i].activate = *buffer;
+		plugins[i].activate = (*buffer == 'A');
 		buffer ++;
 		rest --;
 	}

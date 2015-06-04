@@ -54,7 +54,7 @@ function shall return a plugin description (`struct plugin`).
 
 This plugin description contains information about the plugin. The
 interesting part is there are several callbacks called at different
-times. Each plugin can be `NULL`, in which case nothing is called at the
+times. Each callback can be `NULL`, in which case nothing is called at the
 time it would be invoked.
 
 All callbacks have a common argument of type `struct context *`. This
@@ -86,12 +86,21 @@ uplink_data_callback:: This is called whenever the control server
   sends a message directed to the plugin. The data of the message is
   provided as parameter, but the content is plugin-defined. It is up
   to the plugin to provide answer, if any is required.
-uplink_connected_callback:: Called when the uplink connects to the
-  central server. This can be called multiple times over the lifetime
-  of plugin (or never, if the connection was made before and it is
-  never lost).
-uplink_disconnected_callback:: Called when the connection to the
-  remote server is lost.
+uplink_connected_callback:: Called when the plugin gains the ability
+  to talk to the server. This means that there's a connection to the
+  server and the server allowed the plugin. This can be called
+  multiple times over the lifetime of a plugin (when the connection is
+  lost, then regained, etc. In such case,
+  `uplink_disconnected_callback` is called in between). Or it might
+  not be called at all, if the connection is never made, or if the
+  server doesn't like the plugin.  Note that packets or other events
+  may come before the first call to this callback.
+uplink_disconnected_callback:: Called when the plugin loses the
+  ability to talk to the server. This might be because the server
+  connection is lost, or the server declares it doesn't want to talk
+  to the plugin any more. This is called only if there was a call to
+  `uplink_connected_callback`. The ability to read packets or receive
+  other events is not influenced by this fact.
 fd_callback:: Called when the plugin registers a file descriptor to be
   watched and the file descriptor becomes ready to be read.
 config_check_callback:: When ucollect is loading new configuration, it
