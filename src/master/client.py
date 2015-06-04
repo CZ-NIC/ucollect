@@ -153,6 +153,11 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 					if self.__proto_version >= 1:
 						self.__available_plugins = {}
 					if self.__plugins.register_client(self):
+						if self.__proto_version == 0:
+							# Activate all the clients in the old version.
+							# The new protocol handles activation on plugin-by-plugin basis
+							for p in self.__plugins.get_plugins():
+								self.__plugins.activate_client(p, self)
 						self.__logged_in = True
 						self.__pinger = LoopingCall(self.__ping)
 						if self.cid() in self.__fastpings:
