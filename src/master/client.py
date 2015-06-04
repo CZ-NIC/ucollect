@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -50,6 +50,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__auth_buffer = []
 		self.__wait_auth = False
 		self.__fastpings = fastpings
+		self.__proto_version = 0
 		self.__available_plugins = {
 			'Badconf': 1,
 			'Buckets': 1,
@@ -142,10 +143,15 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 						login_failure('Incorrect password')
 					self.__auth_buffer = None
 				# Ask the authenticator
-				auth.auth(auth_finished, self.__cid, self.__challenge.encode('hex'), response.encode('hex'))
-				self.__wait_auth = True
+				if self.__challenge:
+					auth.auth(auth_finished, self.__cid, self.__challenge.encode('hex'), response.encode('hex'))
+					self.__wait_auth = True
 			elif msg == 'H':
 				if self.__authenticated:
+					if len(msg) >= 2:
+						(self.__proto_version,) = struct.unpack("!B", msg[1])
+					if self.__proto_version >= 1:
+						self.__available_plugins = {}
 					if self.__plugins.register_client(self):
 						self.__logged_in = True
 						self.__pinger = LoopingCall(self.__ping)
