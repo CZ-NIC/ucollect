@@ -1309,8 +1309,6 @@ void loop_config_commit(struct loop_configurator *configurator) {
 			uplink_configure(loop->uplink, configurator->remote_name, configurator->remote_service, configurator->login, configurator->password, configurator->cert);
 		else
 			uplink_realloc_config(loop->uplink, configurator->config_pool);
-		if (configurator->need_new_versions && uplink_connected(loop->uplink))
-			send_plugin_versions(loop);
 	}
 	// Destroy the old configuration and merge the new one
 	if (loop->config_pool)
@@ -1324,6 +1322,8 @@ void loop_config_commit(struct loop_configurator *configurator) {
 		plugin->config_candidate = NULL;
 		plugin_config_finish(plugin, true);
 	}
+	if (configurator->need_new_versions && uplink_connected(loop->uplink))
+		send_plugin_versions(loop);
 }
 
 void loop_uplink_connected(struct loop *loop) {
