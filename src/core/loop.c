@@ -1431,10 +1431,13 @@ void loop_plugin_activation(struct loop *loop, struct plugin_activation *plugins
 		}
 		if (candidate) {
 			if (plugins[i].activate != candidate->active) {
-				if (plugins[i].activate)
+				if (plugins[i].activate) {
+					ulog(LLOG_INFO, "Activating plugin %s\n", plugins[i].name);
 					plugin_uplink_connected(candidate);
-				else
+				} else {
+					ulog(LLOG_INFO, "Deactivating plugin %s\n", plugins[i].name);
 					plugin_uplink_disconnected(candidate);
+				}
 				changed = true;
 				candidate->active = plugins[i].activate;
 			}
