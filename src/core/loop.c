@@ -1263,6 +1263,8 @@ static void send_plugin_versions(struct loop *loop) {
 		const char *ln = libname(plugin);
 		uplink_render_string(ln, strlen(ln), &pos, &rest);
 		*pos = plugin->active ? 'A' : 'I';
+		pos ++;
+		rest --;
 	}
 	assert(rest == 0);
 	uplink_send_message(loop->uplink, 'V', message, message_size);
