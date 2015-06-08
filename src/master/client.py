@@ -23,11 +23,12 @@ import twisted.internet.protocol
 import twisted.protocols.basic
 import random
 import struct
-from protocol import extract_string
+from protocol import extract_string, format_string
 import logging
 import activity
 import auth
 import time
+import plugin_versions
 
 logger = logging.getLogger(name='client')
 sysrand = random.SystemRandom()
@@ -57,6 +58,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			'Count': 1,
 			'Sniff': 1
 		}
+		self.__plugin_versions = {}
 		self.MAX_LENGTH = 1024 * 1024 * 1024 # A gigabyte should be enough
 		self.last_pong = time.time()
 
@@ -148,8 +150,8 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 					self.__wait_auth = True
 			elif msg == 'H':
 				if self.__authenticated:
-					if len(msg) >= 2:
-						(self.__proto_version,) = struct.unpack("!B", msg[1])
+					if len(params) >= 1:
+						(self.__proto_version,) = struct.unpack("!B", params[0])
 					if self.__proto_version >= 1:
 						self.__available_plugins = {}
 					if self.__plugins.register_client(self):
@@ -183,14 +185,72 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__plugins.route_to_plugin(plugin, data, self.cid())
 			# TODO: Handle the possibility the plugin doesn't exist somehow (#2705)
 		elif msg == 'V': # New list of versions of the client
-			self.__available_plugins = {}
-			while len(params) > 0:
-				(name, params) = extract_string(params)
-				(version,) = struct.unpack('!H', params[:2])
-				self.__available_plugins[name] = version
-				params = params[2:]
+			if self.__proto_version == 0:
+				self.__available_plugins = {}
+				while len(params) > 0:
+					(name, params) = extract_string(params)
+					(version,) = struct.unpack('!H', params[:2])
+					self.__available_plugins[name] = version
+					params = params[2:]
+			else:
+				self.__handle_versions(params)
 		else:
 			logger.warn("Unknown message from client %s: %s", self.cid(), msg)
+
+	def __handle_versions(self, params):
+		"""
+		Parse the client's message about the plugins it knows.
+		Activate and deactivate plugins accordingly.
+		"""
+		versions = {}
+		while len(params) > 0:
+			(name, params) = extract_string(params)
+			(version, md5_hash) = struct.unpack('!H16s', params[:18])
+			(lib, params) = extract_string(params[18:])
+			activity = params[0]
+			params = params[1:]
+			versions[name] = {
+				'name': name,
+				'version': version,
+				'hash': md5_hash,
+				'activity': (activity == 'A')
+			}
+		self.__check_versions(versions)
+
+	def __check_versions(self, versions):
+		"""
+		Check the plugin versions provided in the parameter and activate
+		or deactivate them as needed. Insert or remove their info from
+		data structures and activate/deactivate them in the plugin router.
+		"""
+		required = {}
+		change = set()
+		available = {}
+		for plug_name in versions:
+			required[plug_name] = plugin_versions.check_version(plug_name, versions[plug_name]['version'], versions[plug_name]['hash'])
+			if required[plug_name] != versions[plug_name]['activity']:
+				change.add(plug_name)
+			if required[plug_name]:
+				available[plug_name] = versions[plug_name]['version']
+		now_active = set(filter(lambda p: required[p], required.keys()))
+		prev_active = set(filter(lambda p: self.__plugin_versions[p]['activity'], self.__plugin_versions.keys()))
+		for p in prev_active - now_active:
+			self.__plugins.deactivate_client(p, self)
+		activate = now_active - prev_active
+		for p in prev_active & now_active:
+			if versions[p]['version'] != self.__plugin_versions[p]['version']:
+				self.__plugins.deactivate_client(p, self)
+				activate.add(p)
+		if change:
+			message = 'A' + struct.pack('!L', len(change))
+			for c in change:
+				message += format_string(c) + struct.pack('!16sc', versions[c]['hash'], 'A' if required[c] else 'I')
+				versions[c]['activity'] = required[c]
+			self.sendString(message)
+		self.__plugin_versions = versions
+		self.__available_plugins = available
+		for p in activate:
+			self.__plugins.activate_client(p, self)
 
 	def cid(self):
 		"""

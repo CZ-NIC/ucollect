@@ -144,6 +144,7 @@ class Plugins:
 		Mark a plugin active for the given client.
 		"""
 		cid = client.cid()
+		logger.debug("Activate plugin %s in client %s", plugin, cid)
 		if cid in self.__activations[plugin]:
 			logger.warn("Plugin %s already active in client %s", plugin, cid)
 			return
@@ -155,6 +156,7 @@ class Plugins:
 		Mark a plugin inactive for the given client.
 		"""
 		cid = client.cid()
+		logger.debug("Deactivate plugin %s in client %s", plugin, cid)
 		if cid not in self.__activations[plugin]:
 			logger.warn("Plugin %s isn't active in client %s to deactivate", plugin, cid)
 			return
