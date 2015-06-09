@@ -20,12 +20,14 @@
 from twisted.internet.task import LoopingCall
 from twisted.internet import reactor
 import collections
+import weakref
 import time
 import database
 
 __cache = collections.defaultdict(set)
 __cache_time = 0
 __cache_expiration = 300
+__cache_clients = weakref.WeakSet()
 
 def __update_cache():
 	"""
@@ -56,7 +58,10 @@ def __propagate_now():
 	"""
 	Propagate the changes to the cache now.
 	"""
-	# TODO
+	clients = list(__cache_clients) # Make a copy of the items, so they don't disappear in mid-iteration
+	for c in clients:
+		if c is not None: # Just in case it disappeared due to weak references (the doc is not clear on if this can happen or not)
+			c.recheck_versions()
 
 def __propagate_cache():
 	"""
@@ -78,6 +83,15 @@ def check_version(name, proto_ver, md5_hash):
 	p_info = __cache.get(name, set())
 	candidates = ((proto_ver, md5_hash), (None, md5_hash), (proto_ver, None), (None, None))
 	return any(candidate in p_info for candidate in candidates)
+
+def add_client(client):
+	"""
+	Add a client to be notified when the configuration of
+	which plugins are allowed changes. The client is free
+	to disappear if it seems fit.
+	"""
+	global __cache_clients
+	__cache_clients.add(client)
 
 def __time_check():
 	"""

@@ -160,6 +160,9 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 							# The new protocol handles activation on plugin-by-plugin basis
 							for p in self.__plugins.get_plugins():
 								self.__plugins.activate_client(p, self)
+						else:
+							# Please tell me when there're changes to the allowed plugins
+							plugin_versions.add_client(self)
 						self.__logged_in = True
 						self.__pinger = LoopingCall(self.__ping)
 						if self.cid() in self.__fastpings:
@@ -261,6 +264,14 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			return self.__cid
 		else:
 			return self.__addr.name
+
+	def recheck_versions(self):
+		"""
+		Run the check for versions again. The check might come out
+		differently, the configuration in the DB might have changed.
+		"""
+		if self.__logged_in:
+			self.__check_versions(self.__plugin_versions)
 
 class ClientFactory(twisted.internet.protocol.Factory):
 	"""
