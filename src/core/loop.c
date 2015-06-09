@@ -265,18 +265,25 @@ struct plugin_list {
  *  * Restores no context and resets the temporary pool
  */
 #define GEN_CALL_WRAPPER(NAME) \
-static void plugin_##NAME(struct plugin_holder *plugin) { \
+static inline void plugin_##NAME(struct plugin_holder *plugin) { \
 	if (!plugin->plugin.NAME##_callback) \
 		return; \
 	current_context = &plugin->context; \
 	plugin->plugin.NAME##_callback(&plugin->context); \
 	mem_pool_reset(plugin->context.temp_pool); \
 	current_context = NULL; \
+}\
+static inline void plugin_##NAME##_noreset(struct plugin_holder *plugin) { \
+	if (!plugin->plugin.NAME##_callback) \
+		return; \
+	current_context = &plugin->context; \
+	plugin->plugin.NAME##_callback(&plugin->context); \
+	current_context = NULL; \
 }
 
 // The same, with parameter
 #define GEN_CALL_WRAPPER_PARAM(NAME, TYPE) \
-static void plugin_##NAME(struct plugin_holder *plugin, TYPE PARAM) { \
+static inline void plugin_##NAME(struct plugin_holder *plugin, TYPE PARAM) { \
 	if (!plugin->plugin.NAME##_callback) \
 		return; \
 	current_context = &plugin->context; \
@@ -287,7 +294,7 @@ static void plugin_##NAME(struct plugin_holder *plugin, TYPE PARAM) { \
 
 // And with 2
 #define GEN_CALL_WRAPPER_PARAM_2(NAME, TYPE1, TYPE2) \
-static void plugin_##NAME(struct plugin_holder *plugin, TYPE1 PARAM1, TYPE2 PARAM2) { \
+static inline void plugin_##NAME(struct plugin_holder *plugin, TYPE1 PARAM1, TYPE2 PARAM2) { \
 	if (!plugin->plugin.NAME##_callback) \
 		return; \
 	current_context = &plugin->context; \
@@ -1433,10 +1440,10 @@ void loop_plugin_activation(struct loop *loop, struct plugin_activation *plugins
 			if (plugins[i].activate != candidate->active) {
 				if (plugins[i].activate) {
 					ulog(LLOG_INFO, "Activating plugin %s\n", plugins[i].name);
-					plugin_uplink_connected(candidate);
+					plugin_uplink_connected_noreset(candidate);
 				} else {
 					ulog(LLOG_INFO, "Deactivating plugin %s\n", plugins[i].name);
-					plugin_uplink_disconnected(candidate);
+					plugin_uplink_disconnected_noreset(candidate);
 				}
 				changed = true;
 				candidate->active = plugins[i].activate;
