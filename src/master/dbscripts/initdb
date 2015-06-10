@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS fake_server_names;
 DROP TABLE IF EXISTS fake_blacklist_limits;
 DROP TABLE IF EXISTS fake_blacklist_scores;
 DROP TABLE IF EXISTS known_plugins;
+DROP TABLE IF EXISTS active_plugins;
 DROP TABLE IF EXISTS ssh_commands;
 DROP TABLE IF EXISTS ssh_sessions;
 DROP TABLE IF EXISTS refused;
@@ -87,6 +88,16 @@ CREATE TABLE known_plugins (
 	FOREIGN KEY (activity) REFERENCES activities(id)
 );
 CREATE INDEX ON known_plugins(name);
+CREATE TABLE active_plugins (
+	client INT NOT NULL,
+	name TEXT NOT NULL,
+	updated TIMESTAMP NOT NULL,
+	version INT NOT NULL,
+	hash TEXT NOT NULL,
+	active BOOL NOT NULL,
+	UNIQUE(client, name),
+	FOREIGN KEY (client) REFERENCES clients(id)
+);
 
 CREATE TABLE groups (
 	id INT PRIMARY KEY NOT NULL,
@@ -557,6 +568,10 @@ GRANT SELECT (batch) ON spoof TO $DBUPDATER;
 GRANT INSERT ON spoof TO $DBUPDATER;
 GRANT INSERT ON refused TO $DBUPDATER;
 GRANT SELECT ON known_plugins TO $DBUPDATER;
+GRANT DELETE ON active_plugins TO $DBUPDATER;
+GRANT UPDATE ON active_plugins TO $DBUPDATER;
+GRANT INSERT ON active_plugins TO $DBUPDATER;
+GRANT SELECT ON active_plugins TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
