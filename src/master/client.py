@@ -226,6 +226,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		or deactivate them as needed. Insert or remove their info from
 		data structures and activate/deactivate them in the plugin router.
 		"""
+		logger.debug("Checking versions on client %s, %s", self.cid(), self)
 		required = {}
 		change = set()
 		available = {}
@@ -270,7 +271,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		Run the check for versions again. The check might come out
 		differently, the configuration in the DB might have changed.
 		"""
-		if self.__logged_in:
+		if self.__logged_in and self.__connected:
 			self.__check_versions(self.__plugin_versions)
 
 class ClientFactory(twisted.internet.protocol.Factory):

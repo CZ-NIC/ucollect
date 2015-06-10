@@ -58,7 +58,7 @@ def __propagate_now():
 	"""
 	Propagate the changes to the cache now.
 	"""
-	clients = list(__cache_clients) # Make a copy of the items, so they don't disappear in mid-iteration
+	clients = set(__cache_clients) # Make a copy of the items, so they don't disappear in mid-iteration
 	for c in clients:
 		if c is not None: # Just in case it disappeared due to weak references (the doc is not clear on if this can happen or not)
 			c.recheck_versions()
