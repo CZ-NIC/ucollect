@@ -47,26 +47,18 @@ def __keep_storing():
 
 		try:
 			with database.transaction() as t:
-				for (client, activity) in actions:
-					if client is None:
-						if activity == 'shutdown':
-							logger.debug('Doing activity thread shutdown')
-							run = False
-						else:
-							logger.error('Unknown global activity: %s', activity)
-					else:
-						logger.debug("Pushing %s of %s", activity, client)
-						t.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', activity_types.id FROM clients CROSS JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
+				for action in actions:
+					if not action(t):
+						run = False
 		except Exception as e:
 			logger.error("Unexpected exception in activity thread, ignoring: %s", e)
 	logger.info('Activity thread terminated')
 
-def log_activity(client, activity):
+def push(action):
 	"""
-	Log activity of a client. Pass name of the client (.cid()) and name
-	of the activity (eg. "login").
+	Push a function action into the queue to log some activity
+	or similar. They are executed in order.
 	"""
-	logger.debug("Logging %s activity of %s", activity, client)
 	global __queue
 	global __condition
 	global __thread
@@ -78,15 +70,20 @@ def log_activity(client, activity):
 		__thread.start()
 	# Postpone it to separate thread
 	with __condition:
-		__queue.append((client, activity))
+		__queue.append(action)
 		__condition.notify()
 
+def log_activity(client, activity):
+	"""
+	Log activity of a client. Pass name of the client (.cid()) and name
+	of the activity (eg. "login").
+	"""
+	logger.debug("Logging %s activity of %s", activity, client)
+	def log(transaction):
+		logger.debug("Pushing %s of %s", activity, client)
+		transaction.execute("INSERT INTO activities (client, timestamp, activity) SELECT clients.id, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', activity_types.id FROM clients CROSS JOIN activity_types WHERE clients.name = %s AND activity_types.name = %s", (client, activity))
+		return True
+	push(log)
+
 def shutdown():
-	global __condition
-	global __queue
-	if __condition:
-		logger.info('Asking the activity thread to shutdown')
-		with __condition:
-			__queue.append((None, 'shutdown')) # A shutdown marker
-			__condition.notify()
-		__thread.join()
+	push(lambda transaction: False)
