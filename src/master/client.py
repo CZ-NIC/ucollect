@@ -29,10 +29,15 @@ import activity
 import auth
 import time
 import plugin_versions
+import database
 
 logger = logging.getLogger(name='client')
 sysrand = random.SystemRandom()
 challenge_len = 128 # 128 bits of random should be enough for log-in to protect against replay attacks
+
+with database.transaction() as t:
+	# As we just started, there's no plugin active anywhere. Flush whatever is left in the table.
+	t.execute("DELETE FROM active_plugins")
 
 class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 	"""
@@ -94,6 +99,11 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			logger.info("Connection lost from %s", self.cid())
 			self.__pinger.stop()
 			self.__plugins.unregister_client(self)
+			def log_plugins(transaction):
+				logger.debug("Dropping plugin list of %s", self.cid())
+				transaction.execute('DELETE FROM active_plugins WHERE client IN (SELECT id FROM clients WHERE name = %s)', (self.cid(),))
+				return True
+			activity.push(log_plugins)
 			activity.log_activity(self.cid(), "logout")
 			self.transport.abortConnection()
 
@@ -210,15 +220,23 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			(name, params) = extract_string(params)
 			(version, md5_hash) = struct.unpack('!H16s', params[:18])
 			(lib, params) = extract_string(params[18:])
-			activity = params[0]
+			p_activity = params[0]
 			params = params[1:]
 			versions[name] = {
 				'name': name,
 				'version': version,
 				'hash': md5_hash,
-				'activity': (activity == 'A')
+				'activity': (p_activity == 'A'),
+				'lib': lib
 			}
 		self.__check_versions(versions)
+		now = database.now()
+		def log_versions(transaction):
+			logger.debug("Replacing plugin list of %s", self.cid())
+			transaction.execute('DELETE FROM active_plugins WHERE client IN (SELECT id FROM clients WHERE name = %s)', (self.cid(),))
+			transaction.executemany("INSERT INTO active_plugins (client, name, updated, version, hash, libname, active) SELECT clients.id, %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", map(lambda plug: (plug['name'], now, plug['version'], plug['hash'].encode('hex'), plug['lib'], plug['activity'], self.cid()), versions.values()))
+			return True
+		activity.push(log_versions)
 
 	def __check_versions(self, versions):
 		"""

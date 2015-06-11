@@ -94,6 +94,7 @@ CREATE TABLE active_plugins (
 	updated TIMESTAMP NOT NULL,
 	version INT NOT NULL,
 	hash TEXT NOT NULL,
+	libname TEXT NOT NULL,
 	active BOOL NOT NULL,
 	UNIQUE(client, name),
 	FOREIGN KEY (client) REFERENCES clients(id)
@@ -569,7 +570,6 @@ GRANT INSERT ON spoof TO $DBUPDATER;
 GRANT INSERT ON refused TO $DBUPDATER;
 GRANT SELECT ON known_plugins TO $DBUPDATER;
 GRANT DELETE ON active_plugins TO $DBUPDATER;
-GRANT UPDATE ON active_plugins TO $DBUPDATER;
 GRANT INSERT ON active_plugins TO $DBUPDATER;
 GRANT SELECT ON active_plugins TO $DBUPDATER;
 
