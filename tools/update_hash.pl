@@ -84,7 +84,6 @@ sub get_hash($) {
 		$had_plugin = 1;
 	}
 
-	die "No plugin seen\n" unless $had_plugin;
 	return join '', map sprintf("%02X", $_), @passwd;
 }
 my $hash = get_hash $default;
