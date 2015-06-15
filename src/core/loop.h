@@ -29,6 +29,7 @@ struct loop;
 struct loop_configurator;
 
 struct plugin;
+struct plugin_activation;
 struct context;
 struct uplink;
 struct config_node;
@@ -105,6 +106,7 @@ const struct config_node *loop_plugin_option_get(struct context *context, const 
 void loop_plugin_reinit(struct context *context) __attribute__((nonnull)) __attribute__((noreturn));
 
 const char *loop_plugin_get_name(const struct context *context) __attribute__((nonnull)) __attribute__((const));
+bool loop_plugin_active(const struct context *context) __attribute__((nonnull));
 /*
  * Set the uplink used by this loop. This may be called at most once on
  * a given loop.
@@ -141,7 +143,7 @@ struct mem_pool *loop_temp_pool(struct loop *loop) __attribute__((nonnull)) __at
 
 /*
  * Send some data from uplink to a plugin. Plugin is specified by name.
- * Returns true if the plugin exists, false if not.
+ * Returns true if the plugin exists and is active, false if not.
  */
 bool loop_plugin_send_data(struct loop *loop, const char *plugin, const uint8_t *data, size_t length) __attribute__((nonnull));
 
@@ -171,7 +173,7 @@ void loop_timeout_cancel(struct loop *loop, size_t id) __attribute__((nonnull));
 // Return number of milliseconds since some unspecified time in the past
 uint64_t loop_now(struct loop *loop) __attribute__((pure));
 
-// XOR the hash of all the plugins together and to the hash here.
-void loop_xor_plugins(struct loop *loop, uint8_t *hash) __attribute__((nonnull));
+// Activate or deactivate plugins. If needed, send update of plugin versions and/or errors.
+void loop_plugin_activation(struct loop *loop, struct plugin_activation *plugins, size_t count) __attribute__((nonnull));
 
 #endif

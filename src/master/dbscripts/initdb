@@ -10,6 +10,8 @@ DROP TABLE IF EXISTS fake_logs;
 DROP TABLE IF EXISTS fake_server_names;
 DROP TABLE IF EXISTS fake_blacklist_limits;
 DROP TABLE IF EXISTS fake_blacklist_scores;
+DROP TABLE IF EXISTS known_plugins;
+DROP TABLE IF EXISTS active_plugins;
 DROP TABLE IF EXISTS ssh_commands;
 DROP TABLE IF EXISTS ssh_sessions;
 DROP TABLE IF EXISTS refused;
@@ -41,6 +43,7 @@ DROP TABLE IF EXISTS config;
 DROP TYPE IF EXISTS fake_log_type;
 DROP TYPE IF EXISTS fake_server;
 DROP TYPE IF EXISTS blacklist_mode;
+DROP TYPE IF EXISTS plugin_status;
 
 CREATE TABLE clients (
 	id INT PRIMARY KEY NOT NULL,
@@ -72,6 +75,30 @@ CREATE TABLE activities (
 CREATE INDEX ON activities (client, activity);
 CREATE SEQUENCE activities_id OWNED BY activities.id;
 ALTER TABLE activities ALTER COLUMN id SET DEFAULT NEXTVAL('activities_id');
+CREATE TYPE plugin_status AS ENUM ('allowed', 'obsolete', 'disabled');
+CREATE TABLE known_plugins (
+	name TEXT NOT NULL,
+	version INT,
+	hash TEXT,
+	status plugin_status NOT NULL DEFAULT 'allowed',
+	activity SMALLINT,
+	introduced TIMESTAMP NOT NULL DEFAULT NOW(),
+	note TEXT,
+	UNIQUE(name, version, hash),
+	FOREIGN KEY (activity) REFERENCES activities(id)
+);
+CREATE INDEX ON known_plugins(name);
+CREATE TABLE active_plugins (
+	client INT NOT NULL,
+	name TEXT NOT NULL,
+	updated TIMESTAMP NOT NULL,
+	version INT NOT NULL,
+	hash TEXT NOT NULL,
+	libname TEXT NOT NULL,
+	active BOOL NOT NULL,
+	UNIQUE(client, name),
+	FOREIGN KEY (client) REFERENCES clients(id)
+);
 
 CREATE TABLE groups (
 	id INT PRIMARY KEY NOT NULL,
@@ -374,7 +401,7 @@ CREATE TABLE fake_blacklist_scores (
 INSERT INTO fake_blacklist_scores (server, event, score) VALUES
 	('telnet', 'connect', 1),
 	('telnet', 'login', 5);
-CRATE TYPE AS ENUM ('soft', 'hard');
+CREATE TYPE blacklist_mode AS ENUM ('soft', 'hard');
 CREATE TABLE fake_blacklist_limits (
 	server fake_server NOT NULL,
 	client_pass BIGINT NOT NULL,
@@ -478,12 +505,12 @@ ALTER TABLE refused ALTER COLUMN id SET DEFAULT NEXTVAL('refused_ids');
 CREATE TABLE ssh_sessions (
 	id INT NOT NULL PRIMARY KEY,
 	long_id CHAR(32) NOT NULL,
-	client_id NOT NULL INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+	client_id INT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
 	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
 	end_time TIMESTAMP WITH TIME ZONE DEFAULT NULL,
 	login TEXT NOT NULL,
 	password TEXT NOT NULL,
-	remote NOT NULL INET
+	remote INET NOT NULL
 );
 CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
 ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
@@ -541,11 +568,17 @@ GRANT SELECT ON flow_filters to $DBUPDATER;
 GRANT SELECT (batch) ON spoof TO $DBUPDATER;
 GRANT INSERT ON spoof TO $DBUPDATER;
 GRANT INSERT ON refused TO $DBUPDATER;
+GRANT SELECT ON known_plugins TO $DBUPDATER;
+GRANT DELETE ON active_plugins TO $DBUPDATER;
+GRANT INSERT ON active_plugins TO $DBUPDATER;
+GRANT SELECT ON active_plugins TO $DBUPDATER;
 
 GRANT SELECT (name, passwd, mechanism, builtin_passwd, slot_id) ON clients TO $DBAUTHENTICATOR;
 
 GRANT SELECT (tag) ON clients TO $DBJENKINS;
 GRANT UPDATE (builtin_passwd) ON clients TO $DBJENKINS;
+GRANT INSERT ON known_plugins to $DBJENKINS;
+GRANT SELECT ON known_plugins TO $DBJENKINS;
 
 GRANT SELECT (timestamp) ON activities TO $DBCLEANER;
 GRANT SELECT (timestamp) ON anomalies TO $DBCLEANER;
@@ -637,6 +670,7 @@ INSERT INTO groups (name) VALUES ('all'), ('ruth');
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups ON groups.name = clients.name;
 INSERT INTO ping_requests (host, proto, amount, size, active) VALUES ('turris.cz', '6', 5, 100, TRUE), ('turris.cz', '4', 5, 100, TRUE), ('8.8.8.8', 'X', 3, 64, TRUE);
+INSERT INTO known_plugins (name) VALUES ('Count'), ('Bandwidth'), ('Fake'), ('Flow'), ('Refused'), ('Sniff'), ('Spoof');
 COMMIT;
 ENDSQL
 else

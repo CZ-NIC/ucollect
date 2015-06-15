@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -23,15 +23,21 @@ import twisted.internet.protocol
 import twisted.protocols.basic
 import random
 import struct
-from protocol import extract_string
+from protocol import extract_string, format_string
 import logging
 import activity
 import auth
 import time
+import plugin_versions
+import database
 
 logger = logging.getLogger(name='client')
 sysrand = random.SystemRandom()
 challenge_len = 128 # 128 bits of random should be enough for log-in to protect against replay attacks
+
+with database.transaction() as t:
+	# As we just started, there's no plugin active anywhere. Flush whatever is left in the table.
+	t.execute("DELETE FROM active_plugins")
 
 class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 	"""
@@ -50,12 +56,14 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__auth_buffer = []
 		self.__wait_auth = False
 		self.__fastpings = fastpings
+		self.__proto_version = 0
 		self.__available_plugins = {
 			'Badconf': 1,
 			'Buckets': 1,
 			'Count': 1,
 			'Sniff': 1
 		}
+		self.__plugin_versions = {}
 		self.MAX_LENGTH = 1024 * 1024 * 1024 # A gigabyte should be enough
 		self.last_pong = time.time()
 
@@ -91,6 +99,11 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			logger.info("Connection lost from %s", self.cid())
 			self.__pinger.stop()
 			self.__plugins.unregister_client(self)
+			def log_plugins(transaction):
+				logger.debug("Dropping plugin list of %s", self.cid())
+				transaction.execute('DELETE FROM active_plugins WHERE client IN (SELECT id FROM clients WHERE name = %s)', (self.cid(),))
+				return True
+			activity.push(log_plugins)
 			activity.log_activity(self.cid(), "logout")
 			self.transport.abortConnection()
 
@@ -142,11 +155,24 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 						login_failure('Incorrect password')
 					self.__auth_buffer = None
 				# Ask the authenticator
-				auth.auth(auth_finished, self.__cid, self.__challenge.encode('hex'), response.encode('hex'))
-				self.__wait_auth = True
+				if self.__challenge:
+					auth.auth(auth_finished, self.__cid, self.__challenge.encode('hex'), response.encode('hex'))
+					self.__wait_auth = True
 			elif msg == 'H':
 				if self.__authenticated:
+					if len(params) >= 1:
+						(self.__proto_version,) = struct.unpack("!B", params[0])
+					if self.__proto_version >= 1:
+						self.__available_plugins = {}
 					if self.__plugins.register_client(self):
+						if self.__proto_version == 0:
+							# Activate all the clients in the old version.
+							# The new protocol handles activation on plugin-by-plugin basis
+							for p in self.__plugins.get_plugins():
+								self.__plugins.activate_client(p, self)
+						else:
+							# Please tell me when there're changes to the allowed plugins
+							plugin_versions.add_client(self)
 						self.__logged_in = True
 						self.__pinger = LoopingCall(self.__ping)
 						if self.cid() in self.__fastpings:
@@ -172,14 +198,81 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__plugins.route_to_plugin(plugin, data, self.cid())
 			# TODO: Handle the possibility the plugin doesn't exist somehow (#2705)
 		elif msg == 'V': # New list of versions of the client
-			self.__available_plugins = {}
-			while len(params) > 0:
-				(name, params) = extract_string(params)
-				(version,) = struct.unpack('!H', params[:2])
-				self.__available_plugins[name] = version
-				params = params[2:]
+			if self.__proto_version == 0:
+				self.__available_plugins = {}
+				while len(params) > 0:
+					(name, params) = extract_string(params)
+					(version,) = struct.unpack('!H', params[:2])
+					self.__available_plugins[name] = version
+					params = params[2:]
+			else:
+				self.__handle_versions(params)
 		else:
 			logger.warn("Unknown message from client %s: %s", self.cid(), msg)
+
+	def __handle_versions(self, params):
+		"""
+		Parse the client's message about the plugins it knows.
+		Activate and deactivate plugins accordingly.
+		"""
+		versions = {}
+		while len(params) > 0:
+			(name, params) = extract_string(params)
+			(version, md5_hash) = struct.unpack('!H16s', params[:18])
+			(lib, params) = extract_string(params[18:])
+			p_activity = params[0]
+			params = params[1:]
+			versions[name] = {
+				'name': name,
+				'version': version,
+				'hash': md5_hash,
+				'activity': (p_activity == 'A'),
+				'lib': lib
+			}
+		self.__check_versions(versions)
+		now = database.now()
+		def log_versions(transaction):
+			logger.debug("Replacing plugin list of %s", self.cid())
+			transaction.execute('DELETE FROM active_plugins WHERE client IN (SELECT id FROM clients WHERE name = %s)', (self.cid(),))
+			transaction.executemany("INSERT INTO active_plugins (client, name, updated, version, hash, libname, active) SELECT clients.id, %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", map(lambda plug: (plug['name'], now, plug['version'], plug['hash'].encode('hex'), plug['lib'], plug['activity'], self.cid()), versions.values()))
+			return True
+		activity.push(log_versions)
+
+	def __check_versions(self, versions):
+		"""
+		Check the plugin versions provided in the parameter and activate
+		or deactivate them as needed. Insert or remove their info from
+		data structures and activate/deactivate them in the plugin router.
+		"""
+		logger.debug("Checking versions on client %s, %s", self.cid(), self)
+		required = {}
+		change = set()
+		available = {}
+		for plug_name in versions:
+			required[plug_name] = plugin_versions.check_version(plug_name, versions[plug_name]['version'], versions[plug_name]['hash'])
+			if required[plug_name] != versions[plug_name]['activity']:
+				change.add(plug_name)
+			if required[plug_name]:
+				available[plug_name] = versions[plug_name]['version']
+		now_active = set(filter(lambda p: required[p], required.keys()))
+		prev_active = set(filter(lambda p: self.__plugin_versions[p]['activity'], self.__plugin_versions.keys()))
+		for p in prev_active - now_active:
+			self.__plugins.deactivate_client(p, self)
+		activate = now_active - prev_active
+		for p in prev_active & now_active:
+			if versions[p]['version'] != self.__plugin_versions[p]['version']:
+				self.__plugins.deactivate_client(p, self)
+				activate.add(p)
+		if change:
+			message = 'A' + struct.pack('!L', len(change))
+			for c in change:
+				message += format_string(c) + struct.pack('!16sc', versions[c]['hash'], 'A' if required[c] else 'I')
+				versions[c]['activity'] = required[c]
+			self.sendString(message)
+		self.__plugin_versions = versions
+		self.__available_plugins = available
+		for p in activate:
+			self.__plugins.activate_client(p, self)
 
 	def cid(self):
 		"""
@@ -190,6 +283,14 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			return self.__cid
 		else:
 			return self.__addr.name
+
+	def recheck_versions(self):
+		"""
+		Run the check for versions again. The check might come out
+		differently, the configuration in the DB might have changed.
+		"""
+		if self.__logged_in and self.__connected:
+			self.__check_versions(self.__plugin_versions)
 
 class ClientFactory(twisted.internet.protocol.Factory):
 	"""

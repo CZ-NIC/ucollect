@@ -106,6 +106,7 @@ class Plugins:
 	def __init__(self):
 		self.__plugins = {}
 		self.__clients = {}
+		self.__activations = {}
 
 	def get_clients(self):
 		"""
@@ -113,12 +114,19 @@ class Plugins:
 		"""
 		return self.__clients.keys()
 
+	def get_plugins(self):
+		"""
+		Get the list of current plugin names.
+		"""
+		return self.__plugins.keys()
+
 	def register_plugin(self, name, plugin):
 		"""
 		Add a plugin to be used.
 		"""
 		logger.info('New plugin %s', name)
 		self.__plugins[name] = plugin
+		self.__activations[name] = set()
 
 	def unregister_plugin(self, name):
 		"""
@@ -126,6 +134,34 @@ class Plugins:
 		"""
 		logger.info('Remove plugin %s', name)
 		del self.__plugins[name]
+		if self.__activations[name]:
+			# TODO:
+			logger.warn('Plugin %s still has %s active clients. This situation is not handled yet.', name, len(self.__activations[name]))
+		del self.__activations[name]
+
+	def activate_client(self, plugin, client):
+		"""
+		Mark a plugin active for the given client.
+		"""
+		cid = client.cid()
+		logger.debug("Activate plugin %s in client %s", plugin, cid)
+		if cid in self.__activations[plugin]:
+			logger.warn("Plugin %s already active in client %s", plugin, cid)
+			return
+		self.__activations[plugin].add(cid)
+		self.__plugins[plugin].client_connected(client)
+
+	def deactivate_client(self, plugin, client):
+		"""
+		Mark a plugin inactive for the given client.
+		"""
+		cid = client.cid()
+		logger.debug("Deactivate plugin %s in client %s", plugin, cid)
+		if cid not in self.__activations[plugin]:
+			logger.warn("Plugin %s isn't active in client %s to deactivate", plugin, cid)
+			return
+		self.__activations[plugin].remove(cid)
+		self.__plugins[plugin].client_disconnected(client)
 
 	def register_client(self, client):
 		"""
@@ -139,22 +175,22 @@ class Plugins:
 				logger.warn("%s already connected, dropping connection", client.cid())
 				return False
 		self.__clients[client.cid()] = client
-		for p in self.__plugins.values():
-			p.client_connected(client)
 		return True
 
 	def unregister_client(self, client):
 		"""
 		When a client disconnects.
 		"""
-		if client.cid() in self.__clients and client == self.__clients[client.cid()]:
+		cid = client.cid()
+		if cid in self.__clients and client == self.__clients[cid]:
 			# If the client is not there, or if the client is some newer version, don't remove it.
-			for p in self.__plugins.values():
-				p.client_disconnected(client)
-			del self.__clients[client.cid()]
-			logger.debug('Removed client ' + client.cid())
+			for plugin in self.__activations:
+				if cid in self.__activations[plugin]:
+					self.deactivate_client(plugin, client)
+			del self.__clients[cid]
+			logger.debug('Removed client ' + cid)
 		else:
-			logger.debug('Not removing client ' + client.cid())
+			logger.debug('Not removing client ' + cid)
 
 	def broadcast(self, message, from_plugin, version_check=None):
 		"""

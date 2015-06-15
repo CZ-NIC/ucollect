@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013,2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -223,6 +223,7 @@ struct plugin_holder {
 	struct plugin_fd *fd_head, *fd_tail, *fd_unused;
 	struct trie *config_trie, *config_candidate;
 	bool mark; // Mark for configurator.
+	bool active; // Is the plugin activated? Is it allowed to talk to the server?
 	size_t failed;
 	uint8_t hash[CHALLENGE_LEN / 2];
 };
@@ -264,18 +265,25 @@ struct plugin_list {
  *  * Restores no context and resets the temporary pool
  */
 #define GEN_CALL_WRAPPER(NAME) \
-static void plugin_##NAME(struct plugin_holder *plugin) { \
+static inline void plugin_##NAME(struct plugin_holder *plugin) { \
 	if (!plugin->plugin.NAME##_callback) \
 		return; \
 	current_context = &plugin->context; \
 	plugin->plugin.NAME##_callback(&plugin->context); \
 	mem_pool_reset(plugin->context.temp_pool); \
 	current_context = NULL; \
+}\
+static inline void plugin_##NAME##_noreset(struct plugin_holder *plugin) { \
+	if (!plugin->plugin.NAME##_callback) \
+		return; \
+	current_context = &plugin->context; \
+	plugin->plugin.NAME##_callback(&plugin->context); \
+	current_context = NULL; \
 }
 
 // The same, with parameter
 #define GEN_CALL_WRAPPER_PARAM(NAME, TYPE) \
-static void plugin_##NAME(struct plugin_holder *plugin, TYPE PARAM) { \
+static inline void plugin_##NAME(struct plugin_holder *plugin, TYPE PARAM) { \
 	if (!plugin->plugin.NAME##_callback) \
 		return; \
 	current_context = &plugin->context; \
@@ -286,7 +294,7 @@ static void plugin_##NAME(struct plugin_holder *plugin, TYPE PARAM) { \
 
 // And with 2
 #define GEN_CALL_WRAPPER_PARAM_2(NAME, TYPE1, TYPE2) \
-static void plugin_##NAME(struct plugin_holder *plugin, TYPE1 PARAM1, TYPE2 PARAM2) { \
+static inline void plugin_##NAME(struct plugin_holder *plugin, TYPE1 PARAM1, TYPE2 PARAM2) { \
 	if (!plugin->plugin.NAME##_callback) \
 		return; \
 	current_context = &plugin->context; \
@@ -392,7 +400,7 @@ struct loop_configurator {
 	struct plugin_list plugins;
 	const char *remote_name, *remote_service, *login, *password, *cert;
 	struct trie *config_trie;
-	bool need_reconnect;
+	bool need_new_versions;
 };
 
 // Handle one packet.
@@ -1009,7 +1017,7 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	jump_ready = 0;
 	// Store the plugin structure.
 	plugin_insert_after(&configurator->plugins, new, configurator->plugins.tail);
-	configurator->need_reconnect = true;
+	configurator->need_new_versions = true;
 	return plugin_config_check(new);
 }
 
@@ -1065,6 +1073,9 @@ bool loop_plugin_send_data(struct loop *loop, const char *name, const uint8_t *d
 	assert(loop->uplink);
 	LFOR(plugin, plugin, &loop->plugins)
 		if (strcmp(plugin->plugin.name, name) == 0) {
+			// Skip inactive plugins. There might, in theory, be another active version with the same name, so don't abort yet.
+			if (!plugin->active)
+				continue;
 			plugin_uplink_data(plugin, data, length);
 			return true;
 		}
@@ -1077,6 +1088,14 @@ const char *loop_plugin_get_name(const struct context *context) {
 	assert(holder->canary == PLUGIN_HOLDER_CANARY);
 #endif
 	return holder->plugin.name;
+}
+
+bool loop_plugin_active(const struct context *context) {
+	const struct plugin_holder *holder = (struct plugin_holder *) context;
+#ifdef DEBUG
+	assert(holder->canary == PLUGIN_HOLDER_CANARY);
+#endif
+	return holder->active;
 }
 
 size_t loop_timeout_add(struct loop *loop, uint32_t after, struct context *context, void *data, void (*callback)(struct context *context, void *data, size_t id)) {
@@ -1220,6 +1239,44 @@ static void pcap_watchdog(struct context *context_unused, void *data, size_t id_
 	interface->watchdog_timer = loop_timeout_add(interface->loop, PCAP_WATCHDOG_TIME, NULL, interface, pcap_watchdog);
 }
 
+static const char *libname(const struct plugin_holder *plugin) {
+	const char *libname = rindex(plugin->libname, '/');
+	if (libname)
+		libname ++;
+	else
+		libname = plugin->libname;
+	return libname;
+}
+
+static void send_plugin_versions(struct loop *loop) {
+	ulog(LLOG_DEBUG, "Sending list of plugins\n");
+	size_t message_size = 0;
+	LFOR(plugin, plugin, &loop->plugins) {
+		message_size += 2*sizeof(uint32_t) + sizeof(uint16_t) + strlen(plugin->plugin.name) + sizeof plugin->hash + strlen(libname(plugin)) + 1; // Size prefix of the string and the plugin version
+	}
+	uint8_t *message = mem_pool_alloc(loop->temp_pool, message_size);
+	uint8_t *pos = message;
+	size_t rest = message_size;
+	LFOR(plugin, plugin, &loop->plugins) {
+		uplink_render_string(plugin->plugin.name, strlen(plugin->plugin.name), &pos, &rest);
+		uint16_t version = htons(plugin->plugin.version);
+		assert(rest >= sizeof version);
+		memcpy(pos, &version, sizeof version);
+		rest -= sizeof version;
+		pos += sizeof version;
+		memcpy(pos, plugin->hash, sizeof plugin->hash);
+		rest -= sizeof plugin->hash;
+		pos += sizeof plugin->hash;
+		const char *ln = libname(plugin);
+		uplink_render_string(ln, strlen(ln), &pos, &rest);
+		*pos = plugin->active ? 'A' : 'I';
+		pos ++;
+		rest --;
+	}
+	assert(rest == 0);
+	uplink_send_message(loop->uplink, 'V', message, message_size);
+}
+
 void loop_config_commit(struct loop_configurator *configurator) {
 	struct loop *loop = configurator->loop;
 	/*
@@ -1230,7 +1287,7 @@ void loop_config_commit(struct loop_configurator *configurator) {
 	LFOR(plugin, plugin, &loop->plugins)
 		if (plugin->mark) {
 			plugin_destroy(plugin, false);
-			configurator->need_reconnect = true;
+			configurator->need_new_versions = true;
 		}
 	LFOR(pcap, interface, &loop->pcap_interfaces)
 		if (interface->mark)
@@ -1259,8 +1316,6 @@ void loop_config_commit(struct loop_configurator *configurator) {
 			uplink_configure(loop->uplink, configurator->remote_name, configurator->remote_service, configurator->login, configurator->password, configurator->cert);
 		else
 			uplink_realloc_config(loop->uplink, configurator->config_pool);
-		if (configurator->need_reconnect)
-			uplink_reconnect(loop->uplink);
 	}
 	// Destroy the old configuration and merge the new one
 	if (loop->config_pool)
@@ -1274,37 +1329,20 @@ void loop_config_commit(struct loop_configurator *configurator) {
 		plugin->config_candidate = NULL;
 		plugin_config_finish(plugin, true);
 	}
-}
-
-static void send_plugin_versions(struct loop *loop) {
-	ulog(LLOG_DEBUG, "Sending list of plugins\n");
-	size_t message_size = 0; // For the 'L'
-	LFOR(plugin, plugin, &loop->plugins)
-		message_size += sizeof(uint32_t) + sizeof(uint16_t) + strlen(plugin->plugin.name); // Size prefix of the string and the plugin version
-	uint8_t *message = mem_pool_alloc(loop->temp_pool, message_size);
-	uint8_t *pos = message;
-	size_t rest = message_size;
-	LFOR(plugin, plugin, &loop->plugins) {
-		uplink_render_string(plugin->plugin.name, strlen(plugin->plugin.name), &pos, &rest);
-		uint16_t version = htons(plugin->plugin.version);
-		assert(rest >= sizeof version);
-		memcpy(pos, &version, sizeof version);
-		rest -= sizeof version;
-		pos += sizeof version;
-	}
-	assert(rest == 0);
-	uplink_send_message(loop->uplink, 'V', message, message_size);
+	if (configurator->need_new_versions && uplink_connected(loop->uplink))
+		send_plugin_versions(loop);
 }
 
 void loop_uplink_connected(struct loop *loop) {
 	send_plugin_versions(loop);
-	LFOR(plugin, plugin, &loop->plugins)
-		plugin_uplink_connected(plugin);
 }
 
 void loop_uplink_disconnected(struct loop *loop) {
-	LFOR(plugin, plugin, &loop->plugins)
-		plugin_uplink_disconnected(plugin);
+	LFOR(plugin, plugin, &loop->plugins) {
+		if (plugin->active)
+			plugin_uplink_disconnected(plugin);
+		plugin->active = false;
+	}
 }
 
 void loop_plugin_reinit(struct context *context) {
@@ -1323,13 +1361,6 @@ void loop_uplink_configure(struct loop_configurator *configurator, const char *r
 
 uint64_t loop_now(struct loop *loop) {
 	return loop->now;
-}
-
-void loop_xor_plugins(struct loop *loop, uint8_t *hash) {
-	LFOR(plugin, plugin, &loop->plugins) {
-		for (size_t i = 0; i < CHALLENGE_LEN / 2; i ++)
-			hash[i] ^= plugin->hash[i];
-	}
 }
 
 static void plugin_fd_event(struct plugin_fd *fd, uint32_t events) {
@@ -1393,4 +1424,45 @@ pid_t loop_fork(struct loop *loop) {
 		close(loop->epoll_fd);
 	}
 	return result;
+}
+
+void loop_plugin_activation(struct loop *loop, struct plugin_activation *plugins, size_t count) {
+	bool changed = false;
+	for (size_t i = 0; i < count; i ++) {
+		struct plugin_holder *candidate = NULL;
+		LFOR(plugin, plugin, &loop->plugins) {
+			if (strcmp(plugin->plugin.name, plugins[i].name) == 0 && memcmp(plugin->hash, plugins[i].hash, sizeof plugins[i].hash) == 0) {
+				candidate = plugin;
+				break;
+			}
+		}
+		if (candidate) {
+			if (plugins[i].activate != candidate->active) {
+				if (plugins[i].activate) {
+					ulog(LLOG_INFO, "Activating plugin %s\n", plugins[i].name);
+					plugin_uplink_connected_noreset(candidate);
+				} else {
+					ulog(LLOG_INFO, "Deactivating plugin %s\n", plugins[i].name);
+					plugin_uplink_disconnected_noreset(candidate);
+				}
+				changed = true;
+				candidate->active = plugins[i].activate;
+			}
+		} else {
+			size_t len = strlen(plugins[i].name);
+			size_t size = 1 /* Error header */ + 4 /* String length */ + len + sizeof plugins[i].hash;
+			uint8_t *buffer = mem_pool_alloc(loop->temp_pool, size);
+			uint8_t *pos = buffer;
+			size_t rest = size;
+			*buffer = 'A'; // Error during activation
+			buffer ++;
+			rest --;
+			uplink_render_string(plugins[i].name, len, &pos, &rest);
+			assert(rest == sizeof plugins[i].hash);
+			memcpy(pos, plugins[i].hash, sizeof plugins[i].hash);
+			uplink_send_message(loop->uplink, 'E', buffer, size);
+		}
+	}
+	if (changed)
+		send_plugin_versions(loop);
 }

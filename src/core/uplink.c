@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -22,7 +22,6 @@
 #include "loop.h"
 #include "util.h"
 #include "context.h"
-#include "tunable.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -453,6 +452,42 @@ void uplink_render_uint32(uint32_t value, uint8_t **buffer_pos, size_t *buffer_l
 	*buffer_len -= sizeof value;
 }
 
+static void handle_activation(struct uplink *uplink) {
+	const uint8_t *buffer = uplink->buffer;
+	size_t rest = uplink->buffer_size;
+	struct mem_pool *temp_pool = loop_temp_pool(uplink->loop);
+	uint32_t amount = uplink_parse_uint32(&buffer, &rest);
+	if (amount == 0) {
+		ulog(LLOG_WARN, "Empty activation message. Why?\n");
+		return;
+	}
+	struct plugin_activation *plugins = mem_pool_alloc(temp_pool, amount * sizeof *plugins);
+	for (size_t i = 0; i < amount; i ++) {
+		plugins[i].name = uplink_parse_string(temp_pool, &buffer, &rest);
+		if (rest <= sizeof plugins[i].hash) {// One more for the activation flag
+			ulog(LLOG_ERROR, "Activation message buffer too short to read plugin hash and bool (%zu available)\n", rest);
+			abort();
+		}
+		memcpy(plugins[i].hash, buffer, sizeof plugins[i].hash);
+		buffer += sizeof plugins[i].hash;
+		rest -= sizeof plugins[i].hash;
+		plugins[i].activate = (*buffer == 'A');
+		buffer ++;
+		rest --;
+	}
+	if (rest != 0) {
+		ulog(LLOG_WARN, "Extra %zu bytes in activation message, ignoring\n", rest);
+	}
+	/*
+	 * Reset the buffer and clean up before calling the loop.
+	 * It may contain callbacks to the plugins. If they contained an error,
+	 * They are handled by a longjump directly to the loop, so the end of the
+	 * function might not be called.
+	 */
+	buffer_reset(uplink);
+	loop_plugin_activation(uplink->loop, plugins, amount);
+}
+
 static void handle_buffer(struct uplink *uplink) {
 	if (uplink->has_size) {
 		// If we already have the size, it is the real message
@@ -513,6 +548,9 @@ static void handle_buffer(struct uplink *uplink) {
 						  uplink->auth_status = FAILED;
 						  connect_fail(uplink);
 						  break;
+					case 'A':
+						handle_activation(uplink);
+						break;
 					default:
 						  ulog(LLOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
 						  break;
@@ -524,19 +562,10 @@ static void handle_buffer(struct uplink *uplink) {
 #define HALF_SIZE 16
 					atsha_big_int server_challenge, client_response;
 					uint8_t local_half[HALF_SIZE] = PASSWD_HALF;
-					loop_xor_plugins(uplink->loop, local_half);
 					assert(HALF_SIZE + uplink->buffer_size == sizeof(server_challenge.data));
 					server_challenge.bytes = HALF_SIZE + uplink->buffer_size;
 					memcpy(server_challenge.data, local_half, HALF_SIZE);
 					memcpy(server_challenge.data + HALF_SIZE, uplink->buffer, uplink->buffer_size);
-					// Log our xor
-					uint8_t pure_plugins[HALF_SIZE] = { 0 };
-					loop_xor_plugins(uplink->loop, pure_plugins);
-					char hash_str[2 * HALF_SIZE + 1];
-					hash_str[2 * HALF_SIZE] = '\0';
-					for (size_t i = 0; i < HALF_SIZE; i ++)
-						sprintf(hash_str + 2 * i, "%02hhX", pure_plugins[i]);
-					ulog(LLOG_INFO, "Trying to log in with plugin hash %s\n", hash_str);
 					// Get the chip handle
 					atsha_set_log_callback(atsha_log_callback);
 					struct atsha_handle *cryptochip = atsha_open();
@@ -571,7 +600,8 @@ static void handle_buffer(struct uplink *uplink) {
 					 * list of plugins and possibly other things too.
 					 */
 					uplink->auth_status = AUTHENTICATED;
-					uplink_send_message(uplink, 'H', NULL, 0);
+					uint8_t proto_version = PROTOCOL_VERSION;
+					uplink_send_message(uplink, 'H', &proto_version, sizeof proto_version);
 					loop_uplink_connected(uplink->loop);
 				} else
 					// This is an insult, and we won't talk to the other side any more!
@@ -890,6 +920,8 @@ bool uplink_send_message(struct uplink *uplink, char type, const void *data, siz
 }
 
 bool uplink_plugin_send_message(struct context *context, const void *data, size_t size) {
+	if (!loop_plugin_active(context))
+		return false;
 	const char *name = loop_plugin_get_name(context);
 	ulog(LLOG_DEBUG, "Sending message of size %zu from plugin %s\n", size, name);
 	uint32_t name_length = strlen(name);
@@ -922,4 +954,8 @@ struct addrinfo *uplink_addrinfo(struct uplink *uplink) {
 void uplink_close(struct uplink *uplink) {
 	if (uplink->fd != -1)
 		close(uplink->fd);
+}
+
+bool uplink_connected(const struct uplink *uplink) {
+	return uplink->fd != -1 && uplink->auth_status == AUTHENTICATED;
 }
