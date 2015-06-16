@@ -249,7 +249,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		change = set()
 		available = {}
 		for plug_name in versions:
-			required[plug_name] = plugin_versions.check_version(plug_name, versions[plug_name]['version'], versions[plug_name]['hash'])
+			required[plug_name] = plugin_versions.check_version(plug_name, versions[plug_name]['version'], versions[plug_name]['hash'].encode('hex'))
 			if required[plug_name] != versions[plug_name]['activity']:
 				change.add(plug_name)
 			if required[plug_name]:
