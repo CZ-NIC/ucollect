@@ -7,6 +7,7 @@ use AnyEvent::HTTP;
 use AnyEvent::Util qw(run_cmd);
 use File::Basename qw(dirname);
 use File::Temp qw(tempdir);
+use Data::Dumper;
 
 my ($verbose, $base_url, @list_names, @packages);
 
@@ -58,7 +59,7 @@ sub process_package($$$$) {
 			$err = 1;
 		} else {
 			dbg "Unpacked $name\n";
-			my ($libname, $hash) = split /\s+/, $output;
+			my ($hash, $libname) = split /\s+/, $output;
 			push @hashes, {
 				name => $name,
 				libname => $libname,
@@ -73,8 +74,8 @@ sub process_package($$$$) {
 }
 
 sub check_unpack_queue() {
-	return dbg "Nothing in the unpack queue" unless @unpack_queue;
-	return dbg "No free unpack slots" unless $unpack_limit;
+	return dbg "Nothing in the unpack queue\n" unless @unpack_queue;
+	return dbg "No free unpack slots\n" unless $unpack_limit;
 	$unpack_limit --;
 	my $params = shift @unpack_queue;
 	process_package $params->{name}, $params->{version}, $params->{body}, $params->{cv};
@@ -152,5 +153,7 @@ while (@condvars) {
 	my $cv = shift @condvars;
 	$cv->recv;
 }
+
+print Dumper \@hashes;
 
 exit $err;
