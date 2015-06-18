@@ -1438,6 +1438,8 @@ void loop_plugin_activation(struct loop *loop, struct plugin_activation *plugins
 		}
 		if (candidate) {
 			if (plugins[i].activate != candidate->active) {
+				changed = true;
+				candidate->active = plugins[i].activate;
 				if (plugins[i].activate) {
 					ulog(LLOG_INFO, "Activating plugin %s\n", plugins[i].name);
 					plugin_uplink_connected_noreset(candidate);
@@ -1445,8 +1447,6 @@ void loop_plugin_activation(struct loop *loop, struct plugin_activation *plugins
 					ulog(LLOG_INFO, "Deactivating plugin %s\n", plugins[i].name);
 					plugin_uplink_disconnected_noreset(candidate);
 				}
-				changed = true;
-				candidate->active = plugins[i].activate;
 			}
 		} else {
 			size_t len = strlen(plugins[i].name);
