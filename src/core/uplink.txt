@@ -58,7 +58,7 @@ List of plugins::
   client, together with their versions. It is followed by bunch of
   tuples (plugin name, plugin protocol version, hash, activity).
   Plugin name is a string and the version is a 2-byte number. The hash
-  is 16-byte md5 of the plugin's `.so` library. The activity is single
+  is 16-byte sha1 of the plugin's `.so` library. The activity is single
   character, either `A` as active plugin, or `I` as inactive plugin.
   It is sent after authentication (after the hello message) and each
   time any of this information changes (plugins are loaded or
@@ -73,7 +73,7 @@ Plugin doesn't exist::
   not active in the client.
 Plugin can't be activated or deactivate::
   It is encoded as `A`. It is then followed by a string and 16 bytes
-  of md5 hash. These are the name and the hash of the plugin to be
+  of sha1 hash. These are the name and the hash of the plugin to be
   activated or deactivated. This is sent when the client doesn't
   contain a matching plugin. This might be caused by a race condition
   between the server and the client as well by a code bug.
@@ -96,7 +96,7 @@ Activate plugins::
   deactivate. It starts with a single 4-byte integer, the count of
   the plugins to process. Each plugin is then a tuple (name, hash,
   activation). Name is the name of the plugin, represented as a string. Hash
-  is the plugin `.so` library md5 sum as sent in the list of plugins by
+  is the plugin `.so` library sha1 sum as sent in the list of plugins by
   client. Activation is either `A` or `I`, with the same meaning as in
   the list of plugins command. If any plugins are activated or
   deactivated, the client responds by the list of plugins command. If
