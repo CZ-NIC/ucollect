@@ -274,6 +274,8 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			config_parse(context, data + 1, length - 1);
 			break;
 		case 'U': {// Offer of an update of a differential filter
+			if (!context->user_data->configured)
+				return; // The basic config is not there yet. No filter to apply the diff to.
 			data ++;
 			length --;
 			char *name = uplink_parse_string(context->temp_pool, &data, &length);
@@ -294,6 +296,8 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			break;
 		}
 		case 'D': { // difference to apply to a filter (may be asked for or not)
+			if (!context->user_data->configured)
+				return; // The basic config is not there yet. No filter to apply the diff to.
 			data ++;
 			length --;
 			char *name = uplink_parse_string(context->temp_pool, &data, &length);
