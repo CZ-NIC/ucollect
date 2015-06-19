@@ -154,6 +154,21 @@ while (@condvars) {
 	$cv->recv;
 }
 
+my $output;
+open my $out, '>:utf8', \$output or die "Couldn't format output: $!\n";
+print $out "BEGIN;\n";
+for my $hash (@hashes) {
+	my $name = $hash->{name};
+	$name =~ s/^ucollect-//;
+	my $act = $name;
+	$name =~ s/^(.)/uc($1)/e;
+	print $out "INSERT INTO known_plugins (name, hash, activity, note) SELECT '$name', '$hash->{hash}', activity_types.id, 'From $hash->{libname}' FROM activity_types WHERE activity_types.name = 'act' AND NOT EXISTS (SELECT 1 FROM known_plugins WHERE name = '$name' AND hash = '$hash->{hash}');\n";
+}
+print $out "COMMIT;\n";
+close $out;
+
 print Dumper \@hashes;
+
+print $output unless $err;
 
 exit $err;
