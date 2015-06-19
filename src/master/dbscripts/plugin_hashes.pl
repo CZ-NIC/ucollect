@@ -162,7 +162,7 @@ for my $hash (@hashes) {
 	$name =~ s/^ucollect-//;
 	my $act = $name;
 	$name =~ s/^(.)/uc($1)/e;
-	print $out "INSERT INTO known_plugins (name, hash, activity, note) SELECT '$name', '$hash->{hash}', activity_types.id, 'From $hash->{libname}' FROM activity_types WHERE activity_types.name = 'act' AND NOT EXISTS (SELECT 1 FROM known_plugins WHERE name = '$name' AND hash = '$hash->{hash}');\n";
+	print $out "INSERT INTO known_plugins (name, hash, note) SELECT '$name', '$hash->{hash}', 'From $hash->{libname}' WHERE NOT EXISTS (SELECT 1 FROM known_plugins WHERE name = '$name' AND hash = '$hash->{hash}');\n";
 }
 print $out "COMMIT;\n";
 close $out;
