@@ -167,8 +167,6 @@ for my $hash (@hashes) {
 print $out "COMMIT;\n";
 close $out;
 
-print Dumper \@hashes;
-
 print $output unless $err;
 
 exit $err;
