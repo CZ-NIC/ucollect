@@ -67,10 +67,10 @@ def store_logs(message, client, now, version):
 				passwd = content
 			elif kind_i == 2:
 				reason = content
-		values.append((now, age, tp, address, name, passwd, reason, client, code))
+		values.append((now, age, tp, rem_address, loc_address, rem_port, name, passwd, reason, client, code))
 		count += 1
 	with database.transaction() as t:
-		t.executemany("INSERT INTO fake_logs (client, timestamp, event, remote, server, name, password, reason) SELECT clients.id, %s - %s * INTERVAL '1 millisecond', %s, %s, fake_server_names.type, %s, %s, %s FROM clients CROSS JOIN fake_server_names WHERE clients.name = %s AND fake_server_names.code = %s", values)
+		t.executemany("INSERT INTO fake_logs (client, timestamp, event, remote, local, remote_port, server, name, password, reason) SELECT clients.id, %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s, fake_server_names.type, %s, %s, %s FROM clients CROSS JOIN fake_server_names WHERE clients.name = %s AND fake_server_names.code = %s", values)
 	logger.debug("Stored %s fake server log events for client %s", count, client)
 
 class FakePlugin(plugin.Plugin):
