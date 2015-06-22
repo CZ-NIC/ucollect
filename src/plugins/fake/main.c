@@ -50,7 +50,8 @@ struct fd_tag {
 	bool accept_here; // When the thing is readable, call accept here instead of server_ready
 	bool ignore_inactivity; // Don't close due to inactivity
 	size_t server_index;
-	struct sockaddr_in6 addr;
+	struct sockaddr_in6 rem_addr;
+	struct sockaddr_in6 loc_addr;
 	socklen_t addr_len;
 	size_t inactivity_timeout;
 	bool inactivity_timeout_active;
@@ -318,13 +319,14 @@ static void send_timeout(struct context *context, void *data, size_t id) {
 static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_type type, const char *reason, const char *username, const char *password) {
 	ulog(LLOG_DEBUG, "Logging event %hhu for tag %p\n", (uint8_t)type, (void *)tag);
 	struct user_data *u = context->user_data;
-	assert(tag->addr.sin6_family == AF_INET6);
+	assert(tag->rem_addr.sin6_family == AF_INET6);
+	assert(tag->loc_addr.sin6_family == AF_INET6);
 	struct event_info infos[MAX_INFOS] = { [0] = { .type = EI_LAST } };
 	size_t evpos = 0;
 	push_info(infos, &evpos, reason, EI_REASON);
 	push_info(infos, &evpos, username, EI_NAME);
 	push_info(infos, &evpos, password, EI_PASSWORD);
-	if (log_event(context, u->log, tag->desc->code, tag->addr.sin6_addr.s6_addr, 16, type, infos))
+	if (log_event(context, u->log, tag->desc->code, tag->rem_addr.sin6_addr.s6_addr, tag->loc_addr.sin6_addr.s6_addr, 16, ntohs(tag->rem_addr.sin6_port), type, infos))
 		log_send(context);
 	if (!u->timeout_scheduled && u->max_age) {
 		u->timeout_scheduled = true;
@@ -348,7 +350,7 @@ void conn_closed(struct context *context, struct fd_tag *tag, bool error, const 
 }
 
 void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password) {
-	ulog(LLOG_DEBUG, "Login attempt on %p from %s\n", (void *)tag, addr2str(context->temp_pool, (struct sockaddr *)&tag->addr, tag->addr_len));
+	ulog(LLOG_DEBUG, "Login attempt on %p from %s\n", (void *)tag, addr2str(context->temp_pool, (struct sockaddr *)&tag->rem_addr, tag->addr_len));
 	log_wrapper(context, tag, EVENT_LOGIN, NULL, username, password);
 }
 
@@ -387,8 +389,8 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 		if (empty) {
 			assert(empty->desc == t->desc);
 			assert(empty->server == t->server);
-			empty->addr_len = sizeof empty->addr;
-			struct sockaddr *addr_p = (struct sockaddr *)&empty->addr;
+			empty->addr_len = sizeof empty->rem_addr;
+			struct sockaddr *addr_p = (struct sockaddr *)&empty->rem_addr;
 			int new = accept(fd, addr_p, &empty->addr_len);
 			if (new == -1) {
 				ulog(LLOG_ERROR, "Failed to accept connection on FD %d for fake server %s: %s\n", fd, t->desc->name, strerror(errno));
@@ -396,6 +398,9 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			}
 			loop_plugin_register_fd(context, new, empty);
 			ulog(LLOG_DEBUG, "Accepted connecion %d from %s on FD %d for fake server %s\n", new, addr2str(context->temp_pool, addr_p, empty->addr_len), fd, t->desc->name);
+			socklen_t len = sizeof empty->loc_addr;
+			assert(getsockname(new, (struct sockaddr *)&empty->loc_addr, &len));
+			assert(len == empty->addr_len);
 			empty->fd = new;
 			empty->closed = false;
 			if (empty->desc->conn_set_fd_cb)
@@ -406,14 +411,17 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			// No place to put it into.
 			struct fd_tag aux_tag = *t;
 			aux_tag.accept_here = false;
-			struct sockaddr *addr_p = (struct sockaddr *)&aux_tag.addr;
-			aux_tag.addr_len = sizeof aux_tag.addr;
+			struct sockaddr *addr_p = (struct sockaddr *)&aux_tag.rem_addr;
+			aux_tag.addr_len = sizeof aux_tag.rem_addr;
 			int new = accept(fd, addr_p, &aux_tag.addr_len);
 			if (new == -1) {
 				ulog(LLOG_ERROR, "Failed to accept extra connection on FD %d for fake server %s: %s\n", fd, t->desc->name, strerror(errno));
 				return;
 			}
 			ulog(LLOG_WARN, "Throwing out connection %d from %s accepted on %d of fake server %s, too many opened ones\n", fd, addr2str(context->temp_pool, addr_p, aux_tag.addr_len), fd, t->desc->name);
+			socklen_t len = sizeof aux_tag.loc_addr;
+			assert(getsockname(new, (struct sockaddr *)&aux_tag.loc_addr, &len));
+			assert(len == aux_tag.addr_len);
 			if (close(new) == -1) {
 				ulog(LLOG_ERROR, "Error throwing newly accepted connection %d from %s accepted on %d of fake server %s: %s\n", new, addr2str(context->temp_pool, addr_p, aux_tag.addr_len), fd, t->desc->name, strerror(errno));
 			}

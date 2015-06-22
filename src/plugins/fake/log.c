@@ -36,7 +36,9 @@
 struct log_event {
 	struct log_event *next;		// For linked list managment
 	char code;			// The server name/code that generated the event
-	const uint8_t *addr;		// Which address was the remote
+	const uint8_t *rem_addr;	// Which address was the remote
+	const uint8_t *loc_addr;	// Which one was the local
+	uint16_t rem_port;		// Which was the remote port
 	uint64_t timestamp;		// When it happened
 	uint8_t addr_len;
 	enum event_type type;
@@ -163,11 +165,12 @@ struct event_header {
 // The IPv6 mapped IPv4 addresses are ::FFFF:<IP>.
 static const uint8_t mapped_prefix[] = { [10] = 0xFF, [11] = 0xFF };
 
-bool log_event(struct context *context, struct log *log, char server_code, const uint8_t *address, size_t addr_len, enum event_type type, struct event_info *info) {
+bool log_event(struct context *context, struct log *log, char server_code, const uint8_t *rem_address, const uint8_t *loc_address, size_t addr_len, uint16_t rem_port, enum event_type type, struct event_info *info) {
 	// If it's IPv6 mapped IPv4, store it as IPv4 only
-	if (memcmp(address, mapped_prefix, sizeof mapped_prefix) == 0) {
+	if (memcmp(rem_address, mapped_prefix, sizeof mapped_prefix) == 0) {
 		addr_len -= sizeof mapped_prefix;
-		address += sizeof mapped_prefix;
+		rem_address += sizeof mapped_prefix;
+		loc_address += sizeof mapped_prefix;
 	}
 	size_t info_count = 0;
 	size_t expected_size = sizeof(struct event_header);
@@ -177,12 +180,15 @@ bool log_event(struct context *context, struct log *log, char server_code, const
 			if (log->log_credentials || (i->type != EI_NAME && i->type != EI_PASSWORD))
 					info_count ++;
 	struct log_event *event = mem_pool_alloc(log->pool, sizeof *event + info_count * sizeof event->extra_info[0]);
-	uint8_t *addr_cp = mem_pool_alloc(log->pool, addr_len);
-	memcpy(addr_cp, address, addr_len);
+	uint8_t *addr_cp = mem_pool_alloc(log->pool, 2 * addr_len);
+	memcpy(addr_cp, rem_address, addr_len);
+	memcpy(addr_cp + addr_len, loc_address, addr_len);
 	uint64_t now = loop_now(context->loop);
 	*event = (struct log_event) {
 		.code = server_code,
-		.addr = addr_cp,
+		.rem_addr = addr_cp,
+		.loc_addr = addr_cp + addr_len,
+		.rem_port = rem_port,
 		.addr_len = addr_len,
 		.timestamp = now,
 		.type = type,
@@ -205,7 +211,7 @@ bool log_event(struct context *context, struct log *log, char server_code, const
 		size_t id_len = 1 + addr_len;
 		uint8_t login_id[id_len];
 		*login_id = server_code;
-		memcpy(login_id + 1, address, addr_len);
+		memcpy(login_id + 1, rem_address, addr_len);
 		struct trie_data **data = trie_index(log->limit_trie, login_id, id_len);
 		if (!*data) {
 			*data = mem_pool_alloc(log->pool, sizeof **data);
@@ -247,7 +253,7 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 		assert(rest >= event->addr_len + sizeof header);
 		memcpy(pos, &header, sizeof header);
 		pos += sizeof header;
-		memcpy(pos, event->addr, event->addr_len);
+		memcpy(pos, event->rem_addr, event->addr_len);
 		pos += event->addr_len;
 		rest -= event->addr_len + sizeof header;
 		for (size_t i = 0; i < event->info_count; i ++) {
