@@ -37,17 +37,27 @@ families = [{
 	'opt': socket.AF_INET6
 }]
 
-def store_logs(message, client, now):
+def store_logs(message, client, now, version):
 	values = []
 	count = 0
 	while message:
-		(age, type_idx, family_idx, info_count, code) = struct.unpack('!IBBBc', message[:8])
+		if version <= 1:
+			(age, type_idx, family_idx, info_count, code) = struct.unpack('!IBBBc', message[:8])
+			rem_port = None
+			message = message[8:]
+		else:
+			(age, type_idx, family_idx, info_count, code, rem_port) = struct.unpack('!IBBBcH', message[:10])
+			message = message[10:]
 		(name, passwd, reason) = (None, None, None)
-		message = message[8:]
 		tp = types[type_idx]
 		family = families[family_idx]
-		address = socket.inet_ntop(family['opt'], message[:family['len']])
+		rem_address = socket.inet_ntop(family['opt'], message[:family['len']])
 		message = message[family['len']:]
+		if version <= 1:
+			loc_address = None
+		else:
+			loc_address = socket.inet_ntop(family['opt'], message[:family['len']])
+			message = message[family['len']:]
 		for i in range(0, info_count):
 			(kind_i,) = struct.unpack('!B', message[0])
 			(content, message) = protocol.extract_string(message[1:])
@@ -74,7 +84,7 @@ class FakePlugin(plugin.Plugin):
 	def message_from_client(self, message, client):
 		if message[0] == 'L':
 			activity.log_activity(client, 'fake')
-			reactor.callInThread(store_logs, message[1:], client, database.now())
+			reactor.callInThread(store_logs, message[1:], client, database.now(), self.version(client))
 		elif message[0] == 'C':
 			config = struct.pack('!IIIII', *map(lambda name: int(self.__config[name]), ['version', 'max_age', 'max_size', 'max_attempts', 'throttle_holdback']))
 			self.send('C' + config, client)
