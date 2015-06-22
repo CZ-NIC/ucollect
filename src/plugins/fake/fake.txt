@@ -90,9 +90,11 @@ Each event starts with a header:
   `code`:: `char`, representing which service generated the event.
     Currently known ones are:
     `T`;; Telnet service.
+  `rem_port`:: `uint16_t`, the port of attacker.
 
-The header is followed by address (the length depends on the address
-type, which is specified in the header).
+The header is followed by addresses (the length depends on the address
+type, which is specified in the header). The remote one is first, the
+local one second.
 
 The address is followed by corresponding number of additional records.
 Each record is prefixed by single `uint8_t` type. Current types are:
