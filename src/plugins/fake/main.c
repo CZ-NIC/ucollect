@@ -399,7 +399,7 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			loop_plugin_register_fd(context, new, empty);
 			ulog(LLOG_DEBUG, "Accepted connecion %d from %s on FD %d for fake server %s\n", new, addr2str(context->temp_pool, addr_p, empty->addr_len), fd, t->desc->name);
 			socklen_t len = sizeof empty->loc_addr;
-			assert(getsockname(new, (struct sockaddr *)&empty->loc_addr, &len));
+			assert(getsockname(new, (struct sockaddr *)&empty->loc_addr, &len) == 0);
 			assert(len == empty->addr_len);
 			empty->fd = new;
 			empty->closed = false;
