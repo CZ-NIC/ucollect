@@ -383,6 +383,8 @@ CREATE TABLE fake_logs (
 	timestamp TIMESTAMP NOT NULL,
 	event fake_log_type NOT NULL,
 	remote INET NOT NULL,
+	local INET,
+	remote_port INT,
 	server fake_server NOT NULL,
 	name TEXT,
 	password TEXT,
