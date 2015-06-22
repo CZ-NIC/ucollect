@@ -160,6 +160,7 @@ struct event_header {
 	enum addr_type addr:8;
 	uint8_t info_count;
 	char code;
+	uint16_t remote_port;
 } __attribute__((packed));
 
 // The IPv6 mapped IPv4 addresses are ::FFFF:<IP>.
@@ -174,7 +175,7 @@ bool log_event(struct context *context, struct log *log, char server_code, const
 	}
 	size_t info_count = 0;
 	size_t expected_size = sizeof(struct event_header);
-	expected_size += addr_len;
+	expected_size += 2 * addr_len;
 	if (info)
 		for (struct event_info *i = info; i->type != EI_LAST; i ++)
 			if (log->log_credentials || (i->type != EI_NAME && i->type != EI_PASSWORD))
@@ -248,14 +249,16 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 			.type = event->type,
 			.addr = event->addr_len == 4 ? AT_IPv4 : AT_IPv6,
 			.info_count = event->info_count,
-			.code = event->code
+			.code = event->code,
+			.remote_port = htons(event->rem_port)
 		};
-		assert(rest >= event->addr_len + sizeof header);
+		assert(rest >= 2 * event->addr_len + sizeof header);
 		memcpy(pos, &header, sizeof header);
 		pos += sizeof header;
 		memcpy(pos, event->rem_addr, event->addr_len);
-		pos += event->addr_len;
-		rest -= event->addr_len + sizeof header;
+		memcpy(pos + event->addr_len, event->loc_addr, event->addr_len);
+		pos += 2 * event->addr_len;
+		rest -= 2 * event->addr_len + sizeof header;
 		for (size_t i = 0; i < event->info_count; i ++) {
 			assert(rest > 0);
 			assert(event->extra_info[i].type != EI_LAST);

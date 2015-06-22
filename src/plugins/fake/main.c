@@ -484,7 +484,7 @@ struct plugin *plugin_info(void) {
 #endif
 	static struct plugin plugin = {
 		.name = "Fake",
-		.version = 1,
+		.version = 2,
 		.init_callback = initialize,
 		.uplink_connected_callback = connected,
 		.uplink_data_callback = uplink_data,
