@@ -60,6 +60,7 @@ sub process_package($$$$) {
 		} else {
 			dbg "Unpacked $name\n";
 			my ($hash, $libname) = split /\s+/, $output;
+			$hash =~ s/(.{32}).*/$1/;
 			push @hashes, {
 				name => $name,
 				libname => $libname,

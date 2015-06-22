@@ -12,6 +12,6 @@ gunzip -c | tar x
 tar xf data.tar.gz
 LIBNAME="$(echo $NAME | tr - _)"
 LIBNAME="usr/lib/libplugin_${LIBNAME}_$VERSION.so"
-sha1sum "$LIBNAME"
+sha256sum "$LIBNAME"
 cd /
 rm -rf "$DIR"
