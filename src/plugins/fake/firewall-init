@@ -88,27 +88,27 @@ initialize() {
 	done
 
 	# Now drop any instances of the previous chains, rename the current ones and load them in
-	$COMMAND -t mangle -D PREROUTING -j ucollect_fake
-	$COMMAND -t mangle -F ucollect_fake
-	$COMMAND -t mangle -X ucollect_fake
+	$COMMAND -t mangle -D PREROUTING -j ucollect_fake >/dev/null 2>&1
+	$COMMAND -t mangle -F ucollect_fake >/dev/null 2>&1
+	$COMMAND -t mangle -X ucollect_fake >/dev/null 2>&1
 	$COMMAND -t mangle -E ucollect_fake_new ucollect_fake
 	$COMMAND -t mangle -A PREROUTING -j ucollect_fake
 
-	$COMMAND -t nat -D PREROUTING -j ucollect_fake
-	$COMMAND -t nat -F ucollect_fake
-	$COMMAND -t nat -X ucollect_fake
+	$COMMAND -t nat -D PREROUTING -j ucollect_fake >/dev/null 2>&1
+	$COMMAND -t nat -F ucollect_fake >/dev/null 2>&1
+	$COMMAND -t nat -X ucollect_fake >/dev/null 2>&1
 	$COMMAND -t nat -E ucollect_fake_new ucollect_fake
 	$COMMAND -t nat -A PREROUTING -j ucollect_fake
 
-	$COMMAND -D reject -j ucollect_fake
-	$COMMAND -F ucollect_fake
-	$COMMAND -X ucollect_fake
+	$COMMAND -D reject -j ucollect_fake >/dev/null 2>&1
+	$COMMAND -F ucollect_fake >/dev/null 2>&1
+	$COMMAND -X ucollect_fake >/dev/null 2>&1
 	$COMMAND -E ucollect_fake_new ucollect_fake
 	$COMMAND -I reject 2 -j ucollect_fake
 
-	$COMMAND -D delegate_input -j ucollect_fake_accept
-	$COMMAND -F ucollect_fake_accept
-	$COMMAND -X ucollect_fake_accept
+	$COMMAND -D delegate_input -j ucollect_fake_accept >/dev/null 2>&1
+	$COMMAND -F ucollect_fake_accept >/dev/null 2>&1
+	$COMMAND -X ucollect_fake_accept >/dev/null 2>&1
 	$COMMAND -E ucollect_fake_accept_new ucollect_fake_accept
 	$COMMAND -I delegate_input 5 -j ucollect_fake_accept
 }
