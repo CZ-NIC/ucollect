@@ -28,6 +28,8 @@
 
 // How many times a plugin may fail before we give up and disable it
 #define FAIL_COUNT 5
+// After how many milliseconds do we reset the count to zero?
+#define FAIL_COUNT_RESET (3600 * 1000)
 
 /*
  * How long to wait before interface reconfiguration attempt happens (10s).

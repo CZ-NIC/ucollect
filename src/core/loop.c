@@ -575,7 +575,24 @@ static void config_copy(struct loop_configurator *configurator, struct plugin_ho
 	trie_walk(plugin->config_trie, config_copy_node, configurator, configurator->loop->temp_pool);
 }
 
+static void fail_count_reset(struct context *context, void *data, size_t id) {
+	// Params are unused
+	(void)context;
+	(void)id;
+	struct loop *loop = data;
+	// Reset the counts of failed attempts
+	LFOR(plugin, plugin, &loop->plugins) {
+		if (plugin->failed) {
+			ulog(LLOG_INFO, "Resetting failed count of %s to 0\n", plugin->plugin.name);
+			plugin->failed = 0;
+		}
+	}
+	// Another round next time
+	loop_timeout_add(loop, FAIL_COUNT_RESET, NULL, loop, fail_count_reset);
+}
+
 void loop_run(struct loop *loop) {
+	loop_timeout_add(loop, FAIL_COUNT_RESET, NULL, loop, fail_count_reset);
 	if (setjmp(abort_env)) {
 		abort_ready = 0;
 		// Avoid signal loop
