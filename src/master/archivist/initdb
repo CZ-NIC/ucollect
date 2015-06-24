@@ -6,6 +6,7 @@ BEGIN;
 DROP TABLE IF EXISTS fake_attackers;
 DROP TABLE IF EXISTS fake_server_activity;
 DROP TABLE IF EXISTS fake_passwords;
+DROP TABLE IF EXISTS fake_logs;
 DROP TABLE IF EXISTS ssh_commands;
 DROP TABLE IF EXISTS ssh_sessions;
 DROP TABLE IF EXISTS refused_clients;
@@ -31,6 +32,7 @@ DROP TABLE IF EXISTS ping_ips;
 DROP TABLE IF EXISTS ping_stats;
 DROP TABLE IF EXISTS ping_requests;
 DROP TYPE IF EXISTS fake_server;
+DROP TYPE IF EXISTS fake_log_type;
 
 CREATE TABLE groups (
 	id INT PRIMARY KEY NOT NULL,
@@ -326,6 +328,7 @@ CREATE TABLE refused_addrs (
 CREATE INDEX ON refused_addrs(since);
 
 CREATE TYPE fake_server AS ENUM ('telnet');
+CREATE TYPE fake_log_type AS ENUM('connect', 'disconnect', 'lost', 'extra', 'timeout', 'login');
 CREATE TABLE fake_attackers (
 	date DATE NOT NULL,
 	server fake_server NOT NULL,
@@ -353,6 +356,16 @@ CREATE TABLE fake_server_activity (
 	UNIQUE(date, server, client),
 	CHECK(attempt_count >= 0),
 	CHECK(connect_count >= 0)
+);
+CREATE TABLE fake_logs (
+	timestamp TIMESTAMP NOT NULL,
+	event fake_log_type NOT NULL,
+	remote INET NOT NULL,
+	remote_port INT,
+	server fake_server NOT NULL,
+	name TEXT,
+	password TEXT,
+	reason TEXT
 );
 
 CREATE TABLE ssh_sessions (
@@ -433,12 +446,15 @@ GRANT SELECT (since) ON refused_clients TO archivist;
 GRANT INSERT ON fake_attackers TO archivist;
 GRANT INSERT ON fake_server_activity TO archivist;
 GRANT INSERT ON fake_passwords TO archivist;
+GRANT INSERT ON fake_logs TO archivist;
 GRANT SELECT (date) ON fake_attackers TO archivist;
 GRANT SELECT (date) ON fake_server_activity TO archivist;
 GRANT SELECT (timestamp) ON fake_passwords TO archivist;
+GRANT SELECT (timestamp) ON fake_logs TO archivist;
 GRANT DELETE ON fake_attackers TO archivist;
 GRANT DELETE ON fake_server_activity TO archivist;
 GRANT DELETE ON fake_passwords TO archivist;
+GRANT DELETE ON fake_logs TO archivist;
 GRANT INSERT ON ssh_sessions TO archivist;
 GRANT SELECT ON ssh_sessions TO archivist;
 GRANT UPDATE ON ssh_sessions TO archivist;
