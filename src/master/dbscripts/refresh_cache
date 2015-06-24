@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set -e
+
+. ./dbconfig
+
+(
+	echo "BEGIN;"
+	echo "REFRESH MATERIALIZED VIEW fake_blacklist_cache;"
+	echo 'COMMIT;'
+) | psql -U "$DBCLEANER" -d "$DB" $DBPARAMS
