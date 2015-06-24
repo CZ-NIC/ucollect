@@ -6,6 +6,7 @@ psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
 DROP VIEW IF EXISTS fake_blacklist;
+DROP MATERIALIZED VIEW IF EXISTS fake_blacklist_cache;
 DROP TABLE IF EXISTS fake_logs;
 DROP TABLE IF EXISTS fake_server_names;
 DROP TABLE IF EXISTS fake_blacklist_limits;
@@ -419,67 +420,67 @@ INSERT INTO fake_blacklist_limits (server, client_pass, score_total, clients_tot
 	('telnet', 25, 100, 0, 0, 3, 'hard'),
 	('telnet', 25, 75, 0, 0, 2, 'soft'),
 	('telnet', 200, 0, 0, 0, 1, 'soft');
-CREATE OR REPLACE VIEW fake_blacklist AS SELECT
-  t.server,
-  t.remote,
-  MAX(t.clients_total) AS clients_total,
-  MAX(t.score_total) AS score_total,
-  MAX(l.mode) AS mode
+CREATE MATERIALIZED VIEW fake_blacklist_cache AS SELECT
+	fl.server,
+	fl.remote,
+	fl.client,
+	SUM(fake_blacklist_scores.score) AS score,
+	MAX(fl.timestamp) AS timestamp
 FROM
-  (SELECT
-    s.server,
-    s.remote,
-    s.client_pass,
-    COUNT(s.client) AS clients_total,
-    SUM(s.passed) AS clients_passed,
-    SUM(s.score) AS score_total,
-    SUM(s.score * s.passed) AS score_passed
-  FROM
-    (SELECT
-      fake_logs.server,
-      fake_logs.remote,
-      fake_logs.client,
-      fake_blacklist_limits.client_pass,
-      SUM(fake_blacklist_scores.score) AS score,
-      (SUM(fake_blacklist_scores.score) >= fake_blacklist_limits.client_pass)::INT AS passed
-    FROM
-      fake_logs
-    JOIN
-      fake_blacklist_scores
-    ON
-      fake_logs.server = fake_blacklist_scores.server AND
-      fake_logs.event = fake_blacklist_scores.event
-    JOIN
-      fake_blacklist_limits
-    ON
-      fake_logs.server = fake_blacklist_limits.server
-    GROUP BY
-      fake_logs.server,
-      fake_logs.remote,
-      fake_logs.client,
-      fake_blacklist_limits.client_pass
-    ) AS s
-  GROUP BY
-    s.server,
-    s.remote,
-    s.client_pass
-  ) AS t
-JOIN
-  fake_blacklist_limits AS l
-ON
-  t.server = l.server AND
-  t.client_pass = l.client_pass
+	(SELECT * FROM fake_logs WHERE timestamp < CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - INTERVAL '1 hour') AS fl
+	JOIN fake_blacklist_scores ON fl.server = fake_blacklist_scores.server AND fl.event = fake_blacklist_scores.event
+GROUP BY fl.server, fl.remote, fl.client;
+CREATE OR REPLACE VIEW fake_blacklist AS SELECT
+	t.server,
+	t.remote,
+	MAX(t.clients_total) AS clients_total,
+	MAX(t.score_total) AS score_total,
+	MAX(l.mode) AS mode
+FROM
+	(SELECT
+		s.server,
+		s.remote,
+		s.client_pass,
+		COUNT(s.client) AS clients_total,
+		SUM(s.passed) AS clients_passed,
+		SUM(s.score) AS score_total,
+		SUM(s.score * s.passed) AS score_passed
+	FROM (
+		SELECT
+			fl.server,
+			fl.remote,
+			fl.client,
+			fake_blacklist_limits.client_pass,
+			SUM(fl.score) AS score,
+			(SUM(fl.score) >= fake_blacklist_limits.client_pass)::INTEGER AS passed
+		FROM
+			(SELECT * FROM fake_blacklist_cache
+			UNION ALL
+			SELECT
+				fl.server,
+				fl.remote,
+				fl.client,
+				SUM(fake_blacklist_scores.score) AS score,
+				MAX(fl.timestamp) AS timestamp
+			FROM (SELECT * FROM fake_logs WHERE timestamp > (SELECT MAX(timestamp) FROM fake_blacklist_cache)) AS fl
+			JOIN fake_blacklist_scores ON fl.server = fake_blacklist_scores.server AND fl.event = fake_blacklist_scores.event
+			GROUP BY fl.server, fl.remote, fl.client) AS fl
+		JOIN fake_blacklist_limits ON fl.server = fake_blacklist_limits.server
+		GROUP BY fl.server, fl.remote, fl.client, fake_blacklist_limits.client_pass
+	) AS s
+	GROUP BY
+		s.server,
+		s.remote,
+		s.client_pass
+	) AS t
+JOIN fake_blacklist_limits AS l ON t.server = l.server AND t.client_pass = l.client_pass
 WHERE
-  t.clients_total >= l.clients_total AND
-  t.clients_passed >= l.clients_passed AND
-  t.score_total >= l.score_total AND
-  t.score_passed >= l.score_passed
-GROUP BY
-  t.server,
-  t.remote
-ORDER BY
-  t.server,
-  t.remote;
+	t.clients_total >= l.clients_total
+	AND t.clients_passed >= l.clients_passed
+	AND t.score_total >= l.score_total
+	AND t.score_passed >= l.score_passed
+GROUP BY t.server, t.remote
+ORDER BY t.server, t.remote;
 
 CREATE TABLE spoof (
 	client INT NOT NULL,
