@@ -5,6 +5,8 @@
 psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
+DROP VIEW IF EXISTS fake_bad_connections;
+DROP VIEW IF EXISTS fake_bad_connections_telnet;
 DROP VIEW IF EXISTS fake_blacklist;
 DROP MATERIALIZED VIEW IF EXISTS fake_blacklist_cache;
 DROP TABLE IF EXISTS fake_logs;
@@ -481,6 +483,34 @@ WHERE
 	AND t.score_passed >= l.score_passed
 GROUP BY t.server, t.remote
 ORDER BY t.server, t.remote;
+CREATE OR REPLACE VIEW fake_bad_connections_telnet AS SELECT
+	fake_logs.server,
+	fake_logs.remote,
+	remote_port,
+	local,
+	23 AS local_port,
+	MIN(timestamp) AS start_time_utc,
+	MAX(timestamp) AS end_time_utc,
+	SUM((event = 'login')::INTEGER) AS login_attempts,
+	MIN(clients_total) AS clients_total
+FROM
+	fake_logs
+	JOIN fake_blacklist ON fake_logs.remote = fake_blacklist.remote
+WHERE
+	fake_logs.server = 'telnet'
+	AND fake_blacklist.server = 'telnet'
+	AND fake_blacklist.mode = 'hard'
+	AND remote_port IS NOT NULL
+GROUP BY
+	fake_logs.server,
+	fake_logs.remote,
+	remote_port,
+	local
+ORDER BY
+	fake_logs.remote,
+	local,
+	MIN(timestamp);
+CREATE OR REPLACE VIEW fake_bad_connections AS SELECT * FROM fake_bad_connections_telnet;
 
 CREATE TABLE spoof (
 	client INT NOT NULL,
