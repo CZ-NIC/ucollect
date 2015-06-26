@@ -340,6 +340,7 @@ CREATE TABLE fake_passwords (
 	timestamp TIMESTAMP NOT NULL,
 	server fake_server NOT NULL,
 	remote INET NOT NULL,
+	remote_port INT,
 	name TEXT NOT NULL,
 	password TEXT NOT NULL
 );

@@ -505,9 +505,9 @@ if (fork == 0) {
 	});
 	print "Archived $attackers fake attacker stats\n";
 	$destination->do("DELETE FROM fake_passwords WHERE timestamp >= ?", undef, $max_date);
-	my $get_passwords = $source->prepare("SELECT timestamp, server, remote, name, password FROM fake_logs WHERE name IS NOT NULL AND password IS NOT NULL AND event = 'login' AND timestamp >= ?");
+	my $get_passwords = $source->prepare("SELECT timestamp, server, remote, name, password, remote_port FROM fake_logs WHERE name IS NOT NULL AND password IS NOT NULL AND event = 'login' AND timestamp >= ?");
 	$get_passwords->execute($max_date);
-	my $put_password = $destination->prepare("INSERT INTO fake_passwords (timestamp, server, remote, name, password) VALUES (?, ?, ?, ?, ?)");
+	my $put_password = $destination->prepare("INSERT INTO fake_passwords (timestamp, server, remote, name, password, remote_port) VALUES (?, ?, ?, ?, ?, ?)");
 	my $passwords = -1;
 	$put_password->execute_for_fetch(sub {
 		$passwords ++;
