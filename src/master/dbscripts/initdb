@@ -63,7 +63,8 @@ CREATE SEQUENCE clients_id OWNED BY clients.id;
 ALTER TABLE clients ALTER COLUMN id SET DEFAULT NEXTVAL('clients_id');
 CREATE TABLE activity_types (
 	id SMALLINT PRIMARY KEY NOT NULL,
-	name TEXT UNIQUE NOT NULL
+	name TEXT UNIQUE NOT NULL,
+	plugin TEXT,
 );
 CREATE SEQUENCE activity_types_ids OWNED BY activity_types.id;
 ALTER TABLE activity_types ALTER COLUMN id SET DEFAULT NEXTVAL('activity_types_ids');
@@ -84,7 +85,6 @@ CREATE TABLE known_plugins (
 	version INT,
 	hash TEXT,
 	status plugin_status NOT NULL DEFAULT 'allowed',
-	activity SMALLINT,
 	introduced TIMESTAMP NOT NULL DEFAULT NOW(),
 	note TEXT,
 	UNIQUE(name, version, hash),
@@ -278,7 +278,7 @@ CREATE INDEX ON biflows (client);
 CREATE INDEX ON biflows (port_remote, proto);
 CREATE INDEX ON biflows (country_remote) WHERE country_remote IS NULL;
 
-INSERT INTO activity_types (name) VALUES ('login'), ('logout'), ('buckets'), ('counts'), ('pings'), ('bandwidth'), ('certs'), ('flow'), ('nat'), ('spoof'), ('refused'), ('fake');
+INSERT INTO activity_types (name, plugin) VALUES ('login', NULL), ('logout', NULL), ('buckets', 'Buckets'), ('counts', 'Count'), ('pings', 'Sniff'), ('bandwidth', 'Bandwidth'), ('certs', 'Sniff'), ('flow', 'Flow'), ('nat', 'Sniff'), ('spoof', 'Spoof'), ('refused', 'Refused'), ('fake', 'Fake');
 CREATE TABLE starttls_protos (
 	id SMALLINT NOT NULL PRIMARY KEY,
 	name TEXT NOT NULL,
