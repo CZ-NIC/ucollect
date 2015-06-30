@@ -49,11 +49,6 @@ function majordomo_get_configuration()
 	majordomocfg:foreach("majordomo", "db", function(s) if s[".type"] == "db" and s.max_items_per_client then max_items_per_client=tonumber(s.max_items_per_client); return false; end return true; end);
 	majordomocfg:foreach("majordomo", "lookup", function(s) if s[".type"] == "lookup" and s.make_lookup_dns then make_lookup_dns=s.make_lookup_dns; return false; end return true; end);
 
-	-- Test and Set default values
-	if not db_path then db_path = DB_PATH_DEFAULT; end
-	if not max_items_per_client then max_items_per_client = MAX_ITEMS_PER_CLIENT_DEFAULT; end
-	if make_lookup_dns == "1" then make_lookup_dns = true; elseif make_lookup_dns == "0" then make_lookup_dns = false; else make_lookup_dns = true; end
-
 	return db_path, true, make_lookup_dns, max_items_per_client;
 end
 
