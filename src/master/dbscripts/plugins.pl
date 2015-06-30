@@ -5,6 +5,7 @@ use Config::IniFiles;
 use Term::ANSIColor;
 use Data::Dumper;
 use POSIX;
+use utf8;
 
 $ENV{TZ} = 'UTC';
 
@@ -97,5 +98,46 @@ while (my ($name, $last, $online, $login, $logout, $plugin, $plug_last, $hash, $
 }
 
 print $line, "\n";
+
+my $stmt = $dbh->prepare(<<'ENDSQL');
+SELECT
+	COALESCE(active_plugins.name, known_plugins.name) AS name,
+	COALESCE(active_plugins.hash, known_plugins.hash) AS hash,
+	COALESCE(active_plugins.version, known_plugins.version) AS version,
+	COUNT(active_plugins.name) AS count,
+	SUM(active::integer) AS active,
+	MAX(known_plugins.note) AS note,
+	MAX(known_plugins.status) As status
+FROM
+	active_plugins
+	FULL OUTER JOIN known_plugins ON active_plugins.name = known_plugins.name AND active_plugins.hash = COALESCE(known_plugins.hash, active_plugins.hash) AND active_plugins.version = COALESCE(known_plugins.version, active_plugins.version)
+GROUP BY
+	COALESCE(active_plugins.name, known_plugins.name),
+	COALESCE(active_plugins.hash, known_plugins.hash),
+	COALESCE(active_plugins.version, known_plugins.version)
+ORDER BY
+	COALESCE(active_plugins.name, known_plugins.name),
+	MAX(known_plugins.note),
+	COALESCE(active_plugins.hash, known_plugins.hash),
+	COALESCE(active_plugins.version, known_plugins.version);
+ENDSQL
+$stmt->execute;
+my $plugin;
+while (my ($name, $hash, $version, $count, $active, $note, $status) = $stmt->fetchrow_array) {
+	if ($name ne $plugin) {
+		print "\n", $name, "\n", "="x length $name, "\n";
+		$plugin = $name;
+	}
+	my $color = color 'bold green';
+	$color = color 'bold blue' unless $count;
+	$color = color 'bold magenta' if $status ne "allowed";
+	$color = color 'bold red' unless defined $status;
+	$status //= 'unknown';
+	$version //= '?';
+	$note =~ s/.*_ucollect_(\w+)_(\d+)\.so/lib $2/;
+	my $count_color = $reset;
+	$count_color = color 'bold red' if $status ne 'allowed' and $count;
+	printf " • %s(%2s) %s%10s%s %4s/%s%4s%s   %s\n", $hash, $version, $color, $status, $reset, 0+$active, $count_color, 0+$count, $reset, $note;
+}
 
 $dbh->rollback;
