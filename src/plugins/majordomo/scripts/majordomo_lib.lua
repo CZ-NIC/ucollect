@@ -122,6 +122,37 @@ function get_sorted_items(items, by)
 	return sorted_array;
 end
 
+DD = {
+	{"(%w+)", nil},
+	{"([%w\.:]+)", nil},
+	{"([%w\.:]+)", nil},
+	{"(%w+)", nil},
+	{"([%d.]+)", nil},
+	{"([%d.]+)", nil},
+	{"([%d.]+)", nil},
+	{"([%d.]+)", nil},
+	{"([%d.]+)", nil},
+	{"([%d.]+)", nil},
+}
+
+function parse_line(line)
+	local values = {}
+	local rest = line;
+	for _, record in ipairs(DD) do
+		local match = record[1];
+		local default = record[2];
+
+		if rest and rest ~= "" then
+			val, rest = rest:match("^"..match..",*(.*)$");
+			table.insert(values, val);
+		else
+			table.insert(values, default);
+		end
+	end
+
+	return values;
+end
+
 function read_file(db, file)
 	local f = io.open(file, "r");
 	if not f then
@@ -129,9 +160,19 @@ function read_file(db, file)
 	end
 
 	for line in f:lines() do
+		local col = parse_line(line);
+		local proto = col[1];
+		local src = col[2];
+		local dst = col[3];
 		--Use port as string... we need value "all"
-		proto, src, dst, port, d_count, d_size, d_data_size, u_count, u_size, u_data_size = line:match("(%w+),([%w\.:]+),([%w\.:]+),(%w+),([%d%.]+),([%d%.]+),([%d%.]+),([%d%.]+),([%d%.]+),([%d%.]+)");
-		key = table.concat({ proto, src, dst, port }, ",");
+		local port = col[4];
+		local d_count = col[5];
+		local d_size = col[6];
+		local d_data_size = col[7];
+		local u_count = col[8];
+		local u_size = col[9];
+		local u_data_size = col[10];
+		local key = table.concat({ proto, src, dst, port }, ",");
 		if (key ~= "") then
 			if not db[src] then
 				db[src] = { };
