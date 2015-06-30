@@ -56,10 +56,10 @@ sub act_color($) {
 sub plug_color($$) {
 	my ($active, $status) = @_;
 	return color 'reset' unless defined $active;
-	return color 'bold green' if $active;
-	return color 'bold blue' if $status eq 'allowed';
-	return color 'bold magenta' unless defined $status;
-	return color 'bold red';
+	return color 'reset' if $active;
+	return color 'blue' if $status eq 'allowed';
+	return color 'magenta' unless defined $status;
+	return color 'red';
 }
 
 sub tform($) {
