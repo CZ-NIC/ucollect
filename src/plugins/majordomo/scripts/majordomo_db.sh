@@ -55,8 +55,8 @@ if [ "$CMD" = "downsize" ]; then
 	#TMPFILE=$(tempfile --prefix=majordomo)
 	TMPFILE="/tmp/majordomo_tempfile_$$_$(date +"%s")"
 
-	## Merge dump file to corresponding downsize file should eliminate dump file -
-	## we don't want merge the same data again and again
+	## Merge of dump file to corresponding downsize file should eliminate dump
+	## file - we don't want merge the same data again and again
 	mv "$DUMP_FILE_PATH" "$TMPFILE"
 	[ "$?" -ne 0 ] && exit 0
 	[ -e "$DOWNSIZE_FILE_PATH" ] || touch "$DOWNSIZE_FILE_PATH"
@@ -68,7 +68,7 @@ if [ "$CMD" = "downsize" ]; then
 		## At this moment, $TMPFILE contains data from the last 5 minutes. It is
 		## very probable, that dump file doesn't exists. Anyway, if dump file
 		## exists, it is storing just last one minute. This operation is saving
-		## collected data or lose 1 minut data instead of 5 minut.
+		## collected data. Is better to lose 1 minute than lose 5 minutes.
 		mv "$TMPFILE" "$DUMP_FILE_PATH"
 	fi
 
