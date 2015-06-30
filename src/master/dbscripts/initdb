@@ -8,6 +8,7 @@ BEGIN;
 DROP VIEW IF EXISTS fake_bad_connections;
 DROP VIEW IF EXISTS fake_bad_connections_telnet;
 DROP VIEW IF EXISTS fake_blacklist;
+DROP VIEW IF EXISTS plugin_activities;
 DROP MATERIALIZED VIEW IF EXISTS fake_blacklist_cache;
 DROP TABLE IF EXISTS fake_logs;
 DROP TABLE IF EXISTS fake_server_names;
@@ -102,6 +103,47 @@ CREATE TABLE active_plugins (
 	UNIQUE(client, name),
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
+CREATE OR REPLACE VIEW plugin_activity AS SELECT
+	clients.name,
+	MIN(globals.last) AS last,
+	MIN(globals.login) AS login,
+	ROUND(((EXTRACT(EPOCH FROM CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - EXTRACT(EPOCH FROM MIN(globals.login))) / 60)::NUMERIC, 0) AS login_time,
+	MIN(globals.logout) AS logout,
+	ROUND(((EXTRACT(EPOCH FROM CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - EXTRACT(EPOCH FROM MIN(globals.logout))) / 60)::NUMERIC, 0) AS logout_time,
+	COALESCE(activity_types.plugin, active_plugins.name) AS plugin,
+	ROUND(((EXTRACT(EPOCH FROM CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - EXTRACT(EPOCH FROM MAX(activities.timestamp))) / 60)::NUMERIC, 0) AS plug_last,
+	MIN(active_plugins.hash) AS hash,
+	MIN(active_plugins.version) AS version,
+	MIN(known_plugins.status) AS status,
+	BOOL_AND(active_plugins.active) AS active
+FROM
+	activities
+	JOIN activity_types ON activities.activity = activity_types.id
+	FULL OUTER JOIN active_plugins ON active_plugins.client = activities.client AND active_plugins.name = activity_types.plugin
+	LEFT OUTER JOIN known_plugins ON active_plugins.name = known_plugins.name AND active_plugins.version = COALESCE(known_plugins.version, active_plugins.version) AND active_plugins.hash = COALESCE(known_plugins.hash, active_plugins.hash)
+	RIGHT OUTER JOIN clients ON clients.id = COALESCE(activities.client, active_plugins.client)
+	LEFT OUTER JOIN (
+		SELECT
+			activities.client,
+			ROUND(((EXTRACT(EPOCH FROM CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - EXTRACT(EPOCH FROM MAX(activities.timestamp))) / 60)::NUMERIC, 0) AS last,
+			MAX(CASE WHEN activity_types.name = 'login' THEN timestamp END) AS login,
+			MAX(CASE WHEN activity_types.name = 'logout' THEN timestamp END) AS logout
+		FROM
+			activities
+			JOIN activity_types ON activities.activity = activity_types.id
+		WHERE
+			activity_types.name != 'firewall'
+		GROUP BY
+			activities.client
+	) AS globals ON clients.id = globals.client
+WHERE
+	activity_types.name IS NULL OR activity_types.plugin IS NOT NULL
+GROUP BY
+	clients.id,
+	COALESCE(activity_types.plugin, active_plugins.name)
+ORDER BY
+	clients.name,
+	COALESCE(activity_types.plugin, active_plugins.name);
 
 CREATE TABLE groups (
 	id INT PRIMARY KEY NOT NULL,
