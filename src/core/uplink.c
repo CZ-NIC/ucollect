@@ -957,5 +957,5 @@ void uplink_close(struct uplink *uplink) {
 }
 
 bool uplink_connected(const struct uplink *uplink) {
-	return uplink->fd != -1 && uplink->auth_status == AUTHENTICATED;
+	return uplink && uplink->fd != -1 && uplink->auth_status == AUTHENTICATED;
 }
