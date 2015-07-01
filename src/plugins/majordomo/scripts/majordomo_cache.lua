@@ -32,9 +32,7 @@ function invalidate(db_path)
 end
 
 function precache(db_path, ml_mac, ml_dns)
-	local ptrdb = get_inst_ptrdb();
 	local macdb = get_inst_macdb();
-	ptrdb:deserialize();
 	macdb:deserialize();
 
 	local handles = { };
@@ -43,27 +41,44 @@ function precache(db_path, ml_mac, ml_dns)
 	table.insert(handles, io.popen("/bin/ls '" .. db_path .. "/" ..  MONTHLY_PREFIX .."'*", "r"));
 
 	for _, handle in ipairs(handles) do
-		for file in handle:lines() do
-			local db = { };
-			read_file(db, file);
-			for addr, items in pairs(db) do
+		for filename in handle:lines() do
+			local ptrdb = get_inst_ptrdb(); -- ptrdb is per file
+			local changed = false;
+			local tmp_filename = os.tmpname();
+			local tmp_file = io.open(tmp_filename, "w");
+
+			local file = io.open(filename, "r");
+			for line in file:lines() do
+				data = parse_line(line)
 				if ml_mac then
-					macdb:check(addr);
-					macdb:lookup(addr);
+					macdb:check(data[DD_SRC])
+					macdb:lookup(data[DD_SRC])
 				end
-				for key, _ in pairs(items) do
-					local _, _, dst, _ = split_key(key);
-					if ml_dns then
-						ptrdb:check(dst);
-						ptrdb:lookup(dst);
+				if ml_dns then
+					if data[DD_RESOLVED] == CACHE_EMPTY_NAME then
+						changed = true;
+						local ptr = ptrdb:lookup(data[DD_DST]);
+						if ptr ~= nil then
+							data[DD_RESOLVED] = ptr;
+						else
+							data[DD_RESOLVED] = data[DD_DST];
+						end
+						tmp_file:write(restore_line(data).."\n")
 					end
 				end
+			end
+
+			file:close();
+			tmp_file:close();
+			if changed then
+				os.rename(tmp_filename, filename)
+			else
+				os.remove(tmp_filename)
 			end
 		end
 		handle:close();
 	end
 
-	ptrdb:serialize();
 	macdb:serialize();
 end
 

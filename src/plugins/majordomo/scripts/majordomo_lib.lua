@@ -28,6 +28,7 @@ DB_PATH_DEFAULT="/tmp/majordomo_db/";
 USE_DNS_LOOKUP_BACKEND = "nslookup_openwrt"
 MAX_ITEMS_PER_CLIENT_DEFAULT = 6000
 CACHE_RECORD_VALIDITY = 60 * 60 * 24 * 7; -- 7 days
+CACHE_EMPTY_NAME = "none"
 
 -- This names have to be synced with Majordomo plugin
 KW_OTHER_PROTO = "both"
@@ -132,6 +133,7 @@ DD_D_DSIZE = 7;
 DD_U_CNT = 8;
 DD_U_SIZE = 9;
 DD_U_DSIZE = 10;
+DD_RESOLVED = 11;
 
 DD = {
 --	Match expr, default value, print format
@@ -145,6 +147,7 @@ DD = {
 	{"([%d.]+)", nil, "%f"},
 	{"([%d.]+)", nil, "%f"},
 	{"([%d.]+)", nil, "%f"},
+	{"(%w+)", CACHE_EMPTY_NAME, "%s"},
 }
 
 function restore_line(data)
@@ -199,6 +202,7 @@ function read_file(db, file)
 		local u_count = col[DD_U_CNT];
 		local u_size = col[DD_U_SIZE];
 		local u_data_size = col[DD_U_DSIZE];
+		local resolved_name = col[DD_RESOLVED];
 		local key = table.concat({ proto, src, dst, port }, ",");
 		if (key ~= "") then
 			if not db[src] then
@@ -207,7 +211,8 @@ function read_file(db, file)
 			if not db[src][key] then
 				db[src][key] = {
 					d_count = tonumber(d_count), d_size = tonumber(d_size), d_data_size = tonumber(d_data_size),
-					u_count = tonumber(u_count), u_size = tonumber(u_size), u_data_size = tonumber(u_data_size)
+					u_count = tonumber(u_count), u_size = tonumber(u_size), u_data_size = tonumber(u_data_size),
+					resolved_name = resolved_name
 				}
 			else
 				db[src][key].d_count = db[src][key].d_count + tonumber(d_count);
@@ -292,7 +297,7 @@ function get_inst_ptrdb()
 	local ptrdb = db("ptr", db_path);
 	function ptrdb:lookup(key)
 		-- Pick some "safe" string
-		local empty_result = "none";
+		local empty_result = CACHE_EMPTY_NAME;
 		local resolve = DNS_LOOKUP_BACKENDS[USE_DNS_LOOKUP_BACKEND];
 
 		local cached = self.data[key];
@@ -329,7 +334,7 @@ function get_inst_macdb()
 	local macdb = db("mac_vendor", db_path);
 	function macdb:lookup(key)
 		-- Pick some "safe" string
-		local empty_result = "none";
+		local empty_result = CACHE_EMPTY_NAME;
 
 		local cached = self.data[key];
 		if cached then
