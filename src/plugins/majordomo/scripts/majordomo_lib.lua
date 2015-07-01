@@ -123,17 +123,33 @@ function get_sorted_items(items, by)
 end
 
 DD = {
-	{"(%w+)", nil},
-	{"([%w\.:]+)", nil},
-	{"([%w\.:]+)", nil},
-	{"(%w+)", nil},
-	{"([%d.]+)", nil},
-	{"([%d.]+)", nil},
-	{"([%d.]+)", nil},
-	{"([%d.]+)", nil},
-	{"([%d.]+)", nil},
-	{"([%d.]+)", nil},
+--	Match expr, default value, print format
+	{"(%w+)", nil, "%s"},
+	{"([%w\.:]+)", nil, "%s"},
+	{"([%w\.:]+)", nil, "%s"},
+	{"(%w+)", nil, "%s"},
+	{"([%d.]+)", nil, "%f"},
+	{"([%d.]+)", nil, "%f"},
+	{"([%d.]+)", nil, "%f"},
+	{"([%d.]+)", nil, "%f"},
+	{"([%d.]+)", nil, "%f"},
+	{"([%d.]+)", nil, "%f"},
 }
+
+function restore_line(data)
+	local res = "";
+	for i, record in ipairs(DD) do
+		local fmt = record[3];
+
+		if res == "" then
+			res = string.format(fmt, data[i]);
+		else
+			res = string.format("%s,"..fmt, res, data[i]);
+		end
+	end
+
+	return res;
+end
 
 function parse_line(line)
 	local values = {}
