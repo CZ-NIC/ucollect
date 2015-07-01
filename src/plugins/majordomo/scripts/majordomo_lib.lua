@@ -122,6 +122,17 @@ function get_sorted_items(items, by)
 	return sorted_array;
 end
 
+DD_PROTO = 1;
+DD_SRC = 2;
+DD_DST = 3;
+DD_PORT = 4;
+DD_D_CNT = 5;
+DD_D_SIZE = 6;
+DD_D_DSIZE = 7;
+DD_U_CNT = 8;
+DD_U_SIZE = 9;
+DD_U_DSIZE = 10;
+
 DD = {
 --	Match expr, default value, print format
 	{"(%w+)", nil, "%s"},
@@ -177,17 +188,17 @@ function read_file(db, file)
 
 	for line in f:lines() do
 		local col = parse_line(line);
-		local proto = col[1];
-		local src = col[2];
-		local dst = col[3];
+		local proto = col[DD_PROTO];
+		local src = col[DD_SRC];
+		local dst = col[DD_DST];
 		--Use port as string... we need value "all"
-		local port = col[4];
-		local d_count = col[5];
-		local d_size = col[6];
-		local d_data_size = col[7];
-		local u_count = col[8];
-		local u_size = col[9];
-		local u_data_size = col[10];
+		local port = col[DD_PORT];
+		local d_count = col[DD_D_CNT];
+		local d_size = col[DD_D_SIZE];
+		local d_data_size = col[DD_D_DSIZE];
+		local u_count = col[DD_U_CNT];
+		local u_size = col[DD_U_SIZE];
+		local u_data_size = col[DD_U_DSIZE];
 		local key = table.concat({ proto, src, dst, port }, ",");
 		if (key ~= "") then
 			if not db[src] then
