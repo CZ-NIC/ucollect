@@ -46,7 +46,7 @@ Receiver::Receiver() {
 	keyFile.open(QIODevice::ReadOnly);
 	QSslKey key(&keyFile, QSsl::Rsa);
 	assert(!key.isNull());
-	config.setProtocol(QSsl::TlsV1);
+	config.setProtocol(QSsl::SecureProtocols);
 	config.setCaCertificates(QList<QSslCertificate>() << cert);
 	config.setLocalCertificate(cert);
 	config.setPrivateKey(key);
