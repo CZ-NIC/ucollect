@@ -221,6 +221,9 @@ function read_file(db, file)
 				db[src][key].u_count = db[src][key].u_count + tonumber(u_count);
 				db[src][key].u_size = db[src][key].u_size + tonumber(u_size);
 				db[src][key].u_data_size = db[src][key].u_data_size + tonumber(u_data_size);
+				if not db[src][key].resolved_name and resolved_name then
+					db[src][key].resolved_name = resolved_name;
+				end
 			end
 		end
 	end
