@@ -44,7 +44,7 @@ function precache(db_path, ml_mac, ml_dns)
 		for filename in handle:lines() do
 			local ptrdb = get_inst_ptrdb(); -- ptrdb is per file
 			local changed = false;
-			local tmp_filename = os.tmpname();
+			local tmp_filename = "/tmp/_tmp_edit"..string.gsub(filename, "/", "_")
 			local tmp_file = io.open(tmp_filename, "w");
 
 			local file = io.open(filename, "r");
