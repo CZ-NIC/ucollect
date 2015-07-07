@@ -58,11 +58,7 @@ function precache(db_path, ml_mac, ml_dns)
 					if data[DD_RESOLVED] == CACHE_EMPTY_NAME then
 						changed = true;
 						local ptr = ptrdb:lookup(data[DD_DST]);
-						if ptr ~= nil then
-							data[DD_RESOLVED] = ptr;
-						else
-							data[DD_RESOLVED] = data[DD_DST];
-						end
+						data[DD_RESOLVED] = ptr or data[DD_DST];
 						tmp_file:write(restore_line(data).."\n")
 					end
 				end
