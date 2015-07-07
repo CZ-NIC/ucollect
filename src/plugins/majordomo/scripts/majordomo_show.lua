@@ -28,10 +28,6 @@ function main()
 		macdb = get_inst_macdb();
 		macdb:deserialize();
 	end
-	if make_lookup_dns then
-		ptrdb = get_inst_ptrdb();
-		ptrdb:deserialize();
-	end
 	if #arg ~= 1 then
 		io.stderr:write(string.format("Usage: %s file_to_dump\n", arg[0]));
 		os.exit(1);
@@ -52,9 +48,9 @@ function main()
 		end
 		for _, item in ipairs(sorted) do
 			local proto, _, dst, port = split_key(item.key);
-				if ptrdb then
-					dst = ptrdb:lookup(dst) or dst;
-				end
+			if item.value.resolved_name and item.value.resolved_name ~= CACHE_EMPTY_NAME then
+				dst = item.value.resolved_name;
+			end
 			io.stdout:write(string.format("\t - %s - (%s/%s) - (%f/%f/%f) - (%f/%f/%f)\n",
 				dst, port, proto,
 				item.value.d_count, item.value.d_size, item.value.d_data_size,
@@ -65,9 +61,6 @@ function main()
 
 	if make_lookup_mac then
 		macdb:serialize();
-	end
-	if make_lookup_dns then
-		ptrdb:serialize();
 	end
 
 end
