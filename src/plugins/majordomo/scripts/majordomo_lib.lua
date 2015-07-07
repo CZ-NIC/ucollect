@@ -147,7 +147,7 @@ DD = {
 	{"([%d.]+)", nil, "%f"},
 	{"([%d.]+)", nil, "%f"},
 	{"([%d.]+)", nil, "%f"},
-	{"(%w+)", CACHE_EMPTY_NAME, "%s"},
+	{"([%w_.-]+)", CACHE_EMPTY_NAME, "%s"},
 }
 
 function restore_line(data)
