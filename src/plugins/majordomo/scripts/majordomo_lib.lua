@@ -107,6 +107,77 @@ function db(name, storage)
 end
 
 --[[
+	Simple implementation of set
+]]
+function set(initial)
+	self = {};
+	self.data = {};
+
+	function self:add(item)
+		if not item then
+			return;
+		end
+
+		if not self.data[item] then
+			self.data[item] = true;
+		end
+	end
+
+	function self:add_list(list)
+		list = list or {};
+		for _, val in pairs(list) do
+			self:add(val);
+		end
+	end
+
+	function self:remove(item)
+		if not item then
+			return;
+		end
+
+		if self.data[item] then
+			self.data[item] = nil;
+		end
+	end
+
+	function self:remove_list(list)
+		list = list or {};
+		for _, val in pairs(list) do
+			self:remove(val);
+		end
+	end
+
+	function self:has(item)
+		if not item then
+			return false;
+		end
+
+		return not not self.data[item];
+	end
+
+	function self:count()
+		return #self:items();
+	end
+
+	function self:items()
+		local items = {};
+		for k, _ in pairs(self.data) do
+			table.insert(items, k);
+		end
+
+		return items;
+	end
+
+	--[[
+		Constructor
+	]]
+	initial = initial or {};
+	self:add_list(initial);
+
+	return self;
+end
+
+--[[
 	This function is capable to sort any key - value structure
 
 	Function expects composite value part
