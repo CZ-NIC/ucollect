@@ -107,7 +107,7 @@ void uplink_render_string(const void *string, uint32_t string_len, uint8_t **buf
 void uplink_render_uint32(uint32_t value, uint8_t **buffer_pol, size_t *buffer_length) __attribute__((nonnull));
 
 // Is the uplink connected and authenticated right now?
-bool uplink_connected(const struct uplink *uplink) __attribute__((nonnull));
+bool uplink_connected(const struct uplink *uplink);
 
 // Get the addresses of uplink, to check the values against packets. It should include all available addresses.
 struct addrinfo;
