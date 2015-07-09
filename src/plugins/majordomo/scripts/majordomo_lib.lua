@@ -99,6 +99,15 @@ function db(name, storage)
 		end
 	end
 
+	function result:items()
+		local items = {};
+		for key, value in pairs(self.data) do
+			items[key] = value.payload;
+		end
+
+		return items;
+	end
+
 	function result:lookup(key)
 		return nil;
 	end
