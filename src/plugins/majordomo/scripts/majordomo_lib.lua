@@ -281,20 +281,37 @@ function read_file(db, file)
 			end
 			if not db[src][key] then
 				db[src][key] = {
-					d_count = tonumber(d_count), d_size = tonumber(d_size), d_data_size = tonumber(d_data_size),
-					u_count = tonumber(u_count), u_size = tonumber(u_size), u_data_size = tonumber(u_data_size),
-					resolved_name = resolved_name
+					d_count = 0, d_size = 0, d_data_size = 0,
+					u_count = 0, u_size = 0, u_data_size = 0,
+					resolved_name = resolved_name,
+					names = set()
 				}
-			else
-				db[src][key].d_count = db[src][key].d_count + tonumber(d_count);
-				db[src][key].d_size = db[src][key].d_size + tonumber(d_size);
-				db[src][key].d_data_size = db[src][key].d_data_size + tonumber(d_data_size);
-				db[src][key].u_count = db[src][key].u_count + tonumber(u_count);
-				db[src][key].u_size = db[src][key].u_size + tonumber(u_size);
-				db[src][key].u_data_size = db[src][key].u_data_size + tonumber(u_data_size);
-				if not db[src][key].resolved_name and resolved_name then
-					db[src][key].resolved_name = resolved_name;
-				end
+			end
+
+			db[src][key].d_count = db[src][key].d_count + tonumber(d_count);
+			db[src][key].d_size = db[src][key].d_size + tonumber(d_size);
+			db[src][key].d_data_size = db[src][key].d_data_size + tonumber(d_data_size);
+			db[src][key].u_count = db[src][key].u_count + tonumber(u_count);
+			db[src][key].u_size = db[src][key].u_size + tonumber(u_size);
+			db[src][key].u_data_size = db[src][key].u_data_size + tonumber(u_data_size);
+			db[src][key].names:add(resolved_name);
+
+			--[[
+
+			This function (read_file) is a base for 2 important operations
+			- merge and "display to user".
+
+			Simple read should display all variants of resolved names.  Member
+			names is used for this purpose.
+
+			The result of merge operation must be just a single address.
+			Member resolved_name is the random "winner" of selection.  However,
+			merge of 2 files with resolved names should never happened in
+			current state of code. This works as some kind of fail-safe.
+
+			]]
+			if not db[src][key].resolved_name and resolved_name then
+				db[src][key].resolved_name = resolved_name;
 			end
 		end
 	end

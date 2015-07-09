@@ -49,7 +49,7 @@ function main()
 		for _, item in ipairs(sorted) do
 			local proto, _, dst, port = split_key(item.key);
 			if item.value.resolved_name and item.value.resolved_name ~= CACHE_EMPTY_NAME then
-				dst = item.value.resolved_name;
+				dst = table.concat(item.value.names:items(), ", ");
 			end
 			io.stdout:write(string.format("\t - %s - (%s/%s) - (%f/%f/%f) - (%f/%f/%f)\n",
 				dst, port, proto,
