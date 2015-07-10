@@ -422,7 +422,7 @@ function get_inst_ptrdb()
 		end
 	end
 
-	return ptrdb
+	return ptrdb;
 end
 
 --[[
@@ -459,7 +459,7 @@ function get_inst_macdb()
 		return vendor;
 	end
 
-	return macdb
+	return macdb;
 end
 
 --[[

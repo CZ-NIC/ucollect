@@ -44,22 +44,22 @@ function precache(db_path, ml_mac, ml_dns)
 		for filename in handle:lines() do
 			local ptrdb = get_inst_ptrdb(); -- ptrdb is per file
 			local changed = false;
-			local tmp_filename = "/tmp/_tmp_edit"..string.gsub(filename, "/", "_")
+			local tmp_filename = "/tmp/_tmp_edit"..string.gsub(filename, "/", "_");
 			local tmp_file = io.open(tmp_filename, "w");
 
 			local file = io.open(filename, "r");
 			for line in file:lines() do
-				data = parse_line(line)
+				data = parse_line(line);
 				if ml_mac then
-					macdb:check(data[DD_SRC])
-					macdb:lookup(data[DD_SRC])
+					macdb:check(data[DD_SRC]);
+					macdb:lookup(data[DD_SRC]);
 				end
 				if ml_dns then
 					if not data[DD_RESOLVED] then
 						changed = true;
 						local ptr = ptrdb:lookup(data[DD_DST]);
 						data[DD_RESOLVED] = ptr or CACHE_EMPTY_NAME;
-						tmp_file:write(restore_line(data).."\n")
+						tmp_file:write(restore_line(data).."\n");
 					end
 				end
 			end
@@ -67,9 +67,9 @@ function precache(db_path, ml_mac, ml_dns)
 			file:close();
 			tmp_file:close();
 			if changed then
-				os.rename(tmp_filename, filename)
+				os.rename(tmp_filename, filename);
 			else
-				os.remove(tmp_filename)
+				os.remove(tmp_filename);
 			end
 		end
 		handle:close();
