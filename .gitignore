@@ -19,3 +19,4 @@ src/master/soxy/moc_*
 src/master/soxy/Makefile
 src/master/soxy/soxy
 src/plugins/majordomo/subnetfilter/majordomo_subnetfilter
+dumper.lua
