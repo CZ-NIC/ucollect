@@ -40,9 +40,30 @@ function precache(db_path, ml_mac, ml_dns)
 	table.insert(handles, io.popen("/bin/ls '" .. db_path .. "/" ..  HOURLY_PREFIX .."'*", "r"));
 	table.insert(handles, io.popen("/bin/ls '" .. db_path .. "/" ..  MONTHLY_PREFIX .."'*", "r"));
 
+	--[[
+	This operation provide 2 important things:
+
+	1) It is reusing cache from previous versions of Majordomo. Otherwise, DB
+	migration takes few days. With this operation it takes just few minutes or
+	hours.
+
+	2) Cache from previous versions should be completely eliminated.
+	]]
+	local ptrdb = get_inst_ptrdb();
+	ptrdb:deserialize();
+	ptrdb:checkall();
+	ptrdb:serialize();
+
 	for _, handle in ipairs(handles) do
 		for filename in handle:lines() do
-			local ptrdb = get_inst_ptrdb(); -- ptrdb is per file
+			--[[
+			PTR cache per file
+
+			There is no serialize operation! This cache is in-memory only.
+			]]
+			local ptrdb = get_inst_ptrdb();
+			ptrdb:deserialize();
+
 			local changed = false;
 			local tmp_filename = "/tmp/_tmp_edit"..string.gsub(filename, "/", "_");
 			local tmp_file = io.open(tmp_filename, "w");

@@ -90,12 +90,20 @@ function db(name, storage)
 		end
 	end
 
-	function result:check(key)
+	function result:check(key, ctime)
+		local ctime = ctime or os.time();
 		local value = self.data[key];
 		if value then
-			if value.ts < os.time() - CACHE_RECORD_VALIDITY then
+			if value.ts < ctime - CACHE_RECORD_VALIDITY then
 				self.data[key] = nil;
 			end
+		end
+	end
+
+	function result:checkall()
+		local current = os.time();
+		for key, _ in pairs(self.data) do
+			self:check(key, current);
 		end
 	end
 
