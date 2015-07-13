@@ -4,6 +4,11 @@ use DBI;
 use Config::IniFiles;
 use Socket qw(getaddrinfo getnameinfo NI_NUMERICHOST);
 use Data::Dumper;
+use Fcntl ':flock';
+
+my $lockfilename = "/tmp/build-flow-filter.lock";
+open my $lockfile, '>>', $lockfilename or die "Could not open lock file '$lockfilename': $!\n";
+flock $lockfile, LOCK_EX | LOCK_NB or die "Could not lock file '$lockfilename': $!\n";
 
 # First connect to the database
 my $cfg = Config::IniFiles->new(-file => $ARGV[0]);
@@ -178,6 +183,7 @@ JOIN
 		MAX(version) AS version,
 		address
 	FROM
+		p
 		flow_filters
 	WHERE
 		filter = 'addresses' AND
