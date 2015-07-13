@@ -183,7 +183,6 @@ JOIN
 		MAX(version) AS version,
 		address
 	FROM
-		p
 		flow_filters
 	WHERE
 		filter = 'addresses' AND
