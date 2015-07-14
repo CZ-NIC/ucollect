@@ -409,7 +409,8 @@ CREATE TABLE flow_filters (
 	epoch INT NOT NULL,
 	version INT NOT NULL,
 	add BOOL NOT NULL,
-	address TEXT NOT NULL
+	address TEXT NOT NULL,
+	UNIQUE(filter, epoch, version, address)
 );
 
 CREATE TYPE fake_log_type AS ENUM ('connect', 'disconnect', 'lost', 'extra', 'timeout', 'login');
