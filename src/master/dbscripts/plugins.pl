@@ -70,12 +70,12 @@ sub tform($) {
 	return $time . "m";
 }
 
-my $stmt = $dbh->prepare('SELECT name, last, login > logout, login_time, logout_time, plugin, plug_last, hash, status, active FROM plugin_activity');
+my $stmt = $dbh->prepare('SELECT name, last, (login > logout) OR ((login = logout) AND (last < login_time)), login_time, logout_time, plugin, plug_last, hash, status, active FROM plugin_activity');
 $stmt->execute;
 while (my ($name, $last, $online, $login, $logout, $plugin, $plug_last, $hash, $status, $active) = $stmt->fetchrow_array) {
 	if ($name ne $client) {
 		print $line, "\n";
-		$online = 1 if (not defined $online) && (defined $last);
+		$online = 1 if (not defined $online) && (defined $last) && (not defined $logout);
 		my $ocolor = $ok_colors[$online];
 		my $act_color = act_color $last;
 		$ocolor = $act_color = $reset unless defined $last;
