@@ -88,7 +88,16 @@ function precache(db_path, ml_mac, ml_dns)
 			file:close();
 			tmp_file:close();
 			if changed then
-				os.rename(tmp_filename, filename);
+				--[[
+				This ugly piece of code is necessary due to os.rename(src, dst)
+				implementation. In Lua, it is just thin wrapper and it is not
+				able to handle with different filesystems.
+				]]
+				if not string.find(filename, "\\") and not string.find(filename, "'") then
+					os.execute("mv '" .. tmp_filename .. "' '" .. filename .. "'");
+				else
+					io.stderr:write("File ignored: Inadmissible character in file name\n");
+				end
 			else
 				os.remove(tmp_filename);
 			end
