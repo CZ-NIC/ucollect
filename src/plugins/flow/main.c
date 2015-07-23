@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -48,6 +48,7 @@ struct user_data {
 	size_t timeout_id;
 	bool configured;
 	bool timeout_scheduled;
+	bool timeout_missed;
 };
 
 struct flush_data {
@@ -84,7 +85,9 @@ static void format_flow(const uint8_t *key, size_t key_size, struct trie_data *f
 	}
 }
 
-static void flush(struct context *context) {
+static bool flush(struct context *context, bool force) {
+	if (!force && !uplink_connected(context->uplink))
+		return false; // Don't try to send if we are not connected.
 	struct user_data *u = context->user_data;
 	size_t header = sizeof(char) + sizeof(uint32_t) + sizeof(uint64_t);
 	struct flush_data d = {
@@ -106,9 +109,12 @@ static void flush(struct context *context) {
 	trie_walk(u->trie, format_flow, &d, context->temp_pool);
 	assert(d.i == trie_size(u->trie));
 	assert(d.pos == total_size);
-	uplink_plugin_send_message(context, d.output, total_size);
+	if (!uplink_plugin_send_message(context, d.output, total_size) && !force)
+		return false; // Don't clean the data if we failed to send. But do clean them if the force is in effect, to not overflow the limit by too much
 	mem_pool_reset(u->flow_pool);
 	u->trie = trie_alloc(u->flow_pool);
+	u->timeout_missed = false;
+	return true;
 }
 
 static void schedule_timeout(struct context *context);
@@ -119,7 +125,7 @@ static void timeout_fired(struct context *context, void *unused_data, size_t unu
 	struct user_data *u = context->user_data;
 	assert(u->timeout_scheduled);
 	u->timeout_scheduled = false;
-	flush(context);
+	u->timeout_missed = !flush(context, u->timeout_missed);
 	schedule_timeout(context);
 }
 
@@ -136,7 +142,7 @@ static void configure(struct context *context, uint32_t conf_id, uint32_t max_fl
 	if (u->configured && u->conf_id != conf_id) {
 		ulog(LLOG_DEBUG, "Replacing old configuration\n");
 		// Switching configuration, so flush the old data
-		flush(context);
+		flush(context, true);
 		assert(u->timeout_scheduled);
 		loop_timeout_cancel(context->loop, u->timeout_id);
 		u->timeout_scheduled = false;
@@ -170,14 +176,14 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 	assert(data);
 	if (!*data) {
 		// We don't have this flow yet
-		if (trie_size(u->trie) == u->max_flows) {
+		if (trie_size(u->trie) >= u->max_flows) {
 			// We are full, no space for another flow
-			flush(context);
+			flush(context, trie_size(u->trie) >= 2 * u->max_flows);
 			assert(u->timeout_scheduled);
 			loop_timeout_cancel(context->loop, u->timeout_id);
 			u->timeout_scheduled = false;
 			schedule_timeout(context);
-			// We destroyed the previous trie, index the new one
+			// We may have destroyed the previous trie, index the new one
 			data = trie_index(u->trie, key, key_size);
 		}
 		ulog(LLOG_DEBUG_VERBOSE, "Creating new flow\n");
@@ -198,6 +204,12 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 static void connected(struct context *context) {
 	// Ask for config.
 	uplink_plugin_send_message(context, "C", 1);
+	struct user_data *u = context->user_data;
+	if (!u->configured)
+		return; // If we never configured, there's nothing to send anyway
+	if (u->timeout_missed || trie_size(u->trie) >= u->max_flows)
+		// Try resending if there was a missed send attempt
+		flush(context, false);
 }
 
 static void initialize(struct context *context) {
@@ -268,7 +280,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	switch (*data) {
 		case 'F': // Force-flush flows. Probably unused now, but ready in case we find need.
 			assert(length == 1);
-			flush(context);
+			flush(context, false);
 			break;
 		case 'C': // Config. Either requested, or flushed. But accept it anyway.
 			config_parse(context, data + 1, length - 1);

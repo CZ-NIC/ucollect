@@ -12,6 +12,11 @@ updated), then client keeps track of when to send the data itself. It
 sends either if too much time went by or when there's too many flows
 to send.
 
+If the condition to send is met when there's no connection to the
+server for the plugin, the sending is delayed until connection is made
+(and then all the data is sent) or one of the limits is exceeded by
+factor of 2 (the data is dropped).
+
 There's also a filter that restricts which flows to capture. If it
 doesn't match, the packet is completely ignored.
 
