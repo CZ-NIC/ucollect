@@ -427,7 +427,7 @@ if (fork == 0) {
 if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
-	my ($max_since) = $destination->selectrow_array("SELECT DATE_TRUNC('hour', COALESCE(MAX(since), TO_TIMESTAMP(0)) - INTERVAL '30 minutes') FROM refused_addrs");
+	my ($max_since) = $destination->selectrow_array("SELECT DATE_TRUNC('hour', COALESCE(MAX(since), TO_TIMESTAMP(0)) - INTERVAL '90 minutes') FROM refused_addrs");
 	print "Dropping refused connections since $max_since\n";
 	$destination->do('DELETE FROM refused_addrs WHERE since >= ?', undef, $max_since);
 	$destination->do('DELETE FROM refused_clients WHERE since >= ?', undef, $max_since);
