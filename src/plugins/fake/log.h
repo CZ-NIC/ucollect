@@ -44,6 +44,12 @@ enum event_info_type {
 	EI_LAST // This is the last info bundled to the event
 };
 
+enum log_send_status {
+	LS_NONE,	// No need to send yet (but caller may send for other reasons)
+	LS_SEND,	// The log reached the size to prompt sending
+	LS_FORCE_SEND	// The log overgrown the size a lot and must be sent or dropped now
+};
+
 /*
  * Some info bundled with an event. The info is passed as an array of
  * these structures, last one being EI_LAST. Or, alternatively, a NULL
@@ -65,7 +71,7 @@ struct log *log_alloc(struct mem_pool *permanent_pool, struct mem_pool *log_pool
  *
  * The return value indicates if the log should be sent to the server.
  */
-bool log_event(struct context *context, struct log *log, char server_code, const uint8_t *rem_address, const uint8_t *loc_address, size_t addr_len, uint16_t rem_port, enum event_type event, struct event_info *info) __attribute__((nonnull(1, 2, 4)));
+enum log_send_status log_event(struct context *context, struct log *log, char server_code, const uint8_t *rem_address, const uint8_t *loc_address, size_t addr_len, uint16_t rem_port, enum event_type event, struct event_info *info) __attribute__((nonnull(1, 2, 4)));
 /*
  * Dump the log into a binary format suitable for transmission over network.
  * The result is allocated from the temp pool of the given context and the

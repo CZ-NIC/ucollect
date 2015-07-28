@@ -326,7 +326,7 @@ static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_
 	push_info(infos, &evpos, reason, EI_REASON);
 	push_info(infos, &evpos, username, EI_NAME);
 	push_info(infos, &evpos, password, EI_PASSWORD);
-	if (log_event(context, u->log, tag->desc->code, tag->rem_addr.sin6_addr.s6_addr, tag->loc_addr.sin6_addr.s6_addr, 16, ntohs(tag->rem_addr.sin6_port), type, infos))
+	if (log_event(context, u->log, tag->desc->code, tag->rem_addr.sin6_addr.s6_addr, tag->loc_addr.sin6_addr.s6_addr, 16, ntohs(tag->rem_addr.sin6_port), type, infos) != LS_NONE)
 		log_send(context);
 	if (!u->timeout_scheduled && u->max_age) {
 		u->timeout_scheduled = true;

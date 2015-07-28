@@ -63,6 +63,7 @@ struct log {
 	uint32_t ip_limit, size_limit;   // Limits on when to send.
 	uint32_t throttle_holdback;	 // How long to wait until sending logs because of some IP address again
 	bool log_credentials;		 // Should we send the login name and password?
+	bool attempts_reached;		 // When we reached the maximum number of attempts
 };
 
 struct trie_data {
@@ -123,6 +124,7 @@ static void log_clean(struct log *log, struct mem_pool *tmp_pool, uint64_t now) 
 	log->head = log->tail = NULL;
 	log->expected_serialized_size = 0;
 	log->limit_trie = trie_alloc(log->pool);
+	log->attempts_reached = false;
 	if (tmp.head) {
 		ulog(LLOG_DEBUG_VERBOSE, "Copying holdback times, now %llu\n", (long long unsigned)now);
 		LFOR(holdback, item, &tmp) {
@@ -166,7 +168,7 @@ struct event_header {
 // The IPv6 mapped IPv4 addresses are ::FFFF:<IP>.
 static const uint8_t mapped_prefix[] = { [10] = 0xFF, [11] = 0xFF };
 
-bool log_event(struct context *context, struct log *log, char server_code, const uint8_t *rem_address, const uint8_t *loc_address, size_t addr_len, uint16_t rem_port, enum event_type type, struct event_info *info) {
+enum log_send_status log_event(struct context *context, struct log *log, char server_code, const uint8_t *rem_address, const uint8_t *loc_address, size_t addr_len, uint16_t rem_port, enum event_type type, struct event_info *info) {
 	// If it's IPv6 mapped IPv4, store it as IPv4 only
 	if (memcmp(rem_address, mapped_prefix, sizeof mapped_prefix) == 0) {
 		addr_len -= sizeof mapped_prefix;
@@ -226,7 +228,12 @@ bool log_event(struct context *context, struct log *log, char server_code, const
 			attempts_reached = true;
 		}
 	}
-	return attempts_reached || log->expected_serialized_size >= log->size_limit;
+	log->attempts_reached = log->attempts_reached || attempts_reached;
+	if (log->expected_serialized_size >= 2 * log->size_limit)
+		return LS_FORCE_SEND; // We really need to send now
+	if (log->attempts_reached || log->expected_serialized_size)
+		return LS_SEND; // If we reached attempts (even several times), it is not a reason to drop the log if it can't be sent. But attempt to send it, please.
+	return LS_NONE;
 }
 
 uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
