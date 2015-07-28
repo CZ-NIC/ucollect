@@ -72,6 +72,8 @@ struct log *log_alloc(struct mem_pool *permanent_pool, struct mem_pool *log_pool
  * The return value indicates if the log should be sent to the server.
  */
 enum log_send_status log_event(struct context *context, struct log *log, char server_code, const uint8_t *rem_address, const uint8_t *loc_address, size_t addr_len, uint16_t rem_port, enum event_type event, struct event_info *info) __attribute__((nonnull(1, 2, 4)));
+// Should the current log be sent?
+enum log_send_status log_status(struct log *log) __attribute__((nonnull));
 /*
  * Dump the log into a binary format suitable for transmission over network.
  * The result is allocated from the temp pool of the given context and the

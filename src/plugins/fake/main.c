@@ -67,64 +67,13 @@ struct user_data {
 	bool log_credentials_candidate;
 	bool timeout_scheduled;
 	bool config_retry_scheduled;
+	bool timeout_missed;
 	size_t timeout_id;
 	size_t config_retry_timeout_id;
 	size_t allow_retries;
 	struct log *log;
 	struct mem_pool *log_pool;
 };
-
-static void connected(struct context *context) {
-	uplink_plugin_send_message(context, "C", 1);
-}
-
-static void initialize(struct context *context) {
-	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
-	size_t server_count = 0, tag_count = 0;
-	for (const struct server_desc *desc = server_descs; desc->name; desc++) {
-		server_count ++;
-		tag_count += 1 + desc->max_conn;
-	}
-	*u = (struct user_data) {
-		.tags = mem_pool_alloc(context->permanent_pool, tag_count * sizeof *u->tags),
-		.tag_indices = mem_pool_alloc(context->permanent_pool, (server_count + 1) * sizeof *u->tag_indices),
-		.log_pool = loop_pool_create(context->loop, context, "Fake log")
-	};
-	u->log = log_alloc(context->permanent_pool, u->log_pool);
-	memset(u->tags, 0, tag_count * sizeof * u->tags);
-	size_t pos = 0, i = 0;
-	for (const struct server_desc *desc = server_descs; desc->name; desc++) {
-		u->tags[pos].desc = desc;
-		u->tags[pos].server_index = i;
-		u->tags[pos].ignore_inactivity = true;
-		u->tags[pos].candidate = -1;
-		u->tags[pos].fd = -1;
-		u->tag_indices[i ++] = pos;
-		if (desc->server_alloc_cb)
-			u->tags[pos].server = desc->server_alloc_cb(context, &u->tags[pos], context->permanent_pool, desc);
-		if (desc->max_conn) {
-			for (size_t j = pos; j < pos + 1 + desc->max_conn; j ++) {
-				// The description and server are shared between all the connections
-				u->tags[j].desc = desc;
-				u->tags[j].server_index = u->tags[pos].server_index;
-				u->tags[j].server = u->tags[pos].server;
-				u->tags[j].fd = -1;
-				// But a connection structure is for each of them
-				if (desc->conn_alloc_cb)
-					u->tags[j].conn = desc->conn_alloc_cb(context, &u->tags[j], context->permanent_pool, u->tags[pos].server);
-			}
-			u->tags[pos].accept_here = true;
-		} else if (desc->conn_alloc_cb)
-			u->tags[pos].conn = desc->conn_alloc_cb(context, &u->tags[pos], context->permanent_pool, u->tags[pos].server);
-		pos += 1 + desc->max_conn;
-	}
-	// Bumper
-	u->tag_indices[i] = pos;
-	u->server_count = server_count;
-	u->tag_count = tag_count;
-	// We may be initialized after connection is made, ask for config
-	connected(context);
-}
 
 static void config_retry_now(struct context *context, void *data, size_t id);
 
@@ -284,17 +233,25 @@ static char *addr2str(struct mem_pool *pool, struct sockaddr *addr, socklen_t ad
 	return mem_pool_printf(pool, "[%s]:%s", result, port);
 }
 
-static void log_send(struct context *context) {
-	size_t msg_size;
+static bool log_send(struct context *context, bool force) {
+	if (!force && !uplink_connected(context->uplink))
+		return false;
 	struct user_data *u = context->user_data;
+	size_t msg_size;
 	const uint8_t *msg = log_dump(context, u->log, &msg_size);
-	log_clean(context, u->log);
+	bool success = false;
 	if (msg)
-		uplink_plugin_send_message(context, msg, msg_size);
-	if (u->timeout_scheduled) {
-		loop_timeout_cancel(context->loop, u->timeout_id);
-		u->timeout_scheduled = false;
+		success = uplink_plugin_send_message(context, msg, msg_size);
+	if (force || success) {
+		log_clean(context, u->log);
+		u->timeout_missed = false;
+		if (u->timeout_scheduled) {
+			loop_timeout_cancel(context->loop, u->timeout_id);
+			u->timeout_scheduled = false;
+		}
+		return true;
 	}
+	return false;
 }
 
 #define MAX_INFOS 4
@@ -310,11 +267,21 @@ static void push_info(struct event_info *infos, size_t *pos, const char *content
 	}
 }
 
-static void send_timeout(struct context *context, void *data, size_t id) {
-	(void)data;
-	(void)id;
-	context->user_data->timeout_scheduled = false;
-	log_send(context);
+static void send_timeout(struct context *context, void *data, size_t id);
+
+static void schedule_timeout(struct context *context) {
+	struct user_data *u = context->user_data;
+	u->timeout_scheduled = true;
+	u->timeout_id = loop_timeout_add(context->loop, u->max_age, context, NULL, send_timeout);
+}
+
+static void send_timeout(struct context *context, void *data __attribute__((unused)), size_t id __attribute__((unused))) {
+	struct user_data *u = context->user_data;
+	u->timeout_scheduled = false;
+	if (!log_send(context, u->timeout_missed)) {
+		u->timeout_missed = true;
+		schedule_timeout(context);
+	}
 }
 
 static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_type type, const char *reason, const char *username, const char *password) {
@@ -327,11 +294,12 @@ static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_
 	push_info(infos, &evpos, reason, EI_REASON);
 	push_info(infos, &evpos, username, EI_NAME);
 	push_info(infos, &evpos, password, EI_PASSWORD);
-	if (log_event(context, u->log, tag->desc->code, tag->rem_addr.sin6_addr.s6_addr, tag->loc_addr.sin6_addr.s6_addr, 16, ntohs(tag->rem_addr.sin6_port), type, infos) != LS_NONE)
-		log_send(context);
-	if (!u->timeout_scheduled && u->max_age) {
-		u->timeout_scheduled = true;
-		u->timeout_id = loop_timeout_add(context->loop, u->max_age, context, NULL, send_timeout);
+	enum log_send_status status = log_event(context, u->log, tag->desc->code, tag->rem_addr.sin6_addr.s6_addr, tag->loc_addr.sin6_addr.s6_addr, 16, ntohs(tag->rem_addr.sin6_port), type, infos);
+	bool sent = false;
+	if (status != LS_NONE)
+		sent = log_send(context, status == LS_FORCE_SEND);
+	if (!u->timeout_scheduled && u->max_age && !sent) {
+		schedule_timeout(context);
 	}
 }
 
@@ -460,7 +428,7 @@ static void server_config(struct context *context, const uint8_t *data, size_t l
 	ulog(LLOG_INFO, "Fake configuration version %u\n", (unsigned)u->config_version);
 	log_set_limits(u->log, ntohl(config->max_size), ntohl(config->max_attempts), ntohl(config->throttle_holdback));
 	u->max_age = ntohl(config->max_age);
-	log_send(context);
+	log_send(context, true);
 }
 
 static void uplink_data(struct context *context, const uint8_t *data, size_t length) {
@@ -476,6 +444,61 @@ static void uplink_data(struct context *context, const uint8_t *data, size_t len
 			ulog(LLOG_ERROR, "Invalid opcode for Fake plugin (ignorig for forward compatibility): %c\n", (char)*data);
 			break;
 	}
+}
+
+static void connected(struct context *context) {
+	uplink_plugin_send_message(context, "C", 1);
+	struct user_data *u = context->user_data;
+	if (log_status(u->log) != LS_NONE || u->timeout_missed)
+		log_send(context, false);
+}
+
+static void initialize(struct context *context) {
+	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
+	size_t server_count = 0, tag_count = 0;
+	for (const struct server_desc *desc = server_descs; desc->name; desc++) {
+		server_count ++;
+		tag_count += 1 + desc->max_conn;
+	}
+	*u = (struct user_data) {
+		.tags = mem_pool_alloc(context->permanent_pool, tag_count * sizeof *u->tags),
+		.tag_indices = mem_pool_alloc(context->permanent_pool, (server_count + 1) * sizeof *u->tag_indices),
+		.log_pool = loop_pool_create(context->loop, context, "Fake log")
+	};
+	u->log = log_alloc(context->permanent_pool, u->log_pool);
+	memset(u->tags, 0, tag_count * sizeof * u->tags);
+	size_t pos = 0, i = 0;
+	for (const struct server_desc *desc = server_descs; desc->name; desc++) {
+		u->tags[pos].desc = desc;
+		u->tags[pos].server_index = i;
+		u->tags[pos].ignore_inactivity = true;
+		u->tags[pos].candidate = -1;
+		u->tags[pos].fd = -1;
+		u->tag_indices[i ++] = pos;
+		if (desc->server_alloc_cb)
+			u->tags[pos].server = desc->server_alloc_cb(context, &u->tags[pos], context->permanent_pool, desc);
+		if (desc->max_conn) {
+			for (size_t j = pos; j < pos + 1 + desc->max_conn; j ++) {
+				// The description and server are shared between all the connections
+				u->tags[j].desc = desc;
+				u->tags[j].server_index = u->tags[pos].server_index;
+				u->tags[j].server = u->tags[pos].server;
+				u->tags[j].fd = -1;
+				// But a connection structure is for each of them
+				if (desc->conn_alloc_cb)
+					u->tags[j].conn = desc->conn_alloc_cb(context, &u->tags[j], context->permanent_pool, u->tags[pos].server);
+			}
+			u->tags[pos].accept_here = true;
+		} else if (desc->conn_alloc_cb)
+			u->tags[pos].conn = desc->conn_alloc_cb(context, &u->tags[pos], context->permanent_pool, u->tags[pos].server);
+		pos += 1 + desc->max_conn;
+	}
+	// Bumper
+	u->tag_indices[i] = pos;
+	u->server_count = server_count;
+	u->tag_count = tag_count;
+	// We may be initialized after connection is made, ask for config
+	connected(context);
 }
 
 #ifdef STATIC
