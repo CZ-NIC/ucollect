@@ -111,7 +111,7 @@ static void holdback_store(const uint8_t *key, size_t key_size, struct trie_data
 	}
 }
 
-static void log_clean(struct log *log, struct mem_pool *tmp_pool, uint64_t now) {
+static void log_clean_internal(struct log *log, struct mem_pool *tmp_pool, uint64_t now) {
 	struct holdback_tmp tmp = {
 		.tmp_pool = tmp_pool,
 		.now = now
@@ -147,7 +147,7 @@ struct log *log_alloc(struct mem_pool *permanent_pool, struct mem_pool *log_pool
 		.size_limit = 4096 * 1024,
 		.throttle_holdback = 120000, // Two minutes
 	};
-	log_clean(result, NULL, 0);
+	log_clean_internal(result, NULL, 0);
 	return result;
 }
 
@@ -276,8 +276,11 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 	}
 	assert(pos == result + *size);
 	assert(rest == 0);
-	log_clean(log, context->temp_pool, now);
 	return result;
+}
+
+void log_clean(struct context *context, struct log *log) {
+	log_clean_internal(log, context->temp_pool, loop_now(context->loop));
 }
 
 void log_set_send_credentials(struct log *log, bool send) {

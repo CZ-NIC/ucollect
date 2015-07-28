@@ -77,10 +77,12 @@ enum log_send_status log_event(struct context *context, struct log *log, char se
  * The result is allocated from the temp pool of the given context and the
  * size is stored in the corresponding parameter. It is already prefixed by
  * a 'L' opcode.
- *
- * All the events from the log are cleared.
  */
 uint8_t *log_dump(struct context *context, struct log *log, size_t *size) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
+/*
+ * All the events from the log are cleared.
+ */
+void log_clean(struct context *context, struct log *log) __attribute__((nonnull));
 
 /*
  * Set if the login credentials (password and username) should be sent

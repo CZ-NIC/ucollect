@@ -288,6 +288,7 @@ static void log_send(struct context *context) {
 	size_t msg_size;
 	struct user_data *u = context->user_data;
 	const uint8_t *msg = log_dump(context, u->log, &msg_size);
+	log_clean(context, u->log);
 	if (msg)
 		uplink_plugin_send_message(context, msg, msg_size);
 	if (u->timeout_scheduled) {
