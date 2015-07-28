@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -46,6 +46,7 @@ struct user_data {
 	bool timeout_scheduled;
 	size_t timeout_id;
 	uint32_t config_version;
+	bool timeout_missed;
 };
 
 enum event_type {
@@ -79,7 +80,7 @@ struct trie_data {
 #define LIST_INSERT_AFTER
 #include "../../core/link_list.h"
 
-static void transmit(struct context *context);
+static bool transmit(struct context *context, bool force);
 static void consolidate(struct context *context);
 
 static void send_timeout(struct context *context, void *data, size_t id) {
@@ -93,34 +94,10 @@ static void send_timeout(struct context *context, void *data, size_t id) {
 	}
 	ulog(LLOG_DEBUG, "Sending refused data because of timeout\n");
 	u->timeout_scheduled = false;
-	transmit(context);
-	consolidate(context);
-}
-
-static void connected(struct context *context) {
-	// Ask for configuration
-	uplink_plugin_send_message(context, "C", 1);
-}
-
-static void init(struct context *context) {
-	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *u);
-	*u = (struct user_data) {
-		.active = false,
-		.active_pool = loop_pool_create(context->loop, context, "Refuse pool 1"),
-		.standby_pool = loop_pool_create(context->loop, context, "Refuse pool 2"),
-		.timeout = 30000
-	};
-	u->connections = trie_alloc(u->active_pool);
-	/*
-	 * Try asking for the config right away. This may be needed in case
-	 * we were reloaded (due to a crash of the plugin, for example) and
-	 * we are already connected ‒ in such case, the connected would never
-	 * be called.
-	 *
-	 * On the other hand, if we are not connected, the message will just
-	 * get blackholed, so there's no problem with that either.
-	 */
-	connected(context);
+	if (!transmit(context, u->timeout_missed))
+		u->timeout_missed = true;
+	else
+		consolidate(context);
 }
 
 struct conn_record {
@@ -174,8 +151,19 @@ static void serialize_callback(const uint8_t *key, size_t key_size, struct trie_
 	params->size -= serialized_len;
 }
 
-static void transmit(struct context *context) {
+static void unmark_transmitted_callback(const uint8_t *key __attribute__((unused)), size_t key_size __attribute__((unused)), struct trie_data *data, void *userdata __attribute__((unused))) {
+	data->transmitted = false;
+}
+
+static bool transmit(struct context *context, bool force) {
 	struct user_data *u = context->user_data;
+	if (u->timeout_scheduled)
+		loop_timeout_cancel(context->loop, u->timeout_id);
+	u->timeout_scheduled = true;
+	u->timeout_id = loop_timeout_add(context->loop, u->max_age, context, NULL, send_timeout);
+	if (!force && !uplink_connected(context->uplink))
+		// Don't send when not connected.
+		return false;
 	ulog(LLOG_INFO, "Sending %zu IPv4 refused connections and %zu IPv6 ones\n", u->send_v4, u->send_v6);
 	size_t msg_size = 1 + sizeof(uint64_t) + u->send_v4 * (sizeof(struct conn_record) + 4) + u->send_v6 * (sizeof(struct conn_record) + 16);
 	uint8_t *msg = mem_pool_alloc(context->temp_pool, msg_size);
@@ -189,14 +177,17 @@ static void transmit(struct context *context) {
 	};
 	trie_walk(u->connections, serialize_callback, &params, context->temp_pool);
 	assert(params.size == 0);
-	uplink_plugin_send_message(context, msg, msg_size);
-	// Reset the counters to send data
-	u->send_v4 = 0;
-	u->send_v6 = 0;
-	if (u->timeout_scheduled)
-		loop_timeout_cancel(context->loop, u->timeout_id);
-	u->timeout_scheduled = true;
-	u->timeout_id = loop_timeout_add(context->loop, u->max_age, context, NULL, send_timeout);
+	if (!uplink_plugin_send_message(context, msg, msg_size) && !force) {
+		// If we failed to send and we are allowed to resend, mark it as not sent yet.
+		trie_walk(u->connections, unmark_transmitted_callback, NULL, context->temp_pool);
+		return false;
+	} else {
+		u->timeout_missed = false;
+		// Reset the counters to send data
+		u->send_v4 = 0;
+		u->send_v6 = 0;
+		return true;
+	}
 }
 
 struct consolidate_params {
@@ -333,14 +324,12 @@ static void timeouts_evaluate(struct context *context) {
 
 static void limits_check(struct context *context) {
 	struct user_data *u = context->user_data;
-	if (u->send_limit <= u->send_v4 + u->send_v6) {
+	bool success = false;
+	if (u->send_limit <= u->send_v4 + u->send_v6)
 		// Too many things to send
-		transmit(context);
+		success = transmit(context, u->send_limit * 2 <= u->send_v4 + u->send_v6);
+	if (u->finished_limit <= u->finished || success)
 		consolidate(context);
-	} else if (u->finished_limit <= u->finished) {
-		// Not enough to send, but there are still many finished things in the memory, so drop some
-		consolidate(context);
-	}
 }
 
 static void packet(struct context *context, const struct packet_info *info) {
@@ -422,6 +411,40 @@ static void uplink_data(struct context *context, const uint8_t *data, size_t len
 			ulog(LLOG_ERROR, "Invalid opcode for Refused plugin (ignoring for forward compatibility): %c\n", (char)*data);
 			return;
 	}
+}
+
+static void connected(struct context *context) {
+	// Ask for configuration
+	uplink_plugin_send_message(context, "C", 1);
+	struct user_data *u = context->user_data;
+	if (u->active) {
+		if (u->timeout_missed) {
+			if (transmit(context, false))
+				consolidate(context);
+		} else
+			limits_check(context);
+	}
+}
+
+static void init(struct context *context) {
+	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *u);
+	*u = (struct user_data) {
+		.active = false,
+		.active_pool = loop_pool_create(context->loop, context, "Refuse pool 1"),
+		.standby_pool = loop_pool_create(context->loop, context, "Refuse pool 2"),
+		.timeout = 30000
+	};
+	u->connections = trie_alloc(u->active_pool);
+	/*
+	 * Try asking for the config right away. This may be needed in case
+	 * we were reloaded (due to a crash of the plugin, for example) and
+	 * we are already connected ‒ in such case, the connected would never
+	 * be called.
+	 *
+	 * On the other hand, if we are not connected, the message will just
+	 * get blackholed, so there's no problem with that either.
+	 */
+	connected(context);
 }
 
 #ifdef STATIC
