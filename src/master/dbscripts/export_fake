@@ -1,0 +1,12 @@
+#!/bin/sh
+
+DATE=$(date -d 'yesterday' +%Y-%m-%d)
+DIR=$(dirname "$0")
+if [ "$DIR" = "." ] ; then
+	DIR=$(pwd)
+fi
+
+cd ~/fake-exports
+find -type f -mtime +8 -delete
+"$DIR"/export_fake.pl "$DIR"/db.ini $DATE
+chmod a+r *.csv
