@@ -20,6 +20,7 @@
 #include "loader.h"
 #include "util.h"
 #include "plugin.h"
+#include "pluglib.h"
 #include "tunable.h"
 
 #include <limits.h>
@@ -65,11 +66,10 @@ void plugin_unload(void *library) {
 
 #include <dlfcn.h>
 
-void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash) {
+static void *lib_load(const char *libname, uint8_t *hash, char *libpath) {
 	ulog(LLOG_INFO, "Loading plugin library %s\n", libname);
 	dlerror(); // Reset errors
 #ifdef PLUGIN_PATH
-	char libpath[PATH_MAX + 1];
 	snprintf(libpath, PATH_MAX + 1, PLUGIN_PATH "/%s", libname);
 	int libfile = open(libpath, O_RDONLY);
 	if (libfile == -1) {
@@ -102,6 +102,14 @@ void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash) {
 		ulog(LLOG_ERROR, "Can't load plugin %s: %s\n", libpath, dlerror());
 		return NULL;
 	}
+	return library;
+}
+
+void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash) {
+	char libpath[PATH_MAX + 1];
+	void *library = lib_load(libname, hash, libpath);
+	if (!library)
+		return NULL;
 	struct plugin *(*plugin_info)();
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-pedantic"
@@ -118,6 +126,31 @@ void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash) {
 		return NULL;
 	}
 	struct plugin *info = plugin_info();
+	*target = *info;
+	return library;
+}
+
+void *pluglib_load(const char *libname, struct pluglib *target, uint8_t *hash) {
+	char libpath[PATH_MAX + 1];
+	void *library = lib_load(libname, hash, libpath);
+	if (!library)
+		return NULL;
+	struct pluglib *(pluglib_info)();
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-pedantic"
+	/*
+	 * This is wrong, we can't cast between pointer to function and pointer to
+	 * object. But there seems to be no way without it.
+	 */
+	*(void **)(&pluglib_info) = dlsym(library, "pluglib_info");
+#pragma GCC diagnostic pop
+	const char *error = dlerror();
+	if (error) {
+		ulog(LLOG_ERROR, "The library %s doesn't contain pluglib_info() - is it a plugin library?: %s\n", libpath, error);
+		dlclose(library);
+		return NULL;
+	}
+	struct pluglib *info = pluglib_info();
 	*target = *info;
 	return library;
 }
