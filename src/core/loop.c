@@ -22,6 +22,7 @@
 #include "util.h"
 #include "context.h"
 #include "plugin.h"
+#include "pluglib.h"
 #include "packet.h"
 #include "tunable.h"
 #include "loader.h"
@@ -222,6 +223,7 @@ struct plugin_holder {
 	struct plugin_holder *original; // When copying, in the configurator
 	struct plugin_fd *fd_head, *fd_tail, *fd_unused;
 	struct trie *config_trie, *config_candidate;
+	struct pluglib_list pluglibs;
 	bool mark; // Mark for configurator.
 	bool active; // Is the plugin activated? Is it allowed to talk to the server?
 	size_t failed;
@@ -390,7 +392,29 @@ struct loop {
 	struct context *reinitialize_plugin; // Please reinitialize this plugin on return from jump
 	bool retry_reconfigure_on_failure;
 	bool fd_invalidated; // Did we invalidate any FD during this loop iteration? If so, skip the rest.
+	struct pluglib_list pluglibs; // All loaded plugin libraries
+	// The unused libraries
+	struct pluglib_node *pluglib_list_recycler;
+	struct pluglib *pluglib_recycler;
 };
+
+#define RECYCLER_NODE struct pluglib_node
+#define RECYCLER_BASE struct loop
+#define RECYCLER_HEAD pluglib_list_recycler
+#define RECYCLER_NAME(X) pluglib_list_recycler_##X
+#include "recycler.h"
+
+#define RECYCLER_NODE struct pluglib
+#define RECYCLER_BASE struct loop
+#define RECYCLER_HEAD pluglib_recycler
+#define RECYCLER_NEXT recycler_next
+#define RECYCLER_NAME(X) pluglib_recycler_##X
+#include "recycler.h"
+
+#define LIST_WANT_INSERT_AFTER
+#define LIST_WANT_REMOVE
+#define LIST_WANT_LFOR
+#include "pluglib_list.h"
 
 struct string_list_node {
 	struct string_list_node *next;
@@ -996,7 +1020,50 @@ const struct config_node *loop_plugin_option_get(struct context *context, const 
 }
 
 static void install_pluglib(struct plugin_holder *plugin, const char *libname) {
-	// TODO
+	ulog(LLOG_DEBUG, "Loading library %s\n", libname);
+	// Prepare the structure to hold the loaded library
+	struct loop *loop = plugin->context.loop;
+	struct pluglib_node *node = pluglib_list_recycler_get(loop, loop->permanent_pool);
+	memset(node, 0, sizeof *node);
+	pluglib_list_insert_after(&loop->pluglibs, node, loop->pluglibs.tail);
+	node->lib = pluglib_recycler_get(loop, loop->permanent_pool);
+	memset(node->lib, 0, sizeof *node->lib);
+	// Load the library
+	node->handle = pluglib_load(libname, node->lib, node->hash);
+	if (!node->handle) {
+		ulog(LLOG_ERROR, "Couldn't find dependent library %s\n", libname);
+		abort(); // Will not kill the program, just the current plugin
+	}
+	node->ready = true;
+	// Find if we need it or there's a compatible one already loaded
+	struct pluglib_node *found = NULL;
+	LFOR(pluglib_list, candidate, &loop->pluglibs) {
+		if (!node->handle)
+			continue; // No library loaded here, garbage that's left from something. It'll get removed soon, but ignore it now.
+		if (candidate == node) {
+			ulog(LLOG_DEBUG, "No other candidate but the library itself found\n");
+			found = candidate;
+			break;
+		}
+		if (memcmp(candidate->hash, node->hash, sizeof node->hash) == 0) {
+			ulog(LLOG_DEBUG, "The exact same library is already loaded\n");
+			found = candidate;
+			break;
+		}
+		if (strcmp(candidate->lib->name, node->lib->name) == 0 &&
+				candidate->lib->compat == node->lib->compat &&
+				candidate->lib->version >= node->lib->version) {
+			ulog(LLOG_DEBUG, "Compatible library %s (compat %zu, version %zu) found\n", candidate->lib->name, candidate->lib->compat, candidate->lib->version);
+			found = candidate;
+			break;
+		}
+	}
+	assert(found); // It must find at least itself
+	// We don't clean the library now, even if we found better candidate. It'll get removed later on cleanup.
+	struct pluglib_node *plugin_node = mem_pool_alloc(plugin->context.permanent_pool, sizeof *plugin_node);
+	*plugin_node = *found;
+	pluglib_list_insert_after(&plugin->pluglibs, plugin_node, plugin->pluglibs.tail);
+	found->lib->ref_count ++;
 }
 
 bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {
@@ -1026,6 +1093,7 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	assert(!jump_ready);
 	if (setjmp(jump_env)) {
 		ulog(LLOG_ERROR, "Signal %d during plugin initialization, aborting load\n", jump_signum);
+		// TODO: Clean up the pluglibs
 		mem_pool_destroy(permanent_pool);
 		plugin_unload(plugin_handle);
 		return false;
@@ -1058,7 +1126,7 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
 	LFOR(string_list, libname, &configurator->pluglib_names)
 		install_pluglib(new, libname->value);
-	// TODO: Resolve symbols.
+	pluglib_resolve_functions(&new->pluglibs, new->plugin.imports);
 	plugin_init(new);
 	jump_ready = 0;
 	// Store the plugin structure.

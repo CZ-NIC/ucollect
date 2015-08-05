@@ -22,6 +22,9 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
+
+#include "tunable.h"
 
 typedef void (*pluglib_function)(void);
 
@@ -37,6 +40,7 @@ struct pluglib {
 	size_t ref_count;
 	size_t compat;
 	size_t version;
+	struct pluglib *recycler_next;
 };
 
 struct pluglib_import {
@@ -48,6 +52,9 @@ struct pluglib_import {
 struct pluglib_node {
 	struct pluglib_node *next, *prev;
 	struct pluglib *lib;
+	void *handle;
+	bool ready;
+	uint8_t hash[CHALLENGE_LEN / 2];
 };
 
 struct pluglib_list {
