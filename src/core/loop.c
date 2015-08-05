@@ -392,6 +392,22 @@ struct loop {
 	bool fd_invalidated; // Did we invalidate any FD during this loop iteration? If so, skip the rest.
 };
 
+struct string_list_node {
+	struct string_list_node *next;
+	const char *value;
+};
+
+struct string_list {
+	struct string_list_node *head, *tail;
+};
+
+#define LIST_NODE struct string_list_node
+#define LIST_BASE struct string_list
+#define LIST_NAME(X) string_list_##X
+#define LIST_WANT_APPEND_POOL
+#define LIST_WANT_LFOR
+#include "link_list.h"
+
 // Some stuff for yet uncommited configuration
 struct loop_configurator {
 	struct loop *loop;
@@ -400,6 +416,7 @@ struct loop_configurator {
 	struct plugin_list plugins;
 	const char *remote_name, *remote_service, *login, *password, *cert;
 	struct trie *config_trie;
+	struct string_list pluglib_names;
 	bool need_new_versions;
 };
 
@@ -958,6 +975,11 @@ void loop_set_plugin_opt(struct loop_configurator *configurator, const char *nam
 	(*node)->config.values[(*node)->config.value_count ++] = mem_pool_strdup(configurator->config_pool, value);
 }
 
+void loop_set_pluglib(struct loop_configurator *configurator, const char *libname) {
+	ulog(LLOG_DEBUG, "Need plugin library %s\n", libname);
+	string_list_append_pool(&configurator->pluglib_names, configurator->loop->temp_pool)->value = mem_pool_strdup(configurator->loop->temp_pool, libname);
+}
+
 const struct config_node *loop_plugin_option_get(struct context *context, const char *name) {
 	struct plugin_holder *holder = (struct plugin_holder *) context;
 #ifdef DEBUG
@@ -973,9 +995,13 @@ const struct config_node *loop_plugin_option_get(struct context *context, const 
 	}
 }
 
+static void install_pluglib(struct plugin_holder *plugin, const char *libname) {
+	// TODO
+}
+
 bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {
 	// Look for existing plugin first
-	LFOR(plugin, old, &configurator->loop->plugins)
+	LFOR(plugin, old, &configurator->loop->plugins) // TODO: Reloading of libraries need to be handled somehow.
 		if (strcmp(old->libname, libname) == 0) {
 			old->mark = false; // We copy it, so don't delete after commit
 			struct plugin_holder *new = plugin_append_pool(&configurator->plugins, configurator->config_pool);
@@ -1030,6 +1056,9 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	memcpy(new->hash, hash, sizeof hash);
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
+	LFOR(string_list, libname, &configurator->pluglib_names)
+		install_pluglib(new, libname->value);
+	// TODO: Resolve symbols.
 	plugin_init(new);
 	jump_ready = 0;
 	// Store the plugin structure.
