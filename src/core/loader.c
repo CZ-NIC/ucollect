@@ -135,7 +135,7 @@ void *pluglib_load(const char *libname, struct pluglib *target, uint8_t *hash) {
 	void *library = lib_load(libname, hash, libpath);
 	if (!library)
 		return NULL;
-	struct pluglib *(pluglib_info)();
+	struct pluglib *(*pluglib_info)();
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-pedantic"
 	/*
