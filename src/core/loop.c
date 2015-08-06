@@ -542,6 +542,14 @@ void loop_break(struct loop *loop) {
 	loop->stopped = 1;
 }
 
+// Unlink all pluglibs from a plugin
+static void pluglibs_unlink(struct plugin_holder *plugin) {
+	LFOR(pluglib_list, lib, &plugin->pluglibs) {
+		if (lib->handle && lib->ready && lib->lib)
+			lib->lib->ref_count --;
+	}
+}
+
 static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
 	// Deinit the plugin, if it didn't crash.
 	ulog(LLOG_INFO, "Removing plugin %s\n", plugin->plugin.name);
@@ -572,6 +580,7 @@ static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
 		if (close(fd->fd) == -1)
 			ulog(LLOG_ERROR, "Couldn't close FD %d belonging to removed plugin %s: %s\n", fd->fd, fd->plugin->plugin.name, strerror(errno));
 	};
+	pluglibs_unlink(plugin);
 	// Release the memory of the plugin
 	pool_list_destroy(&plugin->pool_list);
 	mem_pool_destroy(plugin->context.permanent_pool);
@@ -1019,7 +1028,7 @@ const struct config_node *loop_plugin_option_get(struct context *context, const 
 	}
 }
 
-static void install_pluglib(struct plugin_holder *plugin, const char *libname) {
+static void pluglib_install(struct plugin_holder *plugin, const char *libname) {
 	ulog(LLOG_DEBUG, "Loading library %s\n", libname);
 	// Prepare the structure to hold the loaded library
 	struct loop *loop = plugin->context.loop;
@@ -1091,9 +1100,11 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	ulog(LLOG_INFO, "Installing plugin %s\n", plugin.name);
 	struct mem_pool *permanent_pool = mem_pool_create(plugin.name);
 	assert(!jump_ready);
+	struct plugin_holder *new = mem_pool_alloc(configurator->config_pool, sizeof *new);
+	memset(new, 0, sizeof *new);
 	if (setjmp(jump_env)) {
 		ulog(LLOG_ERROR, "Signal %d during plugin initialization, aborting load\n", jump_signum);
-		// TODO: Clean up the pluglibs
+		pluglibs_unlink(new);
 		mem_pool_destroy(permanent_pool);
 		plugin_unload(plugin_handle);
 		return false;
@@ -1103,7 +1114,6 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	 * Each plugin gets its own permanent pool (since we'd delete that one with the plugin),
 	 * but we can reuse the temporary pool.
 	 */
-	struct plugin_holder *new = mem_pool_alloc(configurator->config_pool, sizeof *new);
 	*new = (struct plugin_holder) {
 		.context = {
 			.temp_pool = configurator->loop->temp_pool,
@@ -1125,7 +1135,7 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
 	LFOR(string_list, libname, &configurator->pluglib_names)
-		install_pluglib(new, libname->value);
+		pluglib_install(new, libname->value);
 	pluglib_resolve_functions(&new->pluglibs, new->plugin.imports);
 	plugin_init(new);
 	jump_ready = 0;
@@ -1301,6 +1311,27 @@ struct loop_configurator *loop_config_start(struct loop *loop) {
 	return result;
 }
 
+static void pluglibs_cleanup(struct loop *loop) {
+	struct pluglib_node *lib = loop->pluglibs.head;
+	while (lib) {
+		if (lib->lib && (!lib->ready || lib->lib->ref_count == 0)) {
+			pluglib_recycler_release(loop, lib->lib);
+			lib->lib = NULL;
+		}
+		if (!lib->lib && lib->handle) {
+			plugin_unload(lib->handle);
+			lib->handle = NULL;
+		}
+		if (!lib->handle) {
+			struct pluglib_node *tmp = lib;
+			lib = lib->next;
+			pluglib_list_remove(&loop->pluglibs, tmp);
+			pluglib_list_recycler_release(loop, tmp);
+		} else
+			lib = lib->next;
+	}
+}
+
 void loop_config_abort(struct loop_configurator *configurator) {
 	/*
 	 * Destroy all the newly-created plugins and interfaces (marked)
@@ -1316,6 +1347,7 @@ void loop_config_abort(struct loop_configurator *configurator) {
 			plugin->config_candidate = NULL;
 			plugin_config_finish(plugin, false);
 		}
+	pluglibs_cleanup(configurator->loop);
 	LFOR(pcap, interface, &configurator->pcap_interfaces)
 		if (interface->mark)
 			pcap_destroy(interface);
@@ -1443,6 +1475,8 @@ void loop_config_commit(struct loop_configurator *configurator) {
 		plugin->config_candidate = NULL;
 		plugin_config_finish(plugin, true);
 	}
+	// Clean up unused pluglibs
+	pluglibs_cleanup(configurator->loop);
 	if (configurator->need_new_versions && uplink_connected(loop->uplink))
 		send_plugin_versions(loop);
 }
