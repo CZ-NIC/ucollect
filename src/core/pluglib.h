@@ -61,7 +61,10 @@ struct pluglib_list {
 	struct pluglib_node *head, *tail;
 };
 
+// Link the functions from pluglib into a plugin
 bool pluglib_resolve_functions(const struct pluglib_list *libraries, struct pluglib_import *imports) __attribute__((nonnull(1)));
+// Check if all the imports could be satisfied.
+bool pluglib_check_functions(const struct pluglib_list *libraries, struct pluglib_import *imports) __attribute__((nonnull(1)));
 
 #define PLUGLIB_IMPORT(NAME, RETURN, ...) static RETURN (*NAME)(__VA_ARGS__); static struct pluglib_import NAME##_import = { .name = #NAME, .function = (pluglib_function)&NAME, #__VA_ARGS__ "->" #RETURN }
 
