@@ -18,11 +18,18 @@
 */
 
 #include "../../core/plugin.h"
+#include "../../core/loop.h"
+#include "../../core/context.h"
 
 PLUGLIB_IMPORT(hello_world, void, void);
 
-static void init(struct context *context __attribute__((unused))) {
+static void timeout(struct context *context, void *data __attribute__((unused)), size_t id __attribute__((unused))) {
 	hello_world();
+	loop_timeout_add(context->loop, 1000, context, NULL, timeout);
+}
+
+static void init(struct context *context) {
+	timeout(context, NULL, 0);
 }
 
 #ifdef STATIC
