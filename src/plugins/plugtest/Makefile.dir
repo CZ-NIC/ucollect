@@ -1,0 +1,2 @@
+LIBRARIES += src/plugins/plugtest/libplugin_plugtest
+libplugin_plugtest_MODULES := plugtest

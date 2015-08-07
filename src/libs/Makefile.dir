@@ -1,0 +1,4 @@
+UCOLLECT_PLUGLIBS:= \
+	test
+
+include $(patsubst %,$(S)/src/libs/%/Makefile.dir,$(UCOLLECT_PLUGLIBS))

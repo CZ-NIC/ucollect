@@ -1,0 +1,2 @@
+LIBRARIES += src/libs/test/libpluglib_test
+libpluglib_test_MODULES := main
