@@ -52,7 +52,7 @@ struct plugin {
 	// A decision has been made if this config is globaly OK. If activate is true, start using it (you can store it in config_check or read it any time later with loop_plugin_option_get). If it is false, then return to the previous config (and loop_plugin_option_get will return the old value).
 	void (*config_finish_callback)(struct context *context, bool activate);
 	// Functions imported from plugin libraries
-	struct pluglib_import *imports;
+	struct pluglib_import **imports;
 };
 
 #endif

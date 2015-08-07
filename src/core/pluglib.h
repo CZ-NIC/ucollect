@@ -36,11 +36,11 @@ struct pluglib_export {
 
 struct pluglib {
 	const char *name;
-	const struct pluglib_export *exports;
 	size_t ref_count;
 	size_t compat;
 	size_t version;
 	struct pluglib *recycler_next;
+	struct pluglib_export **exports;
 };
 
 struct pluglib_import {
@@ -62,12 +62,12 @@ struct pluglib_list {
 };
 
 // Link the functions from pluglib into a plugin
-bool pluglib_resolve_functions(const struct pluglib_list *libraries, struct pluglib_import *imports) __attribute__((nonnull(1)));
+bool pluglib_resolve_functions(const struct pluglib_list *libraries, struct pluglib_import **imports) __attribute__((nonnull(1)));
 // Check if all the imports could be satisfied.
-bool pluglib_check_functions(const struct pluglib_list *libraries, struct pluglib_import *imports) __attribute__((nonnull(1)));
+bool pluglib_check_functions(const struct pluglib_list *libraries, struct pluglib_import **imports) __attribute__((nonnull(1)));
 
-#define PLUGLIB_IMPORT(NAME, RETURN, ...) static RETURN (*NAME)(__VA_ARGS__); static struct pluglib_import NAME##_import = { .name = #NAME, .function = (pluglib_function)&NAME, #__VA_ARGS__ "->" #RETURN }
+#define PLUGLIB_IMPORT(NAME, RETURN, ...) static RETURN (*NAME)(__VA_ARGS__); static struct pluglib_import NAME##_import = { .name = #NAME, .function = (pluglib_function *)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN }
 
-#define PLUGLIB_EXPORT(NAME, RETURN, ...) static RETURN NAME(__VA_ARGS__); static struct pluglib_export NAME##_export = { .name = #NAME, .function = (pluglib_function)&NAME, #__VA_ARGS__ "->" #RETURN }
+#define PLUGLIB_EXPORT(NAME, RETURN, ...) static RETURN NAME(__VA_ARGS__); static struct pluglib_export NAME##_export = { .name = #NAME, .function = (pluglib_function)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN }
 
 #endif

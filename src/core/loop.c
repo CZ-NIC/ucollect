@@ -1050,6 +1050,8 @@ static bool pluglib_install(struct plugin_holder *plugin, const char *libname, b
 		ulog(LLOG_ERROR, "Couldn't find dependent library %s\n", libname);
 		return false;
 	}
+	node->lib->ref_count = 0;
+	node->lib->recycler_next = NULL;
 	node->ready = true;
 	// Find if we need it or there's a compatible one already loaded
 	struct pluglib_node *found = NULL;
