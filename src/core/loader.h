@@ -32,7 +32,7 @@ struct pluglib;
  * Call it with the library name to load.
  */
 
-void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash) __attribute__((nonnull)) __attribute__((malloc));
+void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash, unsigned *api_version) __attribute__((nonnull)) __attribute__((malloc));
 void *pluglib_load(const char *libname, struct pluglib *target, uint8_t *hash) __attribute__((nonnull)) __attribute__((malloc));
 // Used both for plugins and pluglibs
 void plugin_unload(void *plugin) __attribute__((nonnull));
