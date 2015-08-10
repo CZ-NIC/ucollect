@@ -8,7 +8,7 @@ use Fcntl ':flock';
 
 my $lockfilename = "/tmp/build-flow-filter.lock";
 open my $lockfile, '>>', $lockfilename or die "Could not open lock file '$lockfilename': $!\n";
-flock $lockfile, LOCK_EX | LOCK_NB or die "Could not lock file '$lockfilename': $!\n";
+flock $lockfile, LOCK_EX | LOCK_NB or exit;
 
 # First connect to the database
 my $cfg = Config::IniFiles->new(-file => $ARGV[0]);
