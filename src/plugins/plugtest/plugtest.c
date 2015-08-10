@@ -32,6 +32,12 @@ static void init(struct context *context) {
 	timeout(context, NULL, 0);
 }
 
+#ifndef STATIC
+unsigned api_version() {
+	return UCOLLECT_PLUGIN_API_VERSION;
+}
+#endif
+
 #ifdef STATIC
 struct plugin *plugin_info_plugtest(void) {
 #else
