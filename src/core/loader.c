@@ -105,7 +105,7 @@ static void *lib_load(const char *libname, uint8_t *hash, char *libpath) {
 	return library;
 }
 
-void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash) {
+void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash, unsigned *api_version_ret) {
 	char libpath[PATH_MAX + 1];
 	void *library = lib_load(libname, hash, libpath);
 	if (!library)
@@ -127,6 +127,15 @@ void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash) {
 	}
 	struct plugin *info = plugin_info();
 	*target = *info;
+	unsigned (*api_version)();
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-pedantic"
+	*(void **)(&api_version) = dlsym(library, "api_version");
+#pragma GCC diagnostic pop
+	if (api_version)
+		*api_version_ret = api_version();
+	else
+		*api_version_ret = 0;
 	return library;
 }
 

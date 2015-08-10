@@ -1,3 +1,2 @@
-• Check plugin API version before using the imports.
 • Updating libraries of other plugins if compat, etc.
 • Send the lib versions upstream

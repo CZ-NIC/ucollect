@@ -229,6 +229,7 @@ struct plugin_holder {
 	bool active; // Is the plugin activated? Is it allowed to talk to the server?
 	size_t failed;
 	uint8_t hash[CHALLENGE_LEN / 2];
+	unsigned api_version;
 };
 
 struct plugin_list {
@@ -1104,25 +1105,31 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 			configurator->config_trie = NULL;
 			memset(&new->candidate_pluglibs, 0, sizeof new->candidate_pluglibs);
 			if (configurator->pluglib_names.head) {
-				// Reconfigure the libraries. If they are not set, ignore.
-				LFOR(string_list, libname, &configurator->pluglib_names)
-					if (!pluglib_install(new, libname->value, false)) {
-						memset(&configurator->pluglib_names, 0, sizeof configurator->pluglib_names);
+				if (new->api_version >= 1) {
+					// Reconfigure the libraries. If they are not set, ignore.
+					LFOR(string_list, libname, &configurator->pluglib_names)
+						if (!pluglib_install(new, libname->value, false)) {
+							memset(&configurator->pluglib_names, 0, sizeof configurator->pluglib_names);
+							return false;
+						}
+					memset(&configurator->pluglib_names, 0, sizeof configurator->pluglib_names);
+					if (!pluglib_check_functions(&new->pluglibs, new->plugin.imports))
 						return false;
-					}
-				memset(&configurator->pluglib_names, 0, sizeof configurator->pluglib_names);
-				if (!pluglib_check_functions(&new->pluglibs, new->plugin.imports))
+				} else {
+					ulog(LLOG_ERROR, "Pluglibs for reused plugin with api version 0 %s\n", new->plugin.name);
 					return false;
+				}
 			}
 			return plugin_config_check(new);
 		}
 	// Load the plugin
 	struct plugin plugin;
 	uint8_t hash[CHALLENGE_LEN / 2];
-	void *plugin_handle = plugin_load(libname, &plugin, hash);
+	unsigned api_version;
+	void *plugin_handle = plugin_load(libname, &plugin, hash, &api_version);
 	if (!plugin_handle)
 		return false;
-	ulog(LLOG_INFO, "Installing plugin %s\n", plugin.name);
+	ulog(LLOG_INFO, "Installing plugin %s with api version %u\n", plugin.name, api_version);
 	struct mem_pool *permanent_pool = mem_pool_create(plugin.name);
 	assert(!jump_ready);
 	struct plugin_holder *new = mem_pool_alloc(configurator->config_pool, sizeof *new);
@@ -1150,18 +1157,24 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 #endif
 		.plugin = plugin,
 		.config_candidate = configurator->config_trie,
-		.mark = true
+		.mark = true,
+		.api_version = api_version
 	};
 	configurator->config_trie = NULL;
 	memcpy(new->hash, hash, sizeof hash);
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
-	LFOR(string_list, libname, &configurator->pluglib_names)
-		if (!pluglib_install(new, libname->value, true))
+	if (new->api_version >= 1) {
+		LFOR(string_list, libname, &configurator->pluglib_names)
+			if (!pluglib_install(new, libname->value, true))
+				goto ERROR;
+		memset(&configurator->pluglib_names, 0, sizeof configurator->pluglib_names);
+		if (!pluglib_resolve_functions(&new->pluglibs, new->plugin.imports))
 			goto ERROR;
-	memset(&configurator->pluglib_names, 0, sizeof configurator->pluglib_names);
-	if (!pluglib_resolve_functions(&new->pluglibs, new->plugin.imports))
+	} else if (configurator->pluglib_names.head) {
+		ulog(LLOG_ERROR, "Pluglibs for plugin with api version 0 %s\n", new->plugin.name);
 		goto ERROR;
+	}
 	plugin_init(new);
 	jump_ready = 0;
 	// Store the plugin structure.
