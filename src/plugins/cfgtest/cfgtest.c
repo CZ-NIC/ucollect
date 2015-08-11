@@ -25,9 +25,11 @@
 static bool check(struct context *context) {
 	ulog(LLOG_INFO, "Check called\n");
 	const struct config_node *conf = loop_plugin_option_get(context, "test2");
-	ulog(LLOG_INFO, "There are %zu options\n", conf->value_count);
-	for (size_t i = 0; i < conf->value_count; i ++)
-		ulog(LLOG_INFO, "Val: %s\n", conf->values[i]);
+	ulog(LLOG_INFO, "There are %zu options\n", conf ? conf->value_count : 0);
+	if (conf) {
+		for (size_t i = 0; i < conf->value_count; i ++)
+			ulog(LLOG_INFO, "Val: %s\n", conf->values[i]);
+	}
 	conf = loop_plugin_option_get(context, "Test3");
 	if (conf) {
 		ulog(LLOG_ERROR, "Test3 is available\n");
