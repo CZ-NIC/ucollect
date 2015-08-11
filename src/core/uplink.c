@@ -45,7 +45,6 @@ static void atsha_log_callback(const char *msg) {
 
 enum auth_status {
 	AUTHENTICATED,
-	SENT,
 	NOT_STARTED,
 	FAILED
 };
@@ -110,7 +109,6 @@ static void dump_status(struct uplink *uplink) {
 			case AUTHENTICATED:
 				status = "online";
 				break;
-			case SENT:
 			case NOT_STARTED:
 				status = "connecting";
 				break;
@@ -594,7 +592,6 @@ static void handle_buffer(struct uplink *uplink) {
 					uplink_render_string(client_response.data, client_response.bytes, &message_pos, &len_pos);
 					assert(!len_pos);
 					uplink_send_message(uplink, 'L', message, len);
-					uplink->auth_status = SENT;
 					/*
 					 * Send 'H'ello. For now, it is empty. In future, we expect to have program & protocol version,
 					 * list of plugins and possibly other things too.
