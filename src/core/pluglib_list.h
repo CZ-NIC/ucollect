@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,24 +17,9 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#ifndef UCOLLECT_LOADER_H
-#define UCOLLECT_LOADER_H
-
-#include <stdint.h>
-
-struct plugin;
-struct pluglib;
-
-/*
- * Does the low-level loading of plugin libraries. It only asks the plugin
- * to provide the information in struct plugin, does not initialize it.
- *
- * Call it with the library name to load.
- */
-
-void *plugin_load(const char *libname, struct plugin *target, uint8_t *hash, unsigned *api_version) __attribute__((nonnull)) __attribute__((malloc));
-void *pluglib_load(const char *libname, struct pluglib *target, uint8_t *hash) __attribute__((nonnull)) __attribute__((malloc));
-// Used both for plugins and pluglibs
-void plugin_unload(void *plugin) __attribute__((nonnull));
-
-#endif
+#include "pluglib.h"
+#define LIST_NODE struct pluglib_node
+#define LIST_BASE struct pluglib_list
+#define LIST_PREV prev
+#define LIST_NAME(X) pluglib_list_##X
+#include "link_list.h"

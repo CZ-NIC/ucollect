@@ -22,6 +22,7 @@
 #include "util.h"
 #include "context.h"
 #include "plugin.h"
+#include "pluglib.h"
 #include "packet.h"
 #include "tunable.h"
 #include "loader.h"
@@ -222,10 +223,13 @@ struct plugin_holder {
 	struct plugin_holder *original; // When copying, in the configurator
 	struct plugin_fd *fd_head, *fd_tail, *fd_unused;
 	struct trie *config_trie, *config_candidate;
+	struct pluglib_list pluglibs, candidate_pluglibs;
+	struct pluglib_node *pluglib_list_recycler;
 	bool mark; // Mark for configurator.
 	bool active; // Is the plugin activated? Is it allowed to talk to the server?
 	size_t failed;
 	uint8_t hash[CHALLENGE_LEN / 2];
+	unsigned api_version;
 };
 
 struct plugin_list {
@@ -390,7 +394,51 @@ struct loop {
 	struct context *reinitialize_plugin; // Please reinitialize this plugin on return from jump
 	bool retry_reconfigure_on_failure;
 	bool fd_invalidated; // Did we invalidate any FD during this loop iteration? If so, skip the rest.
+	struct pluglib_list pluglibs; // All loaded plugin libraries
+	// The unused libraries
+	struct pluglib_node *pluglib_list_recycler;
+	struct pluglib *pluglib_recycler;
 };
+
+#define RECYCLER_NODE struct pluglib_node
+#define RECYCLER_BASE struct loop
+#define RECYCLER_HEAD pluglib_list_recycler
+#define RECYCLER_NAME(X) pluglib_list_recycler_##X
+#include "recycler.h"
+
+#define RECYCLER_NODE struct pluglib_node
+#define RECYCLER_BASE struct plugin_holder
+#define RECYCLER_HEAD pluglib_list_recycler
+#define RECYCLER_NAME(X) pluglib_plug_recycler_##X
+#include "recycler.h"
+
+#define RECYCLER_NODE struct pluglib
+#define RECYCLER_BASE struct loop
+#define RECYCLER_HEAD pluglib_recycler
+#define RECYCLER_NEXT recycler_next
+#define RECYCLER_NAME(X) pluglib_recycler_##X
+#include "recycler.h"
+
+#define LIST_WANT_INSERT_AFTER
+#define LIST_WANT_REMOVE
+#define LIST_WANT_LFOR
+#include "pluglib_list.h"
+
+struct string_list_node {
+	struct string_list_node *next;
+	const char *value;
+};
+
+struct string_list {
+	struct string_list_node *head, *tail;
+};
+
+#define LIST_NODE struct string_list_node
+#define LIST_BASE struct string_list
+#define LIST_NAME(X) string_list_##X
+#define LIST_WANT_APPEND_POOL
+#define LIST_WANT_LFOR
+#include "link_list.h"
 
 // Some stuff for yet uncommited configuration
 struct loop_configurator {
@@ -400,6 +448,7 @@ struct loop_configurator {
 	struct plugin_list plugins;
 	const char *remote_name, *remote_service, *login, *password, *cert;
 	struct trie *config_trie;
+	struct string_list pluglib_names;
 	bool need_new_versions;
 };
 
@@ -501,6 +550,14 @@ void loop_break(struct loop *loop) {
 	loop->stopped = 1;
 }
 
+// Unlink all pluglibs from a plugin
+static void pluglibs_unlink(struct plugin_holder *plugin) {
+	LFOR(pluglib_list, lib, &plugin->pluglibs) {
+		if (lib->handle && lib->ready && lib->lib)
+			lib->lib->ref_count --;
+	}
+}
+
 static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
 	// Deinit the plugin, if it didn't crash.
 	ulog(LLOG_INFO, "Removing plugin %s\n", plugin->plugin.name);
@@ -531,6 +588,7 @@ static void plugin_destroy(struct plugin_holder *plugin, bool emergency) {
 		if (close(fd->fd) == -1)
 			ulog(LLOG_ERROR, "Couldn't close FD %d belonging to removed plugin %s: %s\n", fd->fd, fd->plugin->plugin.name, strerror(errno));
 	};
+	pluglibs_unlink(plugin);
 	// Release the memory of the plugin
 	pool_list_destroy(&plugin->pool_list);
 	mem_pool_destroy(plugin->context.permanent_pool);
@@ -958,6 +1016,11 @@ void loop_set_plugin_opt(struct loop_configurator *configurator, const char *nam
 	(*node)->config.values[(*node)->config.value_count ++] = mem_pool_strdup(configurator->config_pool, value);
 }
 
+void loop_set_pluglib(struct loop_configurator *configurator, const char *libname) {
+	ulog(LLOG_DEBUG, "Need plugin library %s\n", libname);
+	string_list_append_pool(&configurator->pluglib_names, configurator->loop->temp_pool)->value = mem_pool_strdup(configurator->loop->temp_pool, libname);
+}
+
 const struct config_node *loop_plugin_option_get(struct context *context, const char *name) {
 	struct plugin_holder *holder = (struct plugin_holder *) context;
 #ifdef DEBUG
@@ -971,6 +1034,59 @@ const struct config_node *loop_plugin_option_get(struct context *context, const 
 	} else {
 		return NULL;
 	}
+}
+
+static bool pluglib_install(struct plugin_holder *plugin, const char *libname, bool live) {
+	ulog(LLOG_DEBUG, "Loading library %s\n", libname);
+	// Prepare the structure to hold the loaded library
+	struct loop *loop = plugin->context.loop;
+	struct pluglib_node *node = pluglib_list_recycler_get(loop, loop->permanent_pool);
+	memset(node, 0, sizeof *node);
+	pluglib_list_insert_after(&loop->pluglibs, node, loop->pluglibs.tail);
+	node->lib = pluglib_recycler_get(loop, loop->permanent_pool);
+	memset(node->lib, 0, sizeof *node->lib);
+	// Load the library
+	node->handle = pluglib_load(libname, node->lib, node->hash);
+	if (!node->handle) {
+		ulog(LLOG_ERROR, "Couldn't find dependent library %s\n", libname);
+		return false;
+	}
+	node->lib->ref_count = 0;
+	node->lib->recycler_next = NULL;
+	node->ready = true;
+	// Find if we need it or there's a compatible one already loaded
+	struct pluglib_node *found = NULL;
+	LFOR(pluglib_list, candidate, &loop->pluglibs) {
+		if (!node->handle)
+			continue; // No library loaded here, garbage that's left from something. It'll get removed soon, but ignore it now.
+		if (candidate == node) {
+			ulog(LLOG_DEBUG, "No other candidate but the library itself found\n");
+			found = candidate;
+			break;
+		}
+		if (memcmp(candidate->hash, node->hash, sizeof node->hash) == 0) {
+			ulog(LLOG_DEBUG, "The exact same library is already loaded\n");
+			found = candidate;
+			break;
+		}
+		if (strcmp(candidate->lib->name, node->lib->name) == 0 &&
+				candidate->lib->compat == node->lib->compat &&
+				candidate->lib->version >= node->lib->version) {
+			ulog(LLOG_DEBUG, "Compatible library %s (compat %zu, version %zu) found\n", candidate->lib->name, candidate->lib->compat, candidate->lib->version);
+			found = candidate;
+			break;
+		}
+	}
+	assert(found); // It must find at least itself
+	// We don't clean the library now, even if we found better candidate. It'll get removed later on cleanup.
+	struct pluglib_node *plugin_node = pluglib_plug_recycler_get(plugin, plugin->context.permanent_pool);
+	*plugin_node = *found;
+	if (live) {
+		pluglib_list_insert_after(&plugin->pluglibs, plugin_node, plugin->pluglibs.tail);
+		found->lib->ref_count ++;
+	} else
+		pluglib_list_insert_after(&plugin->candidate_pluglibs, plugin_node, plugin->candidate_pluglibs.tail);
+	return true;
 }
 
 bool loop_add_plugin(struct loop_configurator *configurator, const char *libname) {
@@ -987,29 +1103,46 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 			// Move the configuration into the plugin and check it
 			new->config_candidate = configurator->config_trie;
 			configurator->config_trie = NULL;
+			memset(&new->candidate_pluglibs, 0, sizeof new->candidate_pluglibs);
+			if (configurator->pluglib_names.head) {
+				if (new->api_version >= 1) {
+					// Reconfigure the libraries. If they are not set, ignore.
+					LFOR(string_list, libname, &configurator->pluglib_names)
+						if (!pluglib_install(new, libname->value, false)) {
+							memset(&configurator->pluglib_names, 0, sizeof configurator->pluglib_names);
+							return false;
+						}
+					memset(&configurator->pluglib_names, 0, sizeof configurator->pluglib_names);
+					if (!pluglib_check_functions(&new->pluglibs, new->plugin.imports))
+						return false;
+				} else {
+					ulog(LLOG_ERROR, "Pluglibs for reused plugin with api version 0 %s\n", new->plugin.name);
+					return false;
+				}
+			}
 			return plugin_config_check(new);
 		}
 	// Load the plugin
 	struct plugin plugin;
 	uint8_t hash[CHALLENGE_LEN / 2];
-	void *plugin_handle = plugin_load(libname, &plugin, hash);
+	unsigned api_version;
+	void *plugin_handle = plugin_load(libname, &plugin, hash, &api_version);
 	if (!plugin_handle)
 		return false;
-	ulog(LLOG_INFO, "Installing plugin %s\n", plugin.name);
+	ulog(LLOG_INFO, "Installing plugin %s with api version %u\n", plugin.name, api_version);
 	struct mem_pool *permanent_pool = mem_pool_create(plugin.name);
 	assert(!jump_ready);
+	struct plugin_holder *new = mem_pool_alloc(configurator->config_pool, sizeof *new);
+	memset(new, 0, sizeof *new);
 	if (setjmp(jump_env)) {
 		ulog(LLOG_ERROR, "Signal %d during plugin initialization, aborting load\n", jump_signum);
-		mem_pool_destroy(permanent_pool);
-		plugin_unload(plugin_handle);
-		return false;
+		goto ERROR;
 	}
 	jump_ready = 1;
 	/*
 	 * Each plugin gets its own permanent pool (since we'd delete that one with the plugin),
 	 * but we can reuse the temporary pool.
 	 */
-	struct plugin_holder *new = mem_pool_alloc(configurator->config_pool, sizeof *new);
 	*new = (struct plugin_holder) {
 		.context = {
 			.temp_pool = configurator->loop->temp_pool,
@@ -1024,18 +1157,37 @@ bool loop_add_plugin(struct loop_configurator *configurator, const char *libname
 #endif
 		.plugin = plugin,
 		.config_candidate = configurator->config_trie,
-		.mark = true
+		.mark = true,
+		.api_version = api_version
 	};
 	configurator->config_trie = NULL;
 	memcpy(new->hash, hash, sizeof hash);
 	// Copy the name (it may be temporary), from the plugin's own pool
 	new->plugin.name = mem_pool_strdup(configurator->config_pool, plugin.name);
+	if (new->api_version >= 1) {
+		LFOR(string_list, libname, &configurator->pluglib_names)
+			if (!pluglib_install(new, libname->value, true))
+				goto ERROR;
+		memset(&configurator->pluglib_names, 0, sizeof configurator->pluglib_names);
+		if (!pluglib_resolve_functions(&new->pluglibs, new->plugin.imports))
+			goto ERROR;
+	} else if (configurator->pluglib_names.head) {
+		ulog(LLOG_ERROR, "Pluglibs for plugin with api version 0 %s\n", new->plugin.name);
+		goto ERROR;
+	}
 	plugin_init(new);
 	jump_ready = 0;
 	// Store the plugin structure.
 	plugin_insert_after(&configurator->plugins, new, configurator->plugins.tail);
 	configurator->need_new_versions = true;
 	return plugin_config_check(new);
+ERROR:
+	jump_ready = 0;
+	pluglibs_unlink(new);
+	mem_pool_destroy(permanent_pool);
+	plugin_unload(plugin_handle);
+	memset(&configurator->pluglib_names, 0, sizeof configurator->pluglib_names);
+	return false;
 }
 
 void loop_uplink_set(struct loop *loop, struct uplink *uplink) {
@@ -1204,6 +1356,27 @@ struct loop_configurator *loop_config_start(struct loop *loop) {
 	return result;
 }
 
+static void pluglibs_cleanup(struct loop *loop) {
+	struct pluglib_node *lib = loop->pluglibs.head;
+	while (lib) {
+		if (lib->lib && (!lib->ready || lib->lib->ref_count == 0)) {
+			pluglib_recycler_release(loop, lib->lib);
+			lib->lib = NULL;
+		}
+		if (!lib->lib && lib->handle) {
+			plugin_unload(lib->handle);
+			lib->handle = NULL;
+		}
+		if (!lib->handle) {
+			struct pluglib_node *tmp = lib;
+			lib = lib->next;
+			pluglib_list_remove(&loop->pluglibs, tmp);
+			pluglib_list_recycler_release(loop, tmp);
+		} else
+			lib = lib->next;
+	}
+}
+
 void loop_config_abort(struct loop_configurator *configurator) {
 	/*
 	 * Destroy all the newly-created plugins and interfaces (marked)
@@ -1218,7 +1391,16 @@ void loop_config_abort(struct loop_configurator *configurator) {
 		} else {
 			plugin->config_candidate = NULL;
 			plugin_config_finish(plugin, false);
+			// Remove the candidate list
+			struct pluglib_node *lib = plugin->candidate_pluglibs.head;
+			while (lib) {
+				struct pluglib_node *tmp = lib;
+				lib = lib->next;
+				pluglib_plug_recycler_release(plugin, tmp);
+			}
+			memset(&plugin->candidate_pluglibs, 0, sizeof plugin->candidate_pluglibs);
 		}
+	pluglibs_cleanup(configurator->loop);
 	LFOR(pcap, interface, &configurator->pcap_interfaces)
 		if (interface->mark)
 			pcap_destroy(interface);
@@ -1265,6 +1447,7 @@ static const char *libname(const struct plugin_holder *plugin) {
 	return libname;
 }
 
+// TODO: Send pluglibs too
 static void send_plugin_versions(struct loop *loop) {
 	ulog(LLOG_DEBUG, "Sending list of plugins\n");
 	size_t message_size = 0;
@@ -1318,6 +1501,29 @@ void loop_config_commit(struct loop_configurator *configurator) {
 			// Update pointers inside its FDs. The FDs are allocated from the plugin's pool, so they survive, but the kept context/plugin holder there would be outdated.
 			LFOR(plugin_fds, fd_holder, plugin)
 				fd_holder->plugin = plugin;
+			// Migrate to new pluglibs
+			if (plugin->candidate_pluglibs.head) {
+				// We can do this, it may drop the refcounts to 0 on libraries we may use later, but we won't clean it now anyway.
+				pluglibs_unlink(plugin);
+				// Drop the old list
+				struct pluglib_node *lib = plugin->pluglibs.head;
+				while (lib) {
+					struct pluglib_node *tmp = lib;
+					lib = lib->next;
+					pluglib_plug_recycler_release(plugin, tmp);
+				}
+				// Move the new one
+				plugin->pluglibs = plugin->candidate_pluglibs;
+				memset(&plugin->candidate_pluglibs, 0, sizeof plugin->candidate_pluglibs);
+				// Increase the refcounts
+				LFOR(pluglib_list, lib, &plugin->pluglibs) {
+					assert(lib->lib);
+					lib->lib->ref_count ++;
+				}
+				// Resolve the symbols from new libraries, overwriting the old ones.
+				if (!pluglib_resolve_functions(&plugin->pluglibs, plugin->plugin.imports))
+					die("Failed to resolve functions for plugin %s despite checking first\n", plugin->plugin.name);
+			}
 		}
 	LFOR(pcap, interface, &configurator->pcap_interfaces) {
 		epoll_register_pcap(loop, interface, interface->mark ? EPOLL_CTL_ADD : EPOLL_CTL_MOD);
@@ -1346,6 +1552,8 @@ void loop_config_commit(struct loop_configurator *configurator) {
 		plugin->config_candidate = NULL;
 		plugin_config_finish(plugin, true);
 	}
+	// Clean up unused pluglibs
+	pluglibs_cleanup(configurator->loop);
 	if (configurator->need_new_versions && uplink_connected(loop->uplink))
 		send_plugin_versions(loop);
 }

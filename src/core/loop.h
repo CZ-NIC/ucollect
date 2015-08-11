@@ -91,6 +91,10 @@ void loop_uplink_configure(struct loop_configurator *configurator, const char *r
  */
 void loop_set_plugin_opt(struct loop_configurator *configurator, const char *name, const char *value) __attribute__((nonnull));
 /*
+ * Require a pluglib library for the next loaded plugin. The libname is the file name of the library.
+ */
+void loop_set_pluglib(struct loop_configurator *configurator, const char *libname) __attribute__((nonnull));
+/*
  * Look up a plugin configuration value (must be called from within a plugin.
  *
  * It returns the currently active value usually. Only, during plugin configuration

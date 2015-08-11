@@ -68,6 +68,17 @@ static bool load_plugin(struct loop_configurator *configurator, struct uci_secti
 		ulog(LLOG_ERROR, "Failed to load libname of plugin %s\n", section->e.name);
 		return false;
 	}
+	struct uci_option *opt = uci_lookup_option(ctx, section, "pluglib");
+	if (opt) {
+		if (opt->type != UCI_TYPE_LIST) {
+			ulog(LLOG_ERROR, "Pluglib of plugin %s is not a list\n", section->e.name);
+			return false;
+		}
+		struct uci_element *e;
+		uci_foreach_element(&opt->v.list, e) {
+			loop_set_pluglib(configurator, e->name);
+		}
+	}
 	// Go through all the options and store them, so the plugin can inspect them later
 	struct uci_element *option;
 	uci_foreach_element(&section->options, option) {

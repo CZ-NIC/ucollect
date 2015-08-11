@@ -10,6 +10,7 @@ UCOLLECT_PLUGINS:= \
 	cfgtest \
 	spoof \
 	refused \
-	fake
+	fake \
+	plugtest
 
 include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,$(UCOLLECT_PLUGINS))

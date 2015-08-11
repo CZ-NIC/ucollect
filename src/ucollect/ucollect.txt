@@ -33,6 +33,8 @@ config would look like this:
 
   config plugin
       option libname 'libplugin_buckets.so'
+      list pluglib 'libpluglib_test.so'
+      option some_opt 42
 
   config uplink
       option name localhost
@@ -54,9 +56,15 @@ device. It defaults to 1.
 The `plugin` section
 ~~~~~~~~~~~~~~~~~~~~
 
-Each such section describes one analysis plugin to load. The
-(currently only) option, `libname`, specifies the file name of the
-library to load as the plugin.
+Each such section describes one analysis plugin to load. The option
+`libname` specifies the file name of the library to load as the
+plugin.
+
+The list `pluglib` lists all the needed plugin libraries.
+
+All options and lists (even ones not covered here) are preserved and
+provided to the plugin. Therefore, it allows for plugin-specific
+configuration.
 
 The `uplink` section
 ~~~~~~~~~~~~~~~~~~~~

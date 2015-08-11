@@ -24,6 +24,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "pluglib.h"
+
 struct context;
 struct packet_info;
 
@@ -49,6 +51,11 @@ struct plugin {
 	bool (*config_check_callback)(struct context *context);
 	// A decision has been made if this config is globaly OK. If activate is true, start using it (you can store it in config_check or read it any time later with loop_plugin_option_get). If it is false, then return to the previous config (and loop_plugin_option_get will return the old value).
 	void (*config_finish_callback)(struct context *context, bool activate);
+	/* ----- The below things are available only from API version 1 and above ----- */
+	// Functions imported from plugin libraries
+	struct pluglib_import **imports;
 };
+
+#define UCOLLECT_PLUGIN_API_VERSION 1
 
 #endif

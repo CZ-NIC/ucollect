@@ -49,8 +49,9 @@ malloc or similar, then this operation would leak.
 Plugin architecture
 -------------------
 
-A plugin is a shared library with pre-defined entry function. The
-function shall return a plugin description (`struct plugin`).
+A plugin is a shared library with pre-defined entry function (named
+`plugin_info`). The function shall return a plugin description
+(`struct plugin`) pointer to statically allocated plugin description.
 
 This plugin description contains information about the plugin. The
 interesting part is there are several callbacks called at different
@@ -111,6 +112,56 @@ config_check_callback:: When ucollect is loading new configuration, it
 config_finish_callback:: According to parameter, either start using
   the new configuration previously scanned by `config_check_callback`,
   or forget it existed.
+
+Furthermore, a plugin may declare its API version, by providing a
+function `api_version`, retuning an unsigned number. If none is
+provided, the API version is considered 0.
+
+Plugin libraries
+----------------
+
+Certain plugins may need to share some routines. It is possible to
+create plugin libraries. They are similar to plugins as they may be
+loaded and unloaded at runtime through configuration. But they don't
+have callbacks, they simply export functions for use by the plugins
+that depend on them.
+
+Similarly to the plugins, it should provide entrypoint called
+`pluglib_info` and return pointer to statically allocated `struct
+pluglib`. That one contains information about the name of the library
+and about the exports.
+
+Exports and imports
+~~~~~~~~~~~~~~~~~~~
+
+The library declares list of exported functions. They are structures,
+each holding info about one exported function. Such function has a
+name and a prototype. The structure may be created by the
+`PLUGLIB_EXPORT` macro.
+
+Similarly, a plugin may contain a list of imported functions. They are
+created with `PLUGLIB_IMPORT` macro. The list is only searched in
+plugins with API version ≥1.
+
+Both lists are NULL-sentinel terminated ‒ the length is not declared,
+but the searching stops when NULL pointer is found instead of pointer
+to the description structure.
+
+On loading of the plugin the libraries are searched for matching
+exported function. The first one matching (in order of library
+definitions in config file) is taken and provided into a function
+pointer created in the `PLUGLIB_IMPORT` macro. There may be multiple
+functions with the same name available with different prototypes,
+effectively providing C++-like function overloading.
+
+Pluglib versions
+~~~~~~~~~~~~~~~~
+
+The application is free to replace a library with another one
+providing the same name, compat number and at least as new version.
+The replacement may happen at any time, therefore don't copy the
+function pointer anywhere. If the function needs to be passed
+somewhere, provide a wrapper calling it.
 
 Modules of the core
 -------------------
@@ -175,6 +226,11 @@ plugin
 
 Definitions of each plugin. This is the interface each plugin must
 provide.
+
+pluglib
+~~~~~~~
+
+Similar to plugins, but declaring the interface of plugin libraries.
 
 tunable
 ~~~~~~~
