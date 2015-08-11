@@ -36,10 +36,10 @@ struct pluglib_export {
 
 struct pluglib {
 	const char *name;
-	size_t ref_count;
+	size_t ref_count; // For use by the core app, do not fill in.
 	size_t compat;
 	size_t version;
-	struct pluglib *recycler_next;
+	struct pluglib *recycler_next; // For use by the core app, do not fill in.
 	struct pluglib_export **exports;
 };
 
