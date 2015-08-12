@@ -311,8 +311,10 @@ static struct key_candidates *scan_keys(uint32_t *indices, uint32_t length, size
 	struct key_candidates *candidates = mem_pool_alloc(pool, sizeof *candidates);
 	*candidates = (struct key_candidates) { .count = 0 };
 	size_t key_size = u->criteria[criterion]->key_size;
-	for (size_t i = 0; i < index_count; i ++)
+	for (size_t i = 0; i < index_count; i ++) {
+		assert(indices[i] < u->bucket_count);
 		trie_walk(g->criteria[criterion].trie[indices[i]], get_key, &(struct extract_data) { .candidates = candidates, .pool = pool }, pool);
+	}
 	// Iterate the other levels and remove keys not passing the filter of indices
 	for (size_t i = 1; i < u->hash_count; i ++) {
 		// Move to the next group of indices
