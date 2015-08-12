@@ -461,11 +461,10 @@ static void handle_activation(struct uplink *uplink) {
 	}
 	struct plugin_activation *plugins = mem_pool_alloc(temp_pool, amount * sizeof *plugins);
 	for (size_t i = 0; i < amount; i ++) {
-		plugins[i].name = uplink_parse_string(temp_pool, &buffer, &rest);
-		if (rest <= sizeof plugins[i].hash) {// One more for the activation flag
-			ulog(LLOG_ERROR, "Activation message buffer too short to read plugin hash and bool (%zu available)\n", rest);
-			abort();
-		}
+		if (!(plugins[i].name = uplink_parse_string(temp_pool, &buffer, &rest)))
+			die("The activation plugin name broken\n");
+		if (rest <= sizeof plugins[i].hash) // One more for the activation flag
+			die("Activation message buffer too short to read plugin hash and bool (%zu available)\n", rest);
 		memcpy(plugins[i].hash, buffer, sizeof plugins[i].hash);
 		buffer += sizeof plugins[i].hash;
 		rest -= sizeof plugins[i].hash;
@@ -498,41 +497,43 @@ static void handle_buffer(struct uplink *uplink) {
 			if (uplink->auth_status == AUTHENTICATED) {
 				switch (command) {
 					case 'R': { // Route data to given plugin
-							  uplink->login_failure_count = 0; // If we got data, we know the login was successful
-							  const char *plugin_name = uplink_parse_string(temp_pool, &uplink->buffer, &uplink->buffer_size);
-							  /*
-							   * The loop_plugin_send_data contains call to plugin callback.
-							   * Such callback can fail and we would like to recover. That is done
-							   * by a longjump directly to the loop. That'd mean this function is not
-							   * completed, therefore we make sure it works well even in such case -
-							   * we create a copy of the buffer and then reset the buffer before
-							   * going to the plugin (resetting it again below doesn't hurt anything).
-							   */
-							  uint8_t *buffer = mem_pool_alloc(temp_pool, uplink->buffer_size);
-							  memcpy(buffer, uplink->buffer, uplink->buffer_size);
-							  size_t length = uplink->buffer_size;
-							  buffer_reset(uplink);
-							  if (loop_plugin_send_data(uplink->loop, plugin_name, buffer, length)) {
-								  dump_status(uplink);
-							  } else {
-								  ulog(LLOG_ERROR, "Plugin %s referenced by uplink does not exist\n", plugin_name);
-								  // TODO: Create some function for formatting messages
-								  size_t pname_len = strlen(plugin_name);
-								  // 1 for 'P', 1 for '\0' at the end
-								  size_t msgsize = 1 + sizeof pname_len + pname_len;
-								  char buffer[msgsize];
-								  // First goes error specifier - 'P'lugin name doesn't exist
-								  buffer[0] = 'P';
-								  // Then one byte after, the length of the name
-								  uint32_t len_n = htonl(pname_len);
-								  memcpy(buffer + 1, &len_n, sizeof len_n);
-								  // And the string itself
-								  memcpy(buffer + 1 + sizeof len_n, plugin_name, pname_len);
-								  // Send an error
-								  uplink_send_message(uplink, 'E', buffer, msgsize);
-							  }
-							  break;
-						  }
+						uplink->login_failure_count = 0; // If we got data, we know the login was successful
+						const char *plugin_name = uplink_parse_string(temp_pool, &uplink->buffer, &uplink->buffer_size);
+						if (!plugin_name)
+							die("Plugin name broken in route message\n");
+						/*
+						 * The loop_plugin_send_data contains call to plugin callback.
+						 * Such callback can fail and we would like to recover. That is done
+						 * by a longjump directly to the loop. That'd mean this function is not
+						 * completed, therefore we make sure it works well even in such case -
+						 * we create a copy of the buffer and then reset the buffer before
+						 * going to the plugin (resetting it again below doesn't hurt anything).
+						 */
+						uint8_t *buffer = mem_pool_alloc(temp_pool, uplink->buffer_size);
+						memcpy(buffer, uplink->buffer, uplink->buffer_size);
+						size_t length = uplink->buffer_size;
+						buffer_reset(uplink);
+						if (loop_plugin_send_data(uplink->loop, plugin_name, buffer, length)) {
+							dump_status(uplink);
+						} else {
+							ulog(LLOG_ERROR, "Plugin %s referenced by uplink does not exist\n", plugin_name);
+							// TODO: Create some function for formatting messages
+							size_t pname_len = strlen(plugin_name);
+							// 1 for 'P', 1 for '\0' at the end
+							size_t msgsize = 1 + sizeof pname_len + pname_len;
+							char buffer[msgsize];
+							// First goes error specifier - 'P'lugin name doesn't exist
+							buffer[0] = 'P';
+							// Then one byte after, the length of the name
+							uint32_t len_n = htonl(pname_len);
+							memcpy(buffer + 1, &len_n, sizeof len_n);
+							// And the string itself
+							memcpy(buffer + 1 + sizeof len_n, plugin_name, pname_len);
+							// Send an error
+							uplink_send_message(uplink, 'E', buffer, msgsize);
+						}
+						break;
+					}
 					case 'P': // Ping from the server. Send a pong back.
 						  uplink_send_message(uplink, 'p', uplink->buffer, uplink->buffer_size);
 						  break;

@@ -29,7 +29,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-#define D(MSG, ...) do { ulog(LLOG_ERROR, MSG, __VA_ARGS__); abort(); } while (0)
+#define D(...) do { ulog(LLOG_ERROR, __VA_ARGS__); abort(); } while (0)
 
 typedef bool (*filter_fun)(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet);
 struct filter_type;
@@ -237,7 +237,8 @@ static void parse_differential(struct mem_pool *pool, struct filter *dest, const
 	(void)type;
 	// We just create the trie and store info for future updates. We expect the server will send info about all the differential filters it knows in a short moment.
 	dest->trie = trie_alloc(pool);
-	dest->name = uplink_parse_string(pool, desc, size);
+	if (!(dest->name = uplink_parse_string(pool, desc, size)))
+		D("Name of differential filter broken\n");
 }
 
 static void parse_range(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
