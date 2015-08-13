@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -154,8 +154,7 @@ struct encoded {
 };
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
-	if (length != sizeof(uint64_t))
-		die("Invalid request from upstream to plugin count, size %zu\n", length);
+	sanity(length == sizeof(uint64_t), "Invalid request from upstream to plugin count, size %zu\n", length);
 	struct user_data *u = context->user_data;
 	// Extract timestamp for the next interval
 	uint64_t timestamp;

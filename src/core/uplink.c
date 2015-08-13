@@ -561,7 +561,7 @@ static void handle_buffer(struct uplink *uplink) {
 #define HALF_SIZE 16
 					atsha_big_int server_challenge, client_response;
 					uint8_t local_half[HALF_SIZE] = PASSWD_HALF;
-					assert(HALF_SIZE + uplink->buffer_size == sizeof(server_challenge.data));
+					sanity(HALF_SIZE + uplink->buffer_size == sizeof(server_challenge.data), "Wrong length of server challenge, givint up\n");
 					server_challenge.bytes = HALF_SIZE + uplink->buffer_size;
 					memcpy(server_challenge.data, local_half, HALF_SIZE);
 					memcpy(server_challenge.data + HALF_SIZE, uplink->buffer, uplink->buffer_size);

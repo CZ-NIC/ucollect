@@ -239,7 +239,7 @@ struct config {
 
 static void config_parse(struct context *context, const uint8_t *data, size_t length) {
 	struct config config;
-	assert(length >= sizeof config);
+	sanity(length >= sizeof config, "Flow config message too short, expected %zu bytes, got %zu\n", sizeof config, length);
 	memcpy(&config, data, sizeof config); // Copy out, because of alignment
 	configure(context, ntohl(config.conf_id), ntohl(config.max_flows), ntohl(config.timeout), ntohl(config.min_packets), data + sizeof config, length - sizeof config);
 }
@@ -276,10 +276,10 @@ static void handle_filter_action(struct context *context, enum flow_filter_actio
 }
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
-	assert(length);
+	sanity(length, "A zero length message delivered to the flow plugin\n");
 	switch (*data) {
 		case 'F': // Force-flush flows. Probably unused now, but ready in case we find need.
-			assert(length == 1);
+			sanity(length == 1, "Extra data in the flow flush message, %zu extra bytes\n", length - 1);
 			flush(context, false);
 			break;
 		case 'C': // Config. Either requested, or flushed. But accept it anyway.

@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -218,8 +218,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	struct user_data *d = context->user_data;
 
 	// Check validity of request
-	if (length != sizeof(uint64_t))
-		die("Invalid request from upstream to plugin bandwidth, size %zu\n", length);
+	sanity(length == sizeof(uint64_t), "Invalid request from upstream to plugin bandwidth, size %zu\n", length);
 
 	// Get maximum also from buffered history
 	for (size_t window = 0; window < WINDOW_GROUPS_CNT; window++) {

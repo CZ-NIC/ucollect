@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -26,8 +26,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define D(MESSAGE, ...) do { ulog(LLOG_ERROR, MESSAGE, __VA_ARGS__); exit(1); } while (0)
-
 bool fork_task(struct loop *loop, const char *program, char **argv, const char *name, int *output, pid_t *pid) {
 	int pipes[2];
 	if (pipe(pipes) == -1) {
@@ -44,14 +42,11 @@ bool fork_task(struct loop *loop, const char *program, char **argv, const char *
 		return false;
 	}
 	if (new_pid == 0) { // We are the child now.
-		if (close(pipes[0]) == -1)
-			D("Failed to close %s read pipe in child: %s\n", name, strerror(errno));
-		if (dup2(pipes[1], 1) == -1)
-			D("Failed to assign stdout of %s: %s\n", name, strerror(errno));
-		if (close(pipes[1]) == -1)
-			D("Failed to close copy of %s write pipe: %s\n", name, strerror(errno));
+		sanity(close(pipes[0]) != -1, "Failed to close %s read pipe in child: %s\n", name, strerror(errno));
+		sanity(dup2(pipes[1], 1) != -1, "Failed to assign stdout of %s: %s\n", name, strerror(errno));
+		sanity(close(pipes[1]) != -1, "Failed to close copy of %s write pipe: %s\n", name, strerror(errno));
 		execv(program, argv);
-		D("Failed to execute %s (%s): %s\n", name, program, strerror(errno));
+		sanity(false, "Failed to execute %s (%s): %s\n", name, program, strerror(errno));
 	} else {
 		if (close(pipes[1]) == -1)
 			ulog(LLOG_ERROR, "Couldn't close %s write pipe: %s\n", name, strerror(errno));

@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -28,8 +28,6 @@
 #include <assert.h>
 #include <string.h>
 #include <arpa/inet.h>
-
-#define D(...) do { ulog(LLOG_ERROR, __VA_ARGS__); abort(); } while (0)
 
 typedef bool (*filter_fun)(struct mem_pool *tmp_pool, const struct filter *filter, const struct packet_info *packet);
 struct filter_type;
@@ -171,8 +169,7 @@ static void parse_sub(struct mem_pool *pool, struct filter *dest, const struct f
 
 static void parse_many_subs(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
 	uint32_t sub_count;
-	if (*size < sizeof sub_count)
-		D("Short data for number of subfilters for %c\n", type->code);
+	sanity(*size >= sizeof sub_count, "Short data for number of subfilters for %c\n", type->code);
 	memcpy(&sub_count, *desc, sizeof sub_count);
 	(*desc) += sizeof sub_count;
 	(*size) -= sizeof sub_count;
@@ -192,21 +189,18 @@ static struct trie_data mark; // To have a valid pointer to something, not used 
 
 static void parse_ip_match(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
 	uint32_t ip_count;
-	if (*size < sizeof ip_count)
-		D("Short data for number of IP addresses in %c filter, only %zu available\n", type->code, *size);
+	sanity(*size >= sizeof ip_count, "Short data for number of IP addresses in %c filter, only %zu available\n", type->code, *size);
 	memcpy(&ip_count, *desc, sizeof ip_count);
 	(*desc) += sizeof ip_count;
 	(*size) -= sizeof ip_count;
 	ip_count = ntohl(ip_count);
 	dest->trie = trie_alloc(pool);
 	for (size_t i = 0; i < ip_count; i ++) {
-		if (!*size)
-			D("Short data for IP address size in %c filter at IP #%zu\n", type->code, i);
+		sanity(*size, "Short data for IP address size in %c filter at IP #%zu\n", type->code, i);
 		uint8_t ip_size = **desc;
 		(*desc) ++;
 		(*size) --;
-		if (*size < ip_size)
-			D("Short data for IP address in %c filter at IP %zu (available %zu, need %hhu)\n", type->code, i, *size, ip_size);
+		sanity(*size >= ip_size, "Short data for IP address in %c filter at IP %zu (available %zu, need %hhu)\n", type->code, i, *size, ip_size);
 		*trie_index(dest->trie, *desc, ip_size) = &mark;
 		(*desc) += ip_size;
 		(*size) -= ip_size;
@@ -215,8 +209,7 @@ static void parse_ip_match(struct mem_pool *pool, struct filter *dest, const str
 
 static void parse_port_match(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
 	uint16_t port_count; // Only 16 bit, there can't be more than that much different ports anyway O:-)
-	if (*size < sizeof port_count)
-		D("Short data for number of ports in %c filter, only %zu available\n", type->code, *size);
+	sanity(*size >= sizeof port_count, "Short data for number of ports in %c filter, only %zu available\n", type->code, *size);
 	memcpy(&port_count, *desc, sizeof port_count);
 	(*desc) += sizeof port_count;
 	(*size) -= sizeof port_count;
@@ -224,8 +217,7 @@ static void parse_port_match(struct mem_pool *pool, struct filter *dest, const s
 	dest->trie = trie_alloc(pool);
 	for (size_t i = 0; i < port_count; i ++) {
 		uint16_t port;
-		if (*size < sizeof port)
-			D("Short data for port in %c filter at port #%zu, only %zu available\n", type->code, i, *size);
+		sanity(*size >= sizeof port, "Short data for port in %c filter at port #%zu, only %zu available\n", type->code, i, *size);
 		memcpy(&port, *desc, sizeof port);
 		(*desc) += sizeof port;
 		(*size) -= sizeof port;
@@ -237,14 +229,12 @@ static void parse_differential(struct mem_pool *pool, struct filter *dest, const
 	(void)type;
 	// We just create the trie and store info for future updates. We expect the server will send info about all the differential filters it knows in a short moment.
 	dest->trie = trie_alloc(pool);
-	if (!(dest->name = uplink_parse_string(pool, desc, size)))
-		D("Name of differential filter broken\n");
+	sanity(dest->name = uplink_parse_string(pool, desc, size), "Name of differential filter broken\n");
 }
 
 static void parse_range(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
 	// The header is one byte, either 4 or 6 ‒ the address family, then one byte of the netmask. Then there's as many bytes of the address as needed to hold the whole prefix (eg. ceil(netmask/8.0))
-	if (*size < 2)
-		D("Short data to hold address range header for filter %c, need 2 bytes, have only %zu\n", type->code, *size);
+	sanity(*size >= 2, "Short data to hold address range header for filter %c, need 2 bytes, have only %zu\n", type->code, *size);
 	dest->v6 = (**desc == 6);
 	(*desc) ++;
 	(*size) --;
@@ -253,12 +243,9 @@ static void parse_range(struct mem_pool *pool, struct filter *dest, const struct
 	(*size) --;
 	size_t addr_len = dest->v6 ? 16 : 4;
 	size_t prefix_len = (netmask + 7) / 8;
-	if (prefix_len > addr_len)
-		D("Can't have prefix of %hhu biths in an address of length %zu bytes on filter %c\n", netmask, addr_len, type->code);
-	if (prefix_len > *size)
-		D("Not enough data to hold the address prefix on filter %c (need %zu, have %zu)\n", type->code, prefix_len, *size);
-	if (!netmask)
-		D("Empty netmask. I won't pretend being very complex T, I'm %c", type->code);
+	sanity(prefix_len <= addr_len, "Can't have prefix of %hhu biths in an address of length %zu bytes on filter %c\n", netmask, addr_len, type->code);
+	sanity(prefix_len <= *size, "Not enough data to hold the address prefix on filter %c (need %zu, have %zu)\n", type->code, prefix_len, *size);
+	sanity(netmask, "Empty netmask. I won't pretend being very complex T, I'm %c", type->code);
 	uint8_t *mask = mem_pool_alloc(pool, addr_len), *address = mem_pool_alloc(pool, addr_len);
 	dest->mask = mask;
 	dest->address = address;
@@ -360,7 +347,7 @@ static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t 
 				types[i].parser(pool, dest, &types[i], desc, size);
 			return;
 		}
-	D("Unknown filter code %c\n", code);
+	sanity(false, "Unknown filter code %c\n", code);
 }
 
 struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t size) {
@@ -373,8 +360,7 @@ struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t s
 		const uint8_t *d = data;
 		size_t size = 1;
 		parse_one(pool, result, &d, &size);
-		if (size != 0)
-			D("Extra data in filter: %zu left\n", size);
+		sanity(size == 0, "Extra data in filter: %zu left\n", size);
 	}
 	return result;
 }

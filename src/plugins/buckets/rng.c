@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -34,7 +34,7 @@ struct rng_seed rng_seed_init(uint64_t seed) {
 	uint64_t odd = seed & 0xAAAAAAAAAAAAAAAALLU;
 	result.low = (even & 0x00000000FFFFFFFFLLU) | ((even & 0xFFFFFFFF00000000LLU) >> 31);
 	result.high = (odd & 0x00000000FFFFFFFFLLU) | ((odd & 0xFFFFFFFF00000000LLU) >> 33);
-	assert (result.low && result.high);
+	assert(result.low && result.high);
 	return result;
 }
 

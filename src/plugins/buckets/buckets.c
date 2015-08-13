@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -154,7 +154,7 @@ static void generation_activate(struct user_data *u, size_t generation, uint64_t
 static void configure(struct context *context, const uint8_t *data, size_t length) {
 	// We copy the data to make sure they are aligned properly.
 	struct config_header *header = mem_pool_alloc(context->temp_pool, length);
-	assert(length >= sizeof *header);
+	sanity(length >= sizeof *header, "The message is too short to contain bucket configuration header, only %zu bytes (%zu needed)\n", length, sizeof *header);
 	memcpy(header, data, length);
 	// Extract the elements of the header
 	struct user_data *u = context->user_data;
@@ -168,7 +168,8 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 	u->bucket_count = ntohl(header->bucket_count);
 	u->hash_count = ntohl(header->hash_count);
 	u->criteria_count = ntohl(header->criteria_count);
-	assert(length >= sizeof *header + u->criteria_count * sizeof header->criteria[0]);
+	size_t needed = sizeof *header + u->criteria_count * sizeof header->criteria[0];
+	sanity(length >= needed, "The message is too short to contain bucket configuration, only %zu bytes (%zu needed)\n", length, needed);
 	u->history_size = ntohl(header->history_size);
 	u->config_version = ntohl(header->config_version);
 	u->max_key_count = htonl(header->max_key_count);
@@ -186,8 +187,7 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 				if (criteria[j].key_size > max_keysize)
 					max_keysize = criteria[j].key_size;
 			}
-		if (!found)
-			die("Bucket criterion of name '%c' not known\n", header->criteria[i]);
+		sanity(found, "Bucket criterion of name '%c' not known\n", header->criteria[i]);
 	}
 	// Generate the random hash data
 	u->hash_line_size = 256 * max_keysize;
@@ -210,7 +210,7 @@ static void configure(struct context *context, const uint8_t *data, size_t lengt
 			// We don't care about the values in newly-allocated data. We reset it at the start of generation
 	}
 	generation_activate(u, 0, be64toh(header->timestamp), loop_now(context->loop));
-	assert(u->criteria_count && u->hash_count && u->bucket_count);
+	sanity(u->criteria_count && u->hash_count && u->bucket_count, "A zero-sized bucket configuration received\n");
 	ulog(LLOG_INFO, "Received bucket information version %u (%u buckets, %u hashes)\n", (unsigned) u->config_version, (unsigned) u->bucket_count, (unsigned) u->hash_count);
 	u->initialized = true;
 }
@@ -236,7 +236,7 @@ static void provide_generation(struct context *context, const uint8_t *data, siz
 	struct user_data *u = context->user_data;
 	// Read the new timestamp
 	uint64_t timestamp;
-	assert(length == sizeof timestamp);
+	sanity(length == sizeof timestamp, "Wrong size of the bucket generation timestamp (%zu vs %zu)\n", length, sizeof timestamp);
 	memcpy(&timestamp, data, length); // Copy, to ensure correct alignment
 	timestamp = be64toh(timestamp);
 	ulog(LLOG_DEBUG, "Old generation is %zu, new %zu\n", (size_t) u->generations[u->current_generation].timestamp, (size_t) timestamp);
@@ -303,16 +303,16 @@ static void get_key(const uint8_t *key, size_t key_size, struct trie_data *data,
 }
 
 static struct key_candidates *scan_keys(uint32_t *indices, uint32_t length, size_t criterion, struct user_data *u, struct generation *g, struct mem_pool *pool) {
-	assert(length);
+	sanity(length, "The index count is missing in the bucket keys request\n");
 	uint32_t index_count = indices[0];
 	length --;
-	assert(length >= index_count);
+	sanity(length >= index_count, "There are not enough indices in the bucket keys request, expected %u, but only %u found\n", (unsigned)length, (unsigned)index_count);
 	indices ++;
 	struct key_candidates *candidates = mem_pool_alloc(pool, sizeof *candidates);
 	*candidates = (struct key_candidates) { .count = 0 };
 	size_t key_size = u->criteria[criterion]->key_size;
 	for (size_t i = 0; i < index_count; i ++) {
-		assert(indices[i] < u->bucket_count);
+		sanity(indices[i] < u->bucket_count, "Bucket index out of bounds (%u vs %u)\n", (unsigned)indices[i], (unsigned)u->bucket_count);
 		trie_walk(g->criteria[criterion].trie[indices[i]], get_key, &(struct extract_data) { .candidates = candidates, .pool = pool }, pool);
 	}
 	// Iterate the other levels and remove keys not passing the filter of indices
@@ -320,11 +320,11 @@ static struct key_candidates *scan_keys(uint32_t *indices, uint32_t length, size
 		// Move to the next group of indices
 		indices += index_count;
 		length -= index_count;
-		assert(length);
+		sanity(length, "Run out of all the bucket indices before hash %zu\n", i);
 		index_count = *indices;
 		length --;
 		indices ++;
-		assert(length >= index_count);
+		sanity(length >= index_count, "Not enough bucket indices for hash %zu - need %u, but only %u found\n", i, (unsigned)index_count, (unsigned)length);
 		// Not using LFOR here, we need to manipulate the variable in the process
 		struct key_candidate *candidate = candidates->head;
 		while (candidate) {
@@ -342,14 +342,14 @@ static struct key_candidates *scan_keys(uint32_t *indices, uint32_t length, size
 				key_candidates_remove(candidates, to_del);
 		}
 	}
-	assert(length == index_count); // All indices eaten
+	sanity(length == index_count, "Extra %u bucket indices\n", (unsigned)(length - index_count)); // All indices eaten
 	return candidates;
 }
 
 static void provide_keys(struct context *context, const uint8_t *data, size_t length) {
 	struct user_data *u = context->user_data;
 	// No key index is split in half
-	assert((length - sizeof(struct key_request)) % sizeof(uint32_t) == 0);
+	sanity((length - sizeof(struct key_request)) % sizeof(uint32_t) == 0, "Bucket index split\n");
 	// Copy the data so it is properly aligned
 	struct key_request *request = mem_pool_alloc(context->temp_pool, length);
 	memcpy(request, data, length);
@@ -362,7 +362,7 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 	for (size_t i = 0; i < length; i ++)
 		request->key_indices[i] = ntohl(request->key_indices[i]);
 	size_t criterion = ntohl(request->criterion);
-	assert(criterion < u->criteria_count);
+	sanity(criterion < u->criteria_count, "Criterion out of bounds (%zu vs %zu)\n", criterion, u->criteria_count);
 	uint64_t timestamp = be64toh(request->generation_timestamp);
 	size_t key_size = u->criteria[criterion]->key_size;
 	struct key_candidates *candidates = NULL;
@@ -417,7 +417,7 @@ static void provide_keys(struct context *context, const uint8_t *data, size_t le
 }
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
-	assert(length);
+	sanity(length, "Empty message routed to the buckets plugin\n");
 	switch (*data) {
 		case 'C': // Good, we got configuration
 			configure(context, data + 1, length - 1);
@@ -438,7 +438,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			}
 			return;
 		case 'K': // Send keys
-			assert(context->user_data->initialized); // The server should track who it asks
+			sanity(context->user_data->initialized, "Asked to send keys before initialization\n"); // The server should track who it asks
 			provide_keys(context, data + 1, length - 1);
 			return;
 		default:
