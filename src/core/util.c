@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <unistd.h>
+#include <alloca.h>
 
 void die(const char *format, ...) {
 	va_list args;
@@ -74,4 +75,18 @@ void ulog_internal(enum log_level log_level, const char *format, va_list *args) 
 	}
 	fputs(names[log_level], stderr);
 	vfprintf(stderr, format, *args);
+}
+
+void sanity_internal(const char *file, unsigned line, const char *check, const char *format, ...) {
+	va_list args;
+	va_start(args, format);
+	va_list copy;
+	va_copy(copy, args);
+	size_t needed = vsnprintf(NULL, 0, format, args);
+	char *output = alloca(needed + 1);
+	vsnprintf(output, needed + 1, format, copy);
+	va_end(args);
+	va_end(copy);
+	ulog(LLOG_ERROR, "%s:%u: Failed check '%s': %s", file, line, check, output);
+	abort();
 }

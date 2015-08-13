@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -48,5 +48,10 @@ static inline void ulog(enum log_level log_level, const char *format, ...) {
 	ulog_internal(log_level, format, &args);
 	va_end(args);
 }
+
+void sanity_internal(const char *file, unsigned line, const char *check, const char *format, ...) __attribute__((format(printf, 4, 5))) __attribute__((noreturn));
+
+// An assert-like function, but with printf message that can be added. It is not omitted from compilation like assert may be. Use for checking input parameters, for example. Logs on the ERROR level and aborts, effectively killing a plugin that failed the check.
+#define sanity(check, ...) do { if (!(check)) sanity_internal(__FILE__, __LINE__, #check, __VA_ARGS__); } while (0)
 
 #endif
