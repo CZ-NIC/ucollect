@@ -45,6 +45,7 @@ static void atsha_log_callback(const char *msg) {
 
 enum auth_status {
 	AUTHENTICATED,
+	SENT,
 	NOT_STARTED,
 	FAILED
 };
@@ -109,6 +110,7 @@ static void dump_status(struct uplink *uplink) {
 			case AUTHENTICATED:
 				status = "online";
 				break;
+			case SENT:
 			case NOT_STARTED:
 				status = "connecting";
 				break;
@@ -494,7 +496,7 @@ static void handle_buffer(struct uplink *uplink) {
 			char command = *uplink->buffer ++;
 			uplink->buffer_size --;
 			struct mem_pool *temp_pool = loop_temp_pool(uplink->loop);
-			if (uplink->auth_status == AUTHENTICATED) {
+			if (uplink->auth_status == AUTHENTICATED || uplink->auth_status == SENT) {
 				switch (command) {
 					case 'R': { // Route data to given plugin
 						uplink->login_failure_count = 0; // If we got data, we know the login was successful
@@ -536,6 +538,7 @@ static void handle_buffer(struct uplink *uplink) {
 					}
 					case 'P': // Ping from the server. Send a pong back.
 						  uplink_send_message(uplink, 'p', uplink->buffer, uplink->buffer_size);
+						  dump_status(uplink);
 						  break;
 					case 'p': // Pong. Reset the number of unanswered pings, we got some answer, the link works
 						  uplink->pings_unanswered = 0;
@@ -545,6 +548,7 @@ static void handle_buffer(struct uplink *uplink) {
 						  // Schedule another attempt in 10 minutes
 						  uplink_disconnect(uplink, true);
 						  uplink->auth_status = FAILED;
+						  dump_status(uplink);
 						  connect_fail(uplink);
 						  break;
 					case 'A':
@@ -554,6 +558,8 @@ static void handle_buffer(struct uplink *uplink) {
 						  ulog(LLOG_ERROR, "Received unknown command %c from uplink %s:%s\n", command, uplink->remote_name, uplink->service);
 						  break;
 				}
+				if (uplink->auth_status == SENT)
+					uplink->auth_status = AUTHENTICATED; // We are authenticated if the server writes to us
 			} else {
 				if (command == 'C' && uplink->auth_status == NOT_STARTED) {
 					ulog(LLOG_DEBUG, "Sending login info\n");
@@ -597,7 +603,7 @@ static void handle_buffer(struct uplink *uplink) {
 					 * Send 'H'ello. For now, it is empty. In future, we expect to have program & protocol version,
 					 * list of plugins and possibly other things too.
 					 */
-					uplink->auth_status = AUTHENTICATED;
+					uplink->auth_status = SENT;
 					uint8_t proto_version = PROTOCOL_VERSION;
 					uplink_send_message(uplink, 'H', &proto_version, sizeof proto_version);
 					loop_uplink_connected(uplink->loop);
