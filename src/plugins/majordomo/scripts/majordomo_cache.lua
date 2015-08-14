@@ -80,10 +80,8 @@ function precache(db_path, ml_mac, ml_dns)
 						changed = true;
 						local ptr = ptrdb:lookup(data[DD_DST]);
 						data[DD_RESOLVED] = ptr or CACHE_EMPTY_NAME;
-						tmp_file:write(restore_line(data).."\n");
-					else
-						tmp_file:write(restore_line(data).."\n");
 					end
+					tmp_file:write(restore_line(data).."\n");
 				end
 			end
 
