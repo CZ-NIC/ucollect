@@ -117,7 +117,7 @@ CREATE OR REPLACE VIEW plugin_activity AS SELECT
 	MIN(known_plugins.status) AS status,
 	BOOL_AND(active_plugins.active) AS active
 FROM
-	activities
+	(SELECT * FROM activities JOIN activity_types ON activities.activity = activity_types.id WHERE activity_types.name != 'firewall') AS activities
 	JOIN activity_types ON activities.activity = activity_types.id
 	FULL OUTER JOIN active_plugins ON active_plugins.client = activities.client AND active_plugins.name = activity_types.plugin
 	LEFT OUTER JOIN known_plugins ON active_plugins.name = known_plugins.name AND active_plugins.version = COALESCE(known_plugins.version, active_plugins.version) AND active_plugins.hash = COALESCE(known_plugins.hash, active_plugins.hash)
