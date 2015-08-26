@@ -58,13 +58,15 @@ my @private = (
 	qr/^f[ed]..:/
 );
 
-my $bl_stm = $dbh->prepare('SELECT server, remote, clients_total, score_total, mode FROM fake_blacklist');
-$bl_stm->execute;
+my $result = $dbh->selectall_arrayref('SELECT server, remote, clients_total, score_total, mode FROM fake_blacklist');
+$dbh->rollback;
+$dbh->disconnect;
 #local $\ = "\n";
 #local $, = ",";
 my $gi = Geo::IP->new(GEOIP_MEMORY_CACHE);
 print "server,ip,clients,score,mode,as,nic,email,country\n";
-while (my ($server, $remote, @rest) = $bl_stm->fetchrow_array) {
+for my $row (@$result) {
+	my ($server, $remote, @rest) = @$row;
 	if ($turris_addresses{$remote}) {
 		warn "Address $remote belongs to a turris router\n";
 		$forbidden = 1;
@@ -80,7 +82,5 @@ while (my ($server, $remote, @rest) = $bl_stm->fetchrow_array) {
 	print (join ',', $server, $remote, @rest, '"' . ($whois{origin} // $whois{originas}) . '"', $whois{source}, $whois{"abuse-mailbox"} // $whois{"e-mail"} // $whois{orgabuseemail} // $whois{rabusemail}, $gi->country_code_by_addr($remote));
 	print "\n";
 }
-
-$dbh->rollback;
 
 store $whois_cache, 'whois.cache';
