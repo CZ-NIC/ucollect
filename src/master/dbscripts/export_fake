@@ -7,6 +7,7 @@ if [ "$DIR" = "." ] ; then
 fi
 
 cd ~/fake-exports
-find -type f -mtime +8 -delete
+# It is generated with the date +1, so eat it one day sooner
+find -type f -mtime +7 -delete
 "$DIR"/export_fake.pl "$DIR"/db.ini $DATE
 chmod a+r *.csv
