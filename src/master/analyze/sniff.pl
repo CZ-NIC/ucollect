@@ -14,6 +14,9 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 {
 	# We want to know what IP addresses are out of the line. We count how many different IP addresses there are for each batch and set a limit on how small count of IP addresses can be based on that.
 	my $ip_hist = $dbh->selectall_hashref('SELECT COUNT(*) AS cnt, request, ip, batch, MIN(host) AS host FROM pings JOIN ping_requests ON ping_requests.id = request WHERE ip IS NOT NULL GROUP BY request, ip, batch', [qw(request batch ip)]);
+	# Due to the whoisip_query getting stuck sometimes, disconnect from the DB for the time being.
+	$dbh->rollback;
+	$dbh->disconnect;
 
 	my %reports;
 
@@ -66,6 +69,10 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 		'^FIO-BANKA-NET$' => 'FIO',
 	);
 
+	my $count = keys %reports;
+	$SIG{ALRM} = sub { die "WOIS timeout\n" };
+	alarm 60 * $count; # A minute for each woisip_query should be enough. Hopefully that's enough and hopefully SIGALRM is able to kill the syscall.
+
 	for my $host (sort keys %reports) {
 		print "Minority IP addresses on $host:\n";
 		my $ips = $reports{$host};
@@ -90,7 +97,10 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 			print "• Whitelisted owners: " . (join ', ', map "$_($whitelist_ips{$_})", keys %whitelist_ips) . "\n";
 		}
 	}
+	alarm 0;
 }
+
+my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd, { RaiseError => 1, AutoCommit => 0 });
 
 {
 	# Extract weak ciphers and protocols
