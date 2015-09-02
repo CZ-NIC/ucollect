@@ -69,6 +69,15 @@ while (<$graylist>) {
 close $graylist;
 die "Wget failed with $?" if $?;
 
+my $add_files = $cfg->val('badips', 'files');
+for my $add_file (split /:/, $add_files) {
+	open my $file, '<', $add_file or die "Couldn't read file $add_file: $!\n";
+	while (<$file>) {
+		chomp;
+		$data{''}->{$_} = 1;
+	}
+}
+
 # Extract addresses from the anomalies
 my $an_stm = $dbh->prepare('SELECT DISTINCT value, type FROM anomalies WHERE relevance_count >= ?');
 $an_stm->execute($cfg->val('anomalies', 'client_treshold'));
