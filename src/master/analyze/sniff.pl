@@ -74,8 +74,8 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 	);
 
 	my $count = keys %reports;
-	$SIG{ALRM} = sub { die "WOIS timeout\n" };
-	alarm 60 * $count; # A minute for each woisip_query should be enough. Hopefully that's enough and hopefully SIGALRM is able to kill the syscall.
+	$SIG{ALRM} = sub { die "WHOIS timeout\n" };
+	alarm 120 * $count; # Two minutes for each woisip_query should be enough. Hopefully that's enough and hopefully SIGALRM is able to kill the syscall.
 
 	for my $host (sort keys %reports) {
 		print "Minority IP addresses on $host:\n";
