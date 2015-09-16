@@ -173,6 +173,10 @@ void config_set_package(const char *package_name) {
 	config_params.package = package_name;
 }
 
+const char *config_get_package() {
+	return config_params.package;
+}
+
 void config_allow_null_uplink(void) {
 	config_params.use_uplink = false;
 }

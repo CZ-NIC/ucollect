@@ -321,9 +321,10 @@ static void sig_handler(int signal) {
 	jump_signum = signal;
 	// Try to generate a backtrace into the log
 	pid_t pid = getpid();
-	const char *command_raw = "gdb --batch -p %d -ex 'bt full' -ex 'info sharedlibrary' 2>/dev/null | sed -e 's/^/CRASH: /' | logger -t ucollect";
-	char command[strlen(command_raw) + 15]; // Large enough space for a PID
-	snprintf(command, sizeof command, command_raw, (int)pid);
+	const char *command_raw = "gdb --batch -p %d -ex 'bt full' -ex 'info sharedlibrary' 2>/dev/null | sed -e 's/^/CRASH: /' | logger -t %s";
+	const char *packname = config_get_package();
+	char command[strlen(command_raw) + 15 + strlen(packname)]; // Large enough space for a PID
+	snprintf(command, sizeof command, command_raw, (int)pid, packname);
 	system(command);
 #ifdef DEBUG
 	/*

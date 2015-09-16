@@ -30,6 +30,7 @@ struct loop;
  */
 void config_set_dir(const char *dir) __attribute__((nonnull));
 void config_set_package(const char *package_name) __attribute__((nonnull));
+const char *config_get_package();
 void config_allow_null_uplink(void);
 bool load_config(struct loop *loop) __attribute__((nonnull));
 
