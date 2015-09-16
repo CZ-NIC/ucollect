@@ -34,6 +34,7 @@
 #include <assert.h>
 #include <string.h> // Why is memcpy in string?
 #include <errno.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <inttypes.h>
 
@@ -318,6 +319,12 @@ GEN_CALL_WRAPPER_PARAM(config_finish, bool)
 
 static void sig_handler(int signal) {
 	jump_signum = signal;
+	// Try to generate a backtrace into the log
+	pid_t pid = getpid();
+	const char *command_raw = "gdb --batch -p %d -ex 'bt full' -ex 'info sharedlibrary' 2>/dev/null | sed -e 's/^/CRASH: /' | logger -t ucollect";
+	char command[strlen(command_raw) + 15]; // Large enough space for a PID
+	snprintf(command, sizeof command, command_raw, (int)pid);
+	system(command);
 #ifdef DEBUG
 	/*
 	 * Create a core dump. Do it by copying the process by fork and then
