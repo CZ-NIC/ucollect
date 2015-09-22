@@ -332,7 +332,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			uint32_t to = uplink_parse_uint32(&data, &length);
 			uint32_t orig_version;
 			ulog(LLOG_DEBUG_VERBOSE, "Length: %zu\n", length);
-			enum flow_filter_action action = filter_diff_apply(context->user_data->conf_pool, context->temp_pool, context->user_data->filter, name, full, epoch, from, to, data, length, &orig_version);
+			enum flow_filter_action action = filter_diff_apply(context->temp_pool, context->user_data->filter, name, full, epoch, from, to, data, length, &orig_version);
 			switch (action) {
 				case FILTER_UNKNOWN:
 					ulog(LLOG_WARN, "Diff for unknown filter %s received \n", name);
