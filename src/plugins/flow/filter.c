@@ -39,14 +39,6 @@ struct filter_type {
 	uint8_t code;
 };
 
-struct diff_addr_store {
-	const char *name;
-	struct trie *trie;
-	struct mem_pool *pool;
-	uint32_t epoch, version;
-	size_t added, deleted; // Statistics, to know when to re-requested the whole filter config
-};
-
 struct filter {
 	filter_fun function;
 	size_t sub_count;
@@ -231,17 +223,6 @@ static void parse_port_match(struct mem_pool *pool, struct filter *dest, const s
 	}
 }
 
-static struct diff_addr_store *diff_addr_store_init(struct mem_pool *pool, const char *name) {
-	assert(name);
-	struct diff_addr_store *result = mem_pool_alloc(pool, sizeof *result);
-	*result = (struct diff_addr_store) {
-		.trie = trie_alloc(pool),
-		.name = name,
-		.pool = pool
-	};
-	return result;
-}
-
 static void parse_differential(struct mem_pool *pool, struct filter *dest, const struct filter_type *type, const uint8_t **desc, size_t *size) {
 	(void)type;
 	// We just create the trie and store info for future updates. We expect the server will send info about all the differential filters it knows in a short moment.
@@ -397,106 +378,17 @@ static struct filter *filter_find(const char *name, struct filter *filter) {
 	return NULL;
 }
 
-enum flow_filter_action diff_addr_store_action(struct diff_addr_store *store, uint32_t epoch, uint32_t version, uint32_t *orig_version) {
-	assert(store);
-	if (epoch == store->epoch && version == store->version)
-		return FILTER_NO_ACTION; // Nothing changed. Ignore the update.
-	size_t active = store->added - store->deleted;
-	ulog(LLOG_DEBUG, "%zu active, %zu deleted\n", active, store->deleted);
-	if (active * 10 < store->deleted && store->deleted > 100)
-		return FILTER_CONFIG_RELOAD; // There's too much cruft around. Reload the whole config and force freeing memory by that.
-	if (epoch != store->epoch)
-		return FILTER_FULL;
-	*orig_version = store->version;
-	return FILTER_INCREMENTAL;
-}
-
-enum flow_filter_action filter_action(struct filter *filter, const char *name, uint32_t epoch, uint32_t version, uint32_t *orig_version) {
+enum diff_store_action filter_action(struct filter *filter, const char *name, uint32_t epoch, uint32_t version, uint32_t *orig_version) {
 	struct filter *found = filter_find(name, filter);
 	if (!found || !found->diff_addr_store)
-		return FILTER_UNKNOWN;
+		return DIFF_STORE_UNKNOWN;
 	return diff_addr_store_action(found->diff_addr_store, epoch, version, orig_version);
 }
 
-/*
- * We don't use the last bit, there's no address with odd length. We use that bit for something else.
- *
- * Actually, we expect these values:
- * • 4: IPv4 address
- * • 6: IPv4 + port
- * • 16: IPv6 address
- * • 18: IPv6 + port
- */
-const uint8_t size_mask = 16 + 8 + 4 + 2;
-const uint8_t add_mask = 1;
-
-#ifdef DEBUG
-static void debug_dump(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
-	struct mem_pool *pool = userdata;
-	const char *active = data ? "Active" : "Inactive";
-	char *hex = mem_pool_hex(pool, key, key_size);
-	ulog(LLOG_DEBUG_VERBOSE, "Key: %s: %s\n", hex, active);
-}
-#endif
-
-enum flow_filter_action diff_addr_store_apply(struct mem_pool *tmp_pool, struct diff_addr_store *store, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version) {
-	assert(tmp_pool);
-	assert(store);
-	if (epoch != store->epoch && !full)
-		// This is for different epoch than we have. Resynchronize!
-		return FILTER_FULL;
-	if (from != store->version && !full) {
-		*orig_version = store->version;
-		return FILTER_INCREMENTAL;
-	}
-	if (full && store->added != store->deleted) {
-		// We're doing a full update and there's something in the trie. Reset it.
-		store->deleted = store->added;
-		store->trie = trie_alloc(store->pool);
-	}
-	size_t addr_no = 0;
-	while (diff_size --) {
-		uint8_t flags = *(diff ++);
-		ulog(LLOG_DEBUG_VERBOSE, "Address flags: %hhu\n", flags);
-		uint8_t addr_len = flags & size_mask;
-		if (addr_len > diff_size) {
-			ulog(LLOG_ERROR, "Filter diff for %s corrupted, need %hhu bytes, have only %zu\n", store->name, addr_len, diff_size);
-			abort();
-		}
-		struct trie_data **data = trie_index(store->trie, diff, addr_len);
-		bool add = flags & add_mask;
-		if (add) {
-			if (*data) {
-				ulog(LLOG_WARN, "Asked to add an address %s (#%zu) of size %hhu to filter %s, but that already exists\n", mem_pool_hex(tmp_pool, diff, addr_len), addr_no, addr_len, store->name);
-			} else {
-				*data = &mark;
-				store->added ++;
-			}
-		} else {
-			if (*data) {
-				*data = NULL;
-				store->deleted ++;
-			} else {
-				ulog(LLOG_WARN, "Asked to delete an address %s (#%zu) of size %hhu from filter %s, but that is not there\n", mem_pool_hex(tmp_pool, diff, addr_len), addr_no, addr_len, store->name);
-			}
-		}
-		diff += addr_len;
-		diff_size -= addr_len;
-		addr_no ++;
-	}
-	store->epoch = epoch;
-	store->version = to;
-	ulog(LLOG_DEBUG, "Filter %s updated:\n", store->name);
-#ifdef DEBUG
-	trie_walk(store->trie, debug_dump, tmp_pool, tmp_pool);
-#endif
-	return FILTER_NO_ACTION;
-}
-
-enum flow_filter_action filter_diff_apply(struct mem_pool *tmp_pool, struct filter *filter, const char *name, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version) {
+enum diff_store_action filter_diff_apply(struct mem_pool *tmp_pool, struct filter *filter, const char *name, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version) {
 	struct filter *found = filter_find(name, filter);
 	ulog(LLOG_INFO, "Updating filter %s from version %u to version %u (epoch %u)\n", name, (unsigned)from, (unsigned)to, (unsigned)epoch);
 	if (!found || !found->diff_addr_store)
-		return FILTER_UNKNOWN;
+		return DIFF_STORE_UNKNOWN;
 	return diff_addr_store_apply(tmp_pool, filter->diff_addr_store, full, epoch, from, to, diff, diff_size, orig_version);
 }
