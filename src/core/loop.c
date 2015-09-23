@@ -317,15 +317,12 @@ GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
 GEN_CALL_WRAPPER_PARAM_2(fd, int, void *)
 GEN_CALL_WRAPPER_PARAM(config_finish, bool)
 
+static char *gdb_command;
+
 static void sig_handler(int signal) {
 	jump_signum = signal;
-	// Try to generate a backtrace into the log
-	pid_t pid = getpid();
-	const char *command_raw = "gdb --batch -p %d -ex 'bt full' -ex 'info sharedlibrary' 2>/dev/null | sed -e 's/^/CRASH: /' | logger -t %s";
-	const char *packname = config_get_package();
-	char command[strlen(command_raw) + 15 + strlen(packname)]; // Large enough space for a PID
-	snprintf(command, sizeof command, command_raw, (int)pid, packname);
-	system(command);
+	if (gdb_command)
+		system(gdb_command);
 #ifdef DEBUG
 	/*
 	 * Create a core dump. Do it by copying the process by fork and then
@@ -543,6 +540,9 @@ struct loop *loop_create(void) {
 	if (epoll_fd == -1)
 		die("Couldn't create epoll instance (%s)\n", strerror(errno));
 	struct mem_pool *pool = mem_pool_create("Global permanent pool");
+	if (!gdb_command)
+		gdb_command = mem_pool_printf(pool, "gdb --batch -p %d -ex 'bt full' -ex 'info sharedlibrary' 2>/dev/null | sed -e 's/^/CRASH: /' | logger -t %s", (int)getpid(), config_get_package());
+	ulog(LLOG_INFO, "Prepared emergency GDB command: %s\n", gdb_command);
 	struct loop *result = mem_pool_alloc(pool, sizeof *result);
 	*result = (struct loop) {
 		.permanent_pool = pool,
