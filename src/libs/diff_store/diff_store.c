@@ -17,6 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#define PLUGLIB_DO_EXPORT
 #include "diff_store.h"
 
 #include "../../core/trie.h"
@@ -31,7 +32,7 @@ struct trie_data {
 
 static struct trie_data mark; // To have a valid pointer to something, not used by itself
 
-struct diff_addr_store *diff_addr_store_init(struct mem_pool *pool, const char *name) {
+static struct diff_addr_store *diff_addr_store_init(struct mem_pool *pool, const char *name) {
 	assert(name);
 	struct diff_addr_store *result = mem_pool_alloc(pool, sizeof *result);
 	*result = (struct diff_addr_store) {
@@ -42,7 +43,7 @@ struct diff_addr_store *diff_addr_store_init(struct mem_pool *pool, const char *
 	return result;
 }
 
-enum diff_store_action diff_addr_store_action(struct diff_addr_store *store, uint32_t epoch, uint32_t version, uint32_t *orig_version) {
+static enum diff_store_action diff_addr_store_action(struct diff_addr_store *store, uint32_t epoch, uint32_t version, uint32_t *orig_version) {
 	assert(store);
 	if (epoch == store->epoch && version == store->version)
 		return DIFF_STORE_NO_ACTION; // Nothing changed. Ignore the update.
@@ -65,8 +66,8 @@ enum diff_store_action diff_addr_store_action(struct diff_addr_store *store, uin
  * • 16: IPv6 address
  * • 18: IPv6 + port
  */
-const uint8_t size_mask = 16 + 8 + 4 + 2;
-const uint8_t add_mask = 1;
+static const uint8_t size_mask = 16 + 8 + 4 + 2;
+static const uint8_t add_mask = 1;
 
 #ifdef DEBUG
 static void debug_dump(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
@@ -77,7 +78,7 @@ static void debug_dump(const uint8_t *key, size_t key_size, struct trie_data *da
 }
 #endif
 
-enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, struct diff_addr_store *store, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version) {
+static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, struct diff_addr_store *store, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version) {
 	assert(tmp_pool);
 	assert(store);
 	if (epoch != store->epoch && !full)
@@ -129,4 +130,20 @@ enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, struct d
 	trie_walk(store->trie, debug_dump, tmp_pool, tmp_pool);
 #endif
 	return DIFF_STORE_NO_ACTION;
+}
+
+struct pluglib *pluglib_info(void) {
+	static struct pluglib_export *exports[] = {
+		&diff_addr_store_init_export,
+		&diff_addr_store_action_export,
+		&diff_addr_store_apply_export,
+		NULL
+	};
+	static struct pluglib pluglib = {
+		.name = "Diff Store",
+		.compat = 1,
+		.version = 1,
+		.exports = exports
+	};
+	return &pluglib;
 }

@@ -19,6 +19,9 @@
 
 #include "filter.h"
 
+#define PLUGLIB_DO_IMPORT PLUGLIB_FUNCTIONS
+#include "../../libs/diff_store/diff_store.h"
+
 #include "../../core/trie.h"
 #include "../../core/mem_pool.h"
 #include "../../core/util.h"

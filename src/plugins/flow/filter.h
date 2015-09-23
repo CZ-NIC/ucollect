@@ -20,7 +20,7 @@
 #ifndef UCOLLECT_FLOW_FILTER_H
 #define UCOLLECT_FLOW_FILTER_H
 
-#include "diff_store.h"
+#include "../../libs/diff_store/diff_store.h"
 
 #include <stdbool.h>
 #include <stdint.h>

@@ -17,12 +17,14 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#ifndef UCOLLECT_DIFF_STORE_H
+#define UCOLLECT_DIFF_STORE_H
+
 #include <stdlib.h>
 #include <stdint.h>
-#include <stdbool.h>
 
-#ifndef UCOLLECT_FLOW_DIFF_STORE_H
-#define UCOLLECT_FLOW_DIFF_STORE_H
+struct trie;
+struct mem_pool;
 
 enum diff_store_action {
 	DIFF_STORE_INCREMENTAL, // Ask for a differential update,
@@ -40,8 +42,10 @@ struct diff_addr_store {
 	size_t added, deleted; // Statistics, to know when to re-requested the whole filter config
 };
 
-struct diff_addr_store *diff_addr_store_init(struct mem_pool *pool, const char *name);
-enum diff_store_action diff_addr_store_action(struct diff_addr_store *store, uint32_t epoch, uint32_t version, uint32_t *orig_version);
-enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, struct diff_addr_store *store, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version);
-
 #endif
+
+#include "../../core/pluglib_macros.h"
+
+PLUGLIB_FUNC(diff_addr_store_init, struct diff_addr_store *, struct mem_pool *, const char *)
+PLUGLIB_FUNC(diff_addr_store_action, enum diff_store_action, struct diff_addr_store *, uint32_t, uint32_t, uint32_t *)
+PLUGLIB_FUNC(diff_addr_store_apply, enum diff_store_action, struct mem_pool *, struct diff_addr_store *, bool, uint32_t, uint32_t, uint32_t, const uint8_t *, size_t, uint32_t *)

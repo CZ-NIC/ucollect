@@ -56,6 +56,7 @@
 
 // The import macro. It distinguishes by the value of PLUGLIB_DO_IMPORT
 #ifdef PLUGLIB_DO_IMPORT
+#include "pluglib.h"
 #if PLUGLIB_DO_IMPORT == PLUGLIB_FUNCTIONS
 #define PLUGLIB_IMPORT(NAME, RETURN, ...) extern RETURN (*NAME)(__VA_ARGS__);
 #elif PLUGLIB_DO_IMPORT == PLUGLIB_PUBLIC
@@ -70,6 +71,7 @@
 
 // The export stuff. Currently only on/off.
 #ifdef PLUGLIB_DO_EXPORT
+#include "pluglib.h"
 #define PLUGLIB_EXPORT(NAME, RETURN, ...) static RETURN NAME(__VA_ARGS__); static struct pluglib_export NAME##_export = { .name = #NAME, .function = (pluglib_function)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN };
 #else
 #define PLUGLIB_EXPORT(...)

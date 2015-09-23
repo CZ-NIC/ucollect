@@ -20,6 +20,9 @@
 #include "filter.h"
 #include "flow.h"
 
+#define PLUGLIB_DO_IMPORT PLUGLIB_STRUCTS
+#include "../../libs/diff_store/diff_store.h"
+
 #include "../../core/plugin.h"
 #include "../../core/context.h"
 #include "../../core/mem_pool.h"
@@ -352,18 +355,31 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	}
 }
 
+#ifndef STATIC
+unsigned api_version() {
+	return UCOLLECT_PLUGIN_API_VERSION;
+}
+#endif
+
 #ifdef STATIC
 struct plugin *plugin_info_flow(void) {
 #else
 struct plugin *plugin_info(void) {
 #endif
+	static struct pluglib_import *imports[] = {
+		&diff_addr_store_init_import,
+		&diff_addr_store_action_import,
+		&diff_addr_store_apply_import,
+		NULL
+	};
 	static struct plugin plugin = {
 		.packet_callback = packet_handle,
 		.init_callback = initialize,
 		.uplink_connected_callback = connected,
 		.uplink_data_callback = communicate,
 		.name = "Flow",
-		.version = 2
+		.version = 2,
+		.imports = imports
 	};
 	return &plugin;
 }
