@@ -66,8 +66,8 @@ bool pluglib_resolve_functions(const struct pluglib_list *libraries, struct plug
 // Check if all the imports could be satisfied.
 bool pluglib_check_functions(const struct pluglib_list *libraries, struct pluglib_import **imports) __attribute__((nonnull(1)));
 
-#define PLUGLIB_IMPORT(NAME, RETURN, ...) static RETURN (*NAME)(__VA_ARGS__); static struct pluglib_import NAME##_import = { .name = #NAME, .function = (pluglib_function *)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN }
-
-#define PLUGLIB_EXPORT(NAME, RETURN, ...) static RETURN NAME(__VA_ARGS__); static struct pluglib_export NAME##_export = { .name = #NAME, .function = (pluglib_function)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN }
+#define PLUGLIB_LOCAL 1
+#define PLUGLIB_FUNCTIONS 2
+#define PLUGLIB_STRUCTS 3
 
 #endif

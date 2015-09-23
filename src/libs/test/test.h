@@ -17,25 +17,6 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#define PLUGLIB_DO_EXPORT
-#include "test.h"
-
-#include "../../core/util.h"
-
-void hello_world(void) {
-	ulog(LLOG_WARN, "Hello new world!\n");
-}
-
-struct pluglib *pluglib_info(void) {
-	static struct pluglib_export *exports[] = {
-		&hello_world_export,
-		NULL
-	};
-	static struct pluglib pluglib = {
-		.name = "TestLib",
-		.compat = 1,
-		.version = 2,
-		.exports = exports
-	};
-	return &pluglib;
-}
+#include "../../core/pluglib.h"
+#include "../../core/pluglib_macros.h"
+PLUGLIB_FUNC(hello_world, void, void)
