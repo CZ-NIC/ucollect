@@ -235,7 +235,7 @@ enum log_send_status log_event(struct context *context, struct log *log, char se
 enum log_send_status log_status(struct log *log) {
 	if (log->expected_serialized_size >= 2 * log->size_limit)
 		return LS_FORCE_SEND; // We really need to send now
-	if (log->attempts_reached || log->expected_serialized_size)
+	if (log->attempts_reached || log->expected_serialized_size >= log->size_limit)
 		return LS_SEND; // If we reached attempts (even several times), it is not a reason to drop the log if it can't be sent. But attempt to send it, please.
 	return LS_NONE;
 }
