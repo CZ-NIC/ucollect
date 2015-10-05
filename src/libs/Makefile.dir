@@ -1,5 +1,5 @@
 UCOLLECT_PLUGLIBS:= \
 	test \
-	diff_store
+	diffstore
 
 include $(patsubst %,$(S)/src/libs/%/Makefile.dir,$(UCOLLECT_PLUGLIBS))

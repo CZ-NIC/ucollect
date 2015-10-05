@@ -1,0 +1,2 @@
+LIBRARIES += src/libs/diffstore/libpluglib_diffstore
+libpluglib_diffstore_MODULES := diff_store

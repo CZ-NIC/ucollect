@@ -21,7 +21,7 @@
 #include "flow.h"
 
 #define PLUGLIB_DO_IMPORT PLUGLIB_STRUCTS
-#include "../../libs/diff_store/diff_store.h"
+#include "../../libs/diffstore/diff_store.h"
 
 #include "../../core/plugin.h"
 #include "../../core/context.h"

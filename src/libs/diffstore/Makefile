@@ -1,4 +1,4 @@
-RESTRICT := src/libs/diff_store
+RESTRICT := src/libs/diffstore
 RELATIVE := ../../../
 
 include $(RELATIVE)/Makefile
