@@ -98,7 +98,7 @@ bool uplink_plugin_send_message(struct context *context, const void *data, size_
 // Some parsing & rendering functions
 
 // Get a string from buffer. Returns NULL if badly formatted. The buffer position is updated.
-char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
+char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) __attribute__((nonnull)) __attribute__((malloc));
 // Parses a uint32_t from the buffer. Aborts if not enough data. The buffer position is updated.
 uint32_t uplink_parse_uint32(const uint8_t **buffer, size_t *length) __attribute__((nonnull));
 // Render string to the wire format. Update position and length of buffer.
