@@ -393,5 +393,5 @@ enum diff_store_action filter_diff_apply(struct mem_pool *tmp_pool, struct filte
 	ulog(LLOG_INFO, "Updating filter %s from version %u to version %u (epoch %u)\n", name, (unsigned)from, (unsigned)to, (unsigned)epoch);
 	if (!found || !found->diff_addr_store)
 		return DIFF_STORE_UNKNOWN;
-	return diff_addr_store_apply(tmp_pool, filter->diff_addr_store, full, epoch, from, to, diff, diff_size, orig_version);
+	return diff_addr_store_apply(tmp_pool, found->diff_addr_store, full, epoch, from, to, diff, diff_size, orig_version);
 }
