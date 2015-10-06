@@ -294,10 +294,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			data ++;
 			length --;
 			char *name = uplink_parse_string(context->temp_pool, &data, &length);
-			if (!name) {
-				ulog(LLOG_ERROR, "Update message too short to contain filter name\n");
-				abort();
-			}
+			sanity(name, "Update message too short to contain filter name\n");
 			uint32_t epoch = uplink_parse_uint32(&data, &length);
 			uint32_t version = uplink_parse_uint32(&data, &length);
 			if (length)

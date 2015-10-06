@@ -419,11 +419,7 @@ char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t 
 }
 
 uint32_t uplink_parse_uint32(const uint8_t **buffer, size_t *length) {
-	if (*length < sizeof(uint32_t)) {
-		// Not using die, this'll likely happen inside a plugin, so the error will be caught.
-		ulog(LLOG_ERROR, "Message buffer too short to read an uint32_t (%zu available)\n", *length);
-		abort();
-	}
+	sanity(*length >= sizeof(uint32_t), "Message buffer too short to read an uint32_t (%zu available)\n", *length);
 	uint32_t result;
 	memcpy(&result, *buffer, sizeof result);
 	result = ntohl(result);
