@@ -70,19 +70,6 @@ static volatile struct context *current_context = NULL;
 static int jump_signum = 0;
 static bool sig_initialized;
 
-static void abort_safe(void) {
-	// Disable catching the signal first.
-	struct sigaction sa = {
-		.sa_handler = SIG_DFL
-	};
-	sigaction(SIGABRT, &sa, NULL);
-	abort();
-	// Couldn't commit suicide yet? Try exit.
-	exit(1);
-	// Still nothing?
-	kill(getpid(), SIGKILL);
-}
-
 static void sig_handler(int signal, siginfo_t *, void *);
 
 static const int signals[] = {

@@ -54,4 +54,7 @@ void sanity_internal(const char *file, unsigned line, const char *check, const c
 // An assert-like function, but with printf message that can be added. It is not omitted from compilation like assert may be. Use for checking input parameters, for example. Logs on the ERROR level and aborts, effectively killing a plugin that failed the check.
 #define sanity(check, ...) do { if (!(check)) sanity_internal(__FILE__, __LINE__, #check, __VA_ARGS__); } while (0)
 
+// Try very hard to commit a suicide.
+void abort_safe();
+
 #endif
