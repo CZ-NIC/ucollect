@@ -20,7 +20,7 @@
 #include "filter.h"
 #include "flow.h"
 
-#define PLUGLIB_DO_IMPORT PLUGLIB_STRUCTS
+#define PLUGLIB_DO_IMPORT PLUGLIB_PUBLIC
 #include "../../libs/diffstore/diff_store.h"
 
 #include "../../core/plugin.h"
