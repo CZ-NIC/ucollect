@@ -368,7 +368,7 @@ struct filter *filter_parse(struct mem_pool *pool, const uint8_t *desc, size_t s
 }
 
 static struct filter *filter_find(const char *name, struct filter *filter) {
-	if (filter->diff_addr_store->name && strcmp(name, filter->diff_addr_store->name) == 0)
+	if (filter->diff_addr_store && filter->diff_addr_store->name && strcmp(name, filter->diff_addr_store->name) == 0)
 		// Found locally
 		return filter;
 	for (size_t i = 0; i < filter->sub_count; i ++) {
