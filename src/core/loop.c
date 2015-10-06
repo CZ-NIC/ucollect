@@ -635,6 +635,9 @@ static void config_copy_node(const uint8_t *key, size_t key_size, struct trie_da
 	struct loop_configurator *configurator = userdata;
 	for (size_t i = 0; i < data->config.value_count; i ++)
 		loop_set_plugin_opt(configurator, (const char *)key, data->config.values[i]);
+	if (strcmp((const char *)key, "pluglib") == 0) // We shall request pluglibs for this plugin too
+		for (size_t i = 0; i < data->config.value_count; i ++)
+			loop_set_pluglib(configurator, data->config.values[i]);
 }
 
 static void config_copy(struct loop_configurator *configurator, struct plugin_holder *plugin) {
