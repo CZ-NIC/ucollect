@@ -333,10 +333,7 @@ bool filter_apply(struct mem_pool *tmp_pool, const struct filter *filter, const 
 }
 
 static void parse_one(struct mem_pool *pool, struct filter *dest, const uint8_t **desc, size_t *size) {
-	if (!*size) {
-		ulog(LLOG_ERROR, "Short data reading filter code\n");
-		abort();
-	}
+	sanity(*size, "Short data reading filter code\n");
 	uint8_t code = **desc;
 	(*desc) ++;
 	(*size) --;
