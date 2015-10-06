@@ -83,7 +83,7 @@ static void abort_safe(void) {
 	kill(getpid(), SIGKILL);
 }
 
-static void sig_handler(int signal);
+static void sig_handler(int signal, siginfo_t *, void *);
 
 static const int signals[] = {
 	SIGILL,
@@ -104,8 +104,8 @@ static void chld_handler(int unused) {
 static void signal_initialize(void) {
 	ulog(LLOG_INFO, "Initializing emergency signal handlers\n");
 	struct sigaction action = {
-		.sa_handler = sig_handler,
-		.sa_flags = SA_NODEFER
+		.sa_sigaction = sig_handler,
+		.sa_flags = SA_NODEFER | SA_SIGINFO
 	};
 	for (size_t i = 0; i < sizeof signals / sizeof signals[0]; i ++)
 		if (sigaction(signals[i], &action, NULL) == -1)
@@ -318,11 +318,20 @@ GEN_CALL_WRAPPER_PARAM_2(fd, int, void *)
 GEN_CALL_WRAPPER_PARAM(config_finish, bool)
 
 static char *gdb_command;
+static volatile sig_atomic_t in_signal = 0;
 
-static void sig_handler(int signal) {
+static void sig_handler(int signal, siginfo_t *info, void *unused) {
+	(void) unused;
+	if (in_signal) {
+		// Hups. Signal from signal.
+		abort_safe();
+	}
+	in_signal = 1;
 	jump_signum = signal;
-	if (gdb_command)
+	if (gdb_command) {
 		system(gdb_command);
+		ulog(LLOG_ERROR, "Signal %d/%d/%d on addr %p\n", info->si_signo, info->si_errno, info->si_code, info->si_addr);
+	}
 #ifdef DEBUG
 	/*
 	 * Create a core dump. Do it by copying the process by fork and then
@@ -336,15 +345,19 @@ static void sig_handler(int signal) {
 #ifdef SIGNAL_REINIT
 	if (jump_ready && current_context) {
 		jump_ready = 0; // Don't try to jump twice in a row if anything goes bad
+		in_signal = 0;
 		// There's a handler
 		longjmp(jump_env, 1);
 	} else {
 #else
 	{
 #endif
-		if (abort_ready)
+		if (abort_ready) {
+			in_signal = 0;
 			longjmp(abort_env, 1);
+		}
 	}
+	in_signal = 0;
 	abort_safe();
 }
 
