@@ -132,11 +132,28 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 	return DIFF_STORE_NO_ACTION;
 }
 
+static void das_cp(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
+	struct diff_addr_store *target = userdata;
+	if (data) {
+		target->added ++;
+		struct trie_data **d = trie_index(target->trie, key, key_size);
+		*d = &mark;
+	}
+}
+
+static void diff_addr_store_cp(struct diff_addr_store *target, const struct diff_addr_store *source, struct mem_pool *tmp_pool) {
+	assert(target->added == 0); // It is empty
+	target->epoch = source->epoch;
+	target->version = source->version;
+	trie_walk(source->trie, das_cp, target, tmp_pool);
+}
+
 struct pluglib *pluglib_info(void) {
 	static struct pluglib_export *exports[] = {
 		&diff_addr_store_init_export,
 		&diff_addr_store_action_export,
 		&diff_addr_store_apply_export,
+		&diff_addr_store_cp_export,
 		NULL
 	};
 	static struct pluglib pluglib = {
