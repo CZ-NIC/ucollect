@@ -17,6 +17,9 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#define PLUGLIB_DO_IMPORT PLUGLIB_LOCAL
+#include "../../libs/diffstore/diff_store.h"
+
 #include "../../core/plugin.h"
 #include "../../core/context.h"
 #include "../../core/mem_pool.h"
@@ -24,6 +27,7 @@
 #include "../../core/uplink.h"
 #include "../../core/util.h"
 
+#include <assert.h>
 #include <string.h>
 #include <arpa/inet.h>
 
@@ -31,6 +35,8 @@ enum set_state {
 	SS_VALID,	// The set is valid and up to date, or a diff update would be enough. Propagate changes to the kernel.
 	SS_PENDING,	// The set needs data from server, the local storage is empty. Not sending this to the kernel.
 	SS_DEAD,	// Set previously available, but is no longer present in the config. It shall be deleted soon from the kernel.
+	SS_DEAD_PENDING,// Like dead, but it was pending before.
+	SS_COPIED,	// The set is copied into a newer storage. This one can be dropped, but leave it intact in kernel.
 	SS_NEWBORN	// Set that was just received from config and needs to be created in the kernel.
 };
 
@@ -62,6 +68,7 @@ struct set {
 	const char *name;
 	enum set_state state;
 	const struct set_type *type;
+	struct diff_addr_store *store;
 };
 
 struct user_data {
@@ -107,7 +114,8 @@ static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t *
 	*target = (struct set) {
 		.name = name,
 		.type = type,
-		.state = SS_NEWBORN
+		.state = SS_NEWBORN,
+		.store = diff_addr_store_init(pool, name)
 	};
 	// TODO: Init?
 	return true;
@@ -140,6 +148,42 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 			target_count --; // The set is strange, skip it.
 	if (length)
 		ulog(LLOG_WARN, "Extra data after FWUp filter (%zu)\n", length);
+	// Go through the old sets and mark them as dead (so they could be resurected in the new ones)
+	for (size_t i = 0; i < u->set_count; i ++)
+		switch (u->sets[i].state) {
+			case SS_VALID:
+				u->sets[i].state = SS_DEAD;
+				break;
+			case SS_PENDING:
+				u->sets[i].state = SS_PENDING;
+				break;
+			default:
+				assert(0); // It's not supposed to have other states now.
+				break;
+		}
+	// Go through the new ones and look for corresponding sets in the old config
+	for (size_t i = 0; i < target_count; i ++) {
+		for (size_t j = 0; j < u->set_count; j ++)
+			if (strcmp(sets[i].name, u->sets[j].name) == 0 && sets[i].type == sets[j].type) {
+				switch (u->sets[j].state) {
+					case SS_DEAD:
+						diff_addr_store_cp(sets[i].store, u->sets[j].store, context->temp_pool);
+						sets[i].state = SS_VALID; // We got the data, it is valid now
+						u->sets[j].state = SS_COPIED;
+						break;
+					case SS_DEAD_PENDING:
+						// No valid data inside. So nothing to copy, really.
+						sets[i].state = SS_PENDING; // It is ready in kernel
+						u->sets[j].state = SS_COPIED;
+						break;
+					default:
+						assert(0); // Invalid states now
+						break;
+				}
+			}
+	}
+	// TODO: Go through the sets that are not resurrected and remove them from the kernel
+	// TODO: Create the newborn sets in kernel
 	// Drop the old config and replace by the new one
 	mem_pool_reset(u->conf_pool);
 	u->standby_pool = u->conf_pool;
@@ -163,15 +207,21 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 }
 
 #ifdef STATIC
-#error "Fwup is not ready for static linkage. Nobody needed it."
+#error "FWUp is not ready for static linkage. Nobody needed it."
 #else
 struct plugin *plugin_info(void) {
+	static struct pluglib_import *imports[] = {
+		&diff_addr_store_init_import,
+		&diff_addr_store_cp_import,
+		NULL
+	};
 	static struct plugin plugin = {
 		.name = "FWUp",
 		.version = 1,
 		.init_callback = initialize,
 		.uplink_data_callback = communicate,
-		.uplink_connected_callback = connected
+		.uplink_connected_callback = connected,
+		.imports = imports
 	};
 	return &plugin;
 }
