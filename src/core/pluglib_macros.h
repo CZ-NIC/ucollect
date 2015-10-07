@@ -60,9 +60,9 @@
 #if PLUGLIB_DO_IMPORT == PLUGLIB_FUNCTIONS
 #define PLUGLIB_IMPORT(NAME, RETURN, ...) extern RETURN (*NAME)(__VA_ARGS__);
 #elif PLUGLIB_DO_IMPORT == PLUGLIB_PUBLIC
-#define PLUGLIB_IMPORT(NAME, RETURN, ...) RETURN (*NAME)(__VA_ARGS__); static struct pluglib_import NAME##_import = { .name = #NAME, .function = (pluglib_function *)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN };
+#define PLUGLIB_IMPORT(NAME, RETURN, ...) RETURN (*NAME)(__VA_ARGS__); static struct pluglib_import NAME##_import __attribute__((unused)) = { .name = #NAME, .function = (pluglib_function *)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN };
 #else
-#define PLUGLIB_IMPORT(NAME, RETURN, ...) static RETURN (*NAME)(__VA_ARGS__); static struct pluglib_import NAME##_import = { .name = #NAME, .function = (pluglib_function *)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN };
+#define PLUGLIB_IMPORT(NAME, RETURN, ...) static RETURN (*NAME)(__VA_ARGS__); static struct pluglib_import NAME##_import __attribute__((unused)) = { .name = #NAME, .function = (pluglib_function *)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN };
 #endif
 #undef PLUGLIB_DO_IMPORT
 #else
