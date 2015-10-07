@@ -1,0 +1,2 @@
+LIBRARIES += src/plugins/fwup/libplugin_fwup
+libplugin_fwup_MODULES := main
