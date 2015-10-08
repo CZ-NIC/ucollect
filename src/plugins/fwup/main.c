@@ -17,6 +17,8 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#include "type.h"
+
 #define PLUGLIB_DO_IMPORT PLUGLIB_LOCAL
 #include "../../libs/diffstore/diff_store.h"
 
@@ -38,30 +40,6 @@ enum set_state {
 	SS_DEAD_PENDING,// Like dead, but it was pending before.
 	SS_COPIED,	// The set is copied into a newer storage. This one can be dropped, but leave it intact in kernel.
 	SS_NEWBORN	// Set that was just received from config and needs to be created in the kernel.
-};
-
-struct set_type {
-	const char *desc;
-	const char *family;
-};
-
-static const struct set_type set_types[256] = {
-	['i'] = {
-		.desc = "hash:ip",
-		.family = "inet"
-	},
-	['I'] = {
-		.desc = "hash:ip",
-		.family = "inet6"
-	},
-	['b'] = {
-		.desc = "hash:ip,port",
-		.family = "inet"
-	},
-	['B'] = {
-		.desc = "hash:ip,port",
-		.family = "inet6"
-	}
 };
 
 struct set {
