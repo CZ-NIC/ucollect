@@ -34,12 +34,25 @@ enum diff_store_action {
 	DIFF_STORE_UNKNOWN
 };
 
+struct diff_addr_store;
+
+typedef void (*addr_hook_t)(struct diff_addr_store *store, const uint8_t *addr, size_t addr_len, void *userdata);
+typedef void (*addr_clear_hook_t)(struct diff_addr_store *store, void *userdata);
+
 struct diff_addr_store {
 	const char *name;
 	struct trie *trie;
 	struct mem_pool *pool;
 	uint32_t epoch, version;
 	size_t added, deleted; // Statistics, to know when to re-requested the whole filter config
+	/* The following 4 members - 3 hooks and userdata - may be filled directly by the user.
+	 * The hooks would be called at appropriate moments. All of them happen before the update
+	 * in the data structures. It is legal not to fill the hooks in (or set them as NULL),
+	 * they are called only if set. */
+	addr_hook_t add_hook;
+	addr_hook_t remove_hook;
+	addr_clear_hook_t clear_hook;
+	void *userdata;
 };
 
 #endif
@@ -52,3 +65,4 @@ PLUGLIB_FUNC(diff_addr_store_init, struct diff_addr_store *, struct mem_pool *, 
 PLUGLIB_FUNC(diff_addr_store_cp, void, struct diff_addr_store *, const struct diff_addr_store *, struct mem_pool *)
 PLUGLIB_FUNC(diff_addr_store_action, enum diff_store_action, struct diff_addr_store *, uint32_t, uint32_t, uint32_t *)
 PLUGLIB_FUNC(diff_addr_store_apply, enum diff_store_action, struct mem_pool *, struct diff_addr_store *, bool, uint32_t, uint32_t, uint32_t, const uint8_t *, size_t, uint32_t *)
+

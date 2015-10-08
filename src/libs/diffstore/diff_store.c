@@ -90,6 +90,8 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 	}
 	if (full && store->added != store->deleted) {
 		// We're doing a full update and there's something in the trie. Reset it.
+		if (store->clear_hook)
+			store->clear_hook(store, store->userdata);
 		store->deleted = store->added;
 		store->trie = trie_alloc(store->pool);
 	}
@@ -108,11 +110,15 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 			if (*data) {
 				ulog(LLOG_WARN, "Asked to add an address %s (#%zu) of size %hhu to filter %s, but that already exists\n", mem_pool_hex(tmp_pool, diff, addr_len), addr_no, addr_len, store->name);
 			} else {
+				if (store->add_hook)
+					store->add_hook(store, diff, addr_len, store->userdata);
 				*data = &mark;
 				store->added ++;
 			}
 		} else {
 			if (*data) {
+				if (store->remove_hook)
+					store->remove_hook(store, diff, addr_len, store->userdata);
 				*data = NULL;
 				store->deleted ++;
 			} else {
