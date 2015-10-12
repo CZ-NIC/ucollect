@@ -310,7 +310,7 @@ CREATE TABLE biflows (
 	CHECK(start_in <= stop_in),
 	CHECK(start_out <= stop_out),
 	CHECK((start_in IS NOT NULL AND stop_in IS NOT NULL) OR (start_out IS NOT NULL AND stop_out IS NOT NULL))
-);
+) WITH (fillfactor = 50);
 CREATE SEQUENCE biflow_ids OWNED BY biflows.id;
 ALTER TABLE biflows ALTER COLUMN id SET DEFAULT NEXTVAL('biflow_ids');
 CREATE INDEX ON biflows (ip_remote);
