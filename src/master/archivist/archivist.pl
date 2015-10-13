@@ -143,6 +143,16 @@ if (fork == 0) {
 if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
+
+	# We get the maximum time of a packet in the destination and
+	# read the packets in the source from that time on. But we don't
+	# do it until the current time, but only some time before the maximum.
+	# This way, we won't lose any packets if we assume that no worker
+	# runs a batch for longer that the given amount of time, therefore
+	# the packets won't arrive too late.
+	my ($loc_max) = $source->selectrow_array("SELECT MAX(time) - INTERVAL '3 hours' FROM router_loggedpacket");
+	my ($rem_max) = $destination->selectrow_array('SELECT COALESCE(MAX(time), TO_TIMESTAMP(0)) FROM firewall_packets');
+	print "Going to store firewall logs between $rem_max and $loc_max\n";
 	# Get the packets. Each packet may have multiple resulting lines,
 	# for multiple groups it is in. Prefilter the groups, we are not
 	# interested in the random ones. We still have the 'all' group
@@ -154,14 +164,13 @@ if (fork == 0) {
 			JOIN router_router ON router_loggedpacket.router_id = router_router.id
 			JOIN group_members ON router_router.client_id = group_members.client
 			JOIN groups ON group_members.in_group = groups.id
-			WHERE NOT archived AND groups.name NOT LIKE 'rand-%'
+			WHERE NOT time > ? AND time <= ? groups.name NOT LIKE 'rand-%'
 			ORDER BY id
 			");
 	print "Getting new firewall packets\n";
-	$get_packets->execute;
+	$get_packets->execute($rem_max, $loc_max);
 	my $store_packet = $destination->prepare('INSERT INTO firewall_packets (rule_id, time, direction, port_rem, addr_rem, port_loc, protocol, count, tcp_flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
 	my $packet_group = $destination->prepare('INSERT INTO firewall_groups (packet, for_group) VALUES (?, ?)');
-	my $update_archived = $source->prepare('UPDATE router_loggedpacket SET archived = TRUE WHERE id = ?');
 	my ($last_id, $id_dest);
 	my $count = 0;
 	while (my ($id, $group, @data) = $get_packets->fetchrow_array) {
@@ -174,7 +183,6 @@ if (fork == 0) {
 			$store_packet->execute(@data);
 			$last_id = $id;
 			$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
-			$update_archived->execute($id);
 		}
 		if ($interesting_groups->{$group}) { # Filter out the rest of uninteresting groups
 			$packet_group->execute($id_dest, $group);

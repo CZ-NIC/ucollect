@@ -122,6 +122,7 @@ CREATE SEQUENCE firewall_packets_id OWNED BY firewall_packets.id;
 ALTER TABLE firewall_packets ALTER COLUMN id SET DEFAULT NEXTVAL('firewall_packets_id');
 CREATE INDEX firewall_remote ON firewall_packets(addr_rem);
 CREATE INDEX firewall_loc_port ON firewall_packets(port_loc);
+CREATE INDEX firewall_time ON firewall_packets(time);
 CREATE TABLE firewall_groups (
 	packet BIGINT NOT NULL,
 	for_group INTEGER NOT NULL,
