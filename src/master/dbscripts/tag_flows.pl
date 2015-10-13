@@ -2,7 +2,11 @@
 use common::sense;
 use DBI;
 use Config::IniFiles;
+use Fcntl ':flock';
 
+my $lockfilename = "/tmp/tag_flows.lock";
+open my $lockfile, '>>', $lockfilename or die "Could not open lock file '$lockfilename': $!\n";
+flock $lockfile, LOCK_EX | LOCK_NB or exit;
 my $cfg = Config::IniFiles->new(-file => $ARGV[0]);
 shift @ARGV;
 
