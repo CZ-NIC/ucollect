@@ -4,8 +4,19 @@ set -e
 
 . ./dbconfig
 
+LOCK_DIR=/tmp/refresh_blacklist_cache.lock
+
+if ! mkdir "$LOCK_DIR" ; then
+	echo "Already running?" 2>&1
+	exit 1
+fi
+
+trap 'rm -rf "$LOCK_DIR"' EXIT INT QUIT TERM ABRT
+
 (
 	echo "BEGIN;"
 	echo "REFRESH MATERIALIZED VIEW fake_blacklist_cache;"
 	echo 'COMMIT;'
 ) | psql -U "$DBCLEANER" -d "$DB" $DBPARAMS
+
+
