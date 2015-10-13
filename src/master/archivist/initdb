@@ -391,6 +391,7 @@ GRANT SELECT ON groups TO archivist;
 GRANT ALL ON count_snapshots_id TO archivist;
 GRANT INSERT ON firewall_packets TO archivist;
 GRANT ALL ON firewall_packets_id TO archivist;
+GRANT SELECT (time) ON firewall_packets TO archivist;
 GRANT INSERT ON firewall_groups TO archivist;
 GRANT INSERT ON activity_types TO archivist;
 GRANT SELECT ON activity_types TO archivist;

@@ -164,7 +164,7 @@ if (fork == 0) {
 			JOIN router_router ON router_loggedpacket.router_id = router_router.id
 			JOIN group_members ON router_router.client_id = group_members.client
 			JOIN groups ON group_members.in_group = groups.id
-			WHERE NOT time > ? AND time <= ? groups.name NOT LIKE 'rand-%'
+			WHERE time > ? AND time <= ? AND groups.name NOT LIKE 'rand-%'
 			ORDER BY id
 			");
 	print "Getting new firewall packets\n";
