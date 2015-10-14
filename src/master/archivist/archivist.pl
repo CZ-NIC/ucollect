@@ -178,7 +178,6 @@ if (fork == 0) {
 			$count ++;
 			if ($count % 100000 == 0) {
 				$destination->commit;
-				$source->commit;
 			}
 			$store_packet->execute(@data);
 			$last_id = $id;
