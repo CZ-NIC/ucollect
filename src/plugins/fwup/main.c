@@ -18,6 +18,7 @@
 */
 
 #include "type.h"
+#include "queue.h"
 
 #define PLUGLIB_DO_IMPORT PLUGLIB_LOCAL
 #include "../../libs/diffstore/diff_store.h"
@@ -51,6 +52,7 @@ struct set {
 
 struct user_data {
 	struct mem_pool *conf_pool, *standby_pool;
+	struct queue *queue;
 	bool configured;
 	uint32_t config_version; // Stored in network byte order. We compare only for equality.
 	size_t set_count;
@@ -66,7 +68,8 @@ static void initialize(struct context *context) {
 	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 	*u = (struct user_data) {
 		.conf_pool = loop_pool_create(context->loop, context, "FWUp set pool 1"),
-		.standby_pool = loop_pool_create(context->loop, context, "FWUp set pool 2")
+		.standby_pool = loop_pool_create(context->loop, context, "FWUp set pool 2"),
+		.queue = queue_alloc(context)
 	};
 	// Ask for config, if already connected (unlikely, but then, the message will get blackholed).
 	connected(context);
