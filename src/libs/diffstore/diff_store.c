@@ -107,7 +107,7 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 		bool add = flags & add_mask;
 		if (add) {
 			if (*data) {
-				ulog(LLOG_WARN, "Asked to add an address %s (#%zu) of size %hhu to filter %s, but that already exists\n", mem_pool_hex(tmp_pool, diff, addr_len), addr_no, addr_len, store->name);
+				ulog(LLOG_WARN, "Asked to add an address %s (#%zu) of size %hhu to store %s, but that already exists\n", mem_pool_hex(tmp_pool, diff, addr_len), addr_no, addr_len, store->name);
 			} else {
 				if (store->add_hook)
 					store->add_hook(store, diff, addr_len);
@@ -121,7 +121,7 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 				*data = NULL;
 				store->deleted ++;
 			} else {
-				ulog(LLOG_WARN, "Asked to delete an address %s (#%zu) of size %hhu from filter %s, but that is not there\n", mem_pool_hex(tmp_pool, diff, addr_len), addr_no, addr_len, store->name);
+				ulog(LLOG_WARN, "Asked to delete an address %s (#%zu) of size %hhu from store %s, but that is not there\n", mem_pool_hex(tmp_pool, diff, addr_len), addr_no, addr_len, store->name);
 			}
 		}
 		diff += addr_len;
@@ -132,7 +132,7 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 		store->replace_end_hook(store);
 	store->epoch = epoch;
 	store->version = to;
-	ulog(LLOG_DEBUG, "Filter %s updated:\n", store->name);
+	ulog(LLOG_DEBUG, "Store %s updated:\n", store->name);
 #ifdef DEBUG
 	trie_walk(store->trie, debug_dump, tmp_pool, tmp_pool);
 #endif
