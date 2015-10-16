@@ -45,9 +45,13 @@ enum set_state {
 
 struct set {
 	const char *name;
+	// When we replace the content, we do so in a temporary set we'll switch afterwards. This is the temporary name.
+	const char *tmp_name;
 	enum set_state state;
 	const struct set_type *type;
+	size_t max_size;
 	struct diff_addr_store *store;
+	struct context *context; // Filled in before each call on a function manipulating the set. It is needed inside the hooks.
 };
 
 struct user_data {
@@ -80,6 +84,40 @@ struct config {
 	uint32_t set_count;
 } __attribute__((packed));
 
+static void addr_cmd(struct diff_addr_store *store, const char *cmd, const uint8_t *addr, size_t length) {
+	struct set *set = store->userdata;
+	enqueue(set->context, set->context->user_data->queue, mem_pool_printf(set->context->temp_pool, "%s %s %s\n", cmd, set->tmp_name ? set->tmp_name : set->name, set->type->addr2str(addr, length, set->context->temp_pool)));
+}
+
+static void add_item(struct diff_addr_store *store, const uint8_t *addr, size_t length) {
+	addr_cmd(store, "add", addr, length);
+}
+
+static void remove_item(struct diff_addr_store *store, const uint8_t *addr, size_t length) {
+	addr_cmd(store, "del", addr, length);
+}
+
+static void replace_start(struct diff_addr_store *store) {
+	// In the replace start hook, we prepare a temporary set. All the data are going to be filled into the temporary set and then we switch the sets.
+	struct set *set = store->userdata;
+	assert(!set->tmp_name);
+	struct mem_pool *tmp_pool = set->context->temp_pool;
+	// It is OK to allocate the data from the temporary memory pool. It's lifetime is at least the length of call to the plugin communication callback, and the whole set replacement happens there.
+	set->tmp_name = mem_pool_printf(tmp_pool, "%s-replace", set->name);
+	enqueue(set->context, set->context->user_data->queue, mem_pool_printf(tmp_pool, "create %s %s family %s maxelem %zu\n", set->tmp_name, set->type->desc, set->type->family, set->max_size));
+}
+
+static void replace_end(struct diff_addr_store *store) {
+	struct set *set = store->userdata;
+	assert(set->tmp_name);
+	struct mem_pool *tmp_pool = set->context->temp_pool;
+	struct queue *queue = set->context->user_data->queue;
+	// Swap the sets and drop the temporary one
+	enqueue(set->context, queue, mem_pool_printf(tmp_pool, "swap %s %s\n", set->name, set->tmp_name));
+	enqueue(set->context, queue, mem_pool_printf(tmp_pool, "destroy %s\n", set->tmp_name));
+	set->tmp_name = NULL;
+}
+
 static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t **data, size_t *length) {
 	const char *name = uplink_parse_string(pool, data, length);
 	sanity(name, "Not enough data for set name in FWUp config\n");
@@ -96,9 +134,14 @@ static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t *
 		.name = name,
 		.type = type,
 		.state = SS_NEWBORN,
+		.max_size = uplink_parse_uint32(data, length),
 		.store = diff_addr_store_init(pool, name)
 	};
-	// TODO: Init?
+	target->store->add_hook = add_item;
+	target->store->remove_hook = remove_item;
+	target->store->replace_start_hook = replace_start;
+	target->store->replace_end_hook = replace_end;
+	target->store->userdata = target;
 	return true;
 }
 
@@ -158,13 +201,41 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 						u->sets[j].state = SS_COPIED;
 						break;
 					default:
-						assert(0); // Invalid states now
+						sanity(false, "Invalid set state when copying: %s %hhu\n", u->sets[j].name, (uint8_t)u->sets[j].state); // Invalid states now
 						break;
 				}
 			}
 	}
-	// TODO: Go through the sets that are not resurrected and remove them from the kernel
-	// TODO: Create the newborn sets in kernel
+	for (size_t i = 0; i < u->set_count; i ++) {
+		switch (u->sets[i].state) {
+			case SS_DEAD:
+			case SS_DEAD_PENDING:
+				enqueue(context, u->queue, mem_pool_printf(context->temp_pool, "destroy %s\n", u->sets[i].name));
+				break;
+			case SS_COPIED:
+				// OK, nothing to do here
+				break;
+			default:
+				sanity(false, "Invalid set state when destroying: %s %hhu\n", u->sets[i].name, (uint8_t)u->sets[i].state); // Invalid states now
+				break;
+		}
+	}
+	for (size_t i = 0; i < target_count; i ++) {
+		switch (sets[i].state) {
+			case SS_NEWBORN:
+				enqueue(context, u->queue, mem_pool_printf(context->temp_pool, "create %s %s family %s maxelem %zu\n", sets[i].name, sets[i].type->desc, sets[i].type->family, sets[i].max_size));
+				// TODO: Ask for data
+				sets[i].state = SS_PENDING;
+				break;
+			case SS_PENDING:
+			case SS_VALID:
+				// These are OK (pending already asked for data)
+				break;
+			default:
+				sanity(false, "Invalid set state when creating: %s %hhu\n", sets[i].name, (uint8_t)sets[i].state); // Invalid states now
+				break;
+		}
+	}
 	// Drop the old config and replace by the new one
 	mem_pool_reset(u->conf_pool);
 	u->standby_pool = u->conf_pool;
