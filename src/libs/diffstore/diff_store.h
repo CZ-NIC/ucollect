@@ -36,8 +36,8 @@ enum diff_store_action {
 
 struct diff_addr_store;
 
-typedef void (*addr_hook_t)(struct diff_addr_store *store, const uint8_t *addr, size_t addr_len, void *userdata);
-typedef void (*addr_clear_hook_t)(struct diff_addr_store *store, void *userdata);
+typedef void (*addr_hook_t)(struct diff_addr_store *store, const uint8_t *addr, size_t addr_len);
+typedef void (*addr_replace_hook_t)(struct diff_addr_store *store);
 
 struct diff_addr_store {
 	const char *name;
@@ -45,13 +45,16 @@ struct diff_addr_store {
 	struct mem_pool *pool;
 	uint32_t epoch, version;
 	size_t added, deleted; // Statistics, to know when to re-requested the whole filter config
-	/* The following 4 members - 3 hooks and userdata - may be filled directly by the user.
+	/* The following 5 members - 4 hooks and userdata - may be filled directly by the user.
 	 * The hooks would be called at appropriate moments. All of them happen before the update
 	 * in the data structures. It is legal not to fill the hooks in (or set them as NULL),
 	 * they are called only if set. */
-	addr_hook_t add_hook;
-	addr_hook_t remove_hook;
-	addr_clear_hook_t clear_hook;
+	addr_hook_t add_hook;			// When a new item is added
+	addr_hook_t remove_hook;		// When an item is removed
+	addr_replace_hook_t replace_start_hook;	// When the whole store is going to be replaced ‒ all old items are dropped (without calling remove_hook for each of them)
+	addr_replace_hook_t replace_end_hook;	// When the replacement is done
+	/* The user data can be extracted by the hook from the passed store. It is not passed
+	 * as a parameter to the hooks directly. */
 	void *userdata;
 };
 

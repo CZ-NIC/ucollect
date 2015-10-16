@@ -88,10 +88,12 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 		*orig_version = store->version;
 		return DIFF_STORE_INCREMENTAL;
 	}
+	bool signal_end = false; // Do we want to signal an end of replace operation?
 	if (full && store->added != store->deleted) {
 		// We're doing a full update and there's something in the trie. Reset it.
-		if (store->clear_hook)
-			store->clear_hook(store, store->userdata);
+		if (store->replace_start_hook)
+			store->replace_start_hook(store);
+		signal_end = true;
 		store->deleted = store->added;
 		store->trie = trie_alloc(store->pool);
 	}
@@ -111,14 +113,14 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 				ulog(LLOG_WARN, "Asked to add an address %s (#%zu) of size %hhu to filter %s, but that already exists\n", mem_pool_hex(tmp_pool, diff, addr_len), addr_no, addr_len, store->name);
 			} else {
 				if (store->add_hook)
-					store->add_hook(store, diff, addr_len, store->userdata);
+					store->add_hook(store, diff, addr_len);
 				*data = &mark;
 				store->added ++;
 			}
 		} else {
 			if (*data) {
 				if (store->remove_hook)
-					store->remove_hook(store, diff, addr_len, store->userdata);
+					store->remove_hook(store, diff, addr_len);
 				*data = NULL;
 				store->deleted ++;
 			} else {
@@ -129,6 +131,8 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 		diff_size -= addr_len;
 		addr_no ++;
 	}
+	if (signal_end && store->replace_end_hook)
+		store->replace_end_hook(store);
 	store->epoch = epoch;
 	store->version = to;
 	ulog(LLOG_DEBUG, "Filter %s updated:\n", store->name);
