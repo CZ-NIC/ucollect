@@ -145,6 +145,19 @@ static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t *
 	return true;
 }
 
+static void version_ask(struct context *context, const char *setname) {
+	size_t len = strlen(setname);
+	size_t blen = len + sizeof(uint32_t) + 1;
+	uint8_t *buffer = mem_pool_alloc(context->temp_pool, blen);
+	*buffer = 'A'; // Ask for version
+	size_t rest = blen - 1;
+	uint8_t *bpos = buffer + 1;
+	uplink_render_string(setname, len, &bpos, &rest);
+	assert(rest == 0);
+	// Ignore success result ‒ if it fails, it's because we aren't connected. We shall ask again once we connect.
+	uplink_plugin_send_message(context, buffer, blen);
+}
+
 static void config_parse(struct context *context, const uint8_t *data, size_t length) {
 	struct config c;
 	sanity(length >= sizeof c, "Not enough FWUp data for config, got %zu, needed %zu\n", length, sizeof c);
@@ -152,7 +165,8 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 	struct user_data *u = context->user_data;
 	if (u->config_version == c.version) {
 		ulog(LLOG_DEBUG, "FWUp config up to date\n");
-		// TODO Refresh the versions of sets
+		for (size_t i = 0; i < u->set_count; i ++)
+			version_ask(context, u->sets[i].name);
 		return;
 	}
 	// Some preparations
@@ -224,12 +238,12 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 		switch (sets[i].state) {
 			case SS_NEWBORN:
 				enqueue(context, u->queue, mem_pool_printf(context->temp_pool, "create %s %s family %s maxelem %zu\n", sets[i].name, sets[i].type->desc, sets[i].type->family, sets[i].max_size));
-				// TODO: Ask for data
 				sets[i].state = SS_PENDING;
-				break;
+				// Fall through to SS_PENDING, as we want to ask for the version too
 			case SS_PENDING:
 			case SS_VALID:
-				// These are OK (pending already asked for data)
+				// Validate the data is up to date even with the new config (we may have been disconnected for a while)
+				version_ask(context, sets[i].name);
 				break;
 			default:
 				sanity(false, "Invalid set state when creating: %s %hhu\n", sets[i].name, (uint8_t)sets[i].state); // Invalid states now
