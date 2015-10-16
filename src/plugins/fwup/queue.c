@@ -50,6 +50,7 @@ struct queue *queue_alloc(struct context *context) {
 }
 
 static void start(struct context *context, struct queue *queue) {
+	ulog(LLOG_DEBUG, "Starting ipset subcommand\n");
 	assert(!queue->active);
 	int pipes[2];
 	sanity(pipe(pipes) != -1, "Couldn't create FWUp pipe: %s\n", strerror(errno));
@@ -87,6 +88,8 @@ static void lost(struct context *context, struct queue *queue, bool error) {
 	assert(queue->active);
 	if (error)
 		ulog(LLOG_WARN, "Lost connection to ipset command %d, data may be out of sync\n", queue->pid);
+	else
+		ulog(LLOG_DEBUG, "Closing ipset subcommand\n");
 	sanity(close(queue->ipset_pipe) == 0, "Error closing the ipset pipe: %s\n", strerror(errno));
 	loop_plugin_unregister_fd(context, queue->ipset_pipe);
 	queue->ipset_pipe = 0;
@@ -107,6 +110,7 @@ static void flush_timeout(struct context *context, void *data, size_t id __attri
 void enqueue(struct context *context, struct queue *queue, const char *command) {
 	if (!queue->active)
 		start(context, queue);
+	ulog(LLOG_DEBUG_VERBOSE, "IPset command %s\n", command);
 	assert(queue->active);
 	assert(queue->ipset_pipe > 0);
 	size_t len = strlen(command);
