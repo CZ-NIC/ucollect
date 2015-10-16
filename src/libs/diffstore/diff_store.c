@@ -102,10 +102,7 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 		uint8_t flags = *(diff ++);
 		ulog(LLOG_DEBUG_VERBOSE, "Address flags: %hhu\n", flags);
 		uint8_t addr_len = flags & size_mask;
-		if (addr_len > diff_size) {
-			ulog(LLOG_ERROR, "Filter diff for %s corrupted, need %hhu bytes, have only %zu\n", store->name, addr_len, diff_size);
-			abort();
-		}
+		sanity(addr_len <= diff_size, "Store diff for %s corrupted, need %hhu bytes, have only %zu\n", store->name, addr_len, diff_size);
 		struct trie_data **data = trie_index(store->trie, diff, addr_len);
 		bool add = flags & add_mask;
 		if (add) {
