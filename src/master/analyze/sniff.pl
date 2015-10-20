@@ -67,7 +67,7 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 		'^IE-TWITTER-INTL-' => 'Twitter',
 		'^SEZNAM-CZ$' => 'Seznam',
 		'^FIO-BANKA-NET$' => 'FIO',
-		'^ATL1$' => 'Facebook',
+		'^(ATL1|LAX1|SJC1|SEA1)$' => 'Facebook',
 		'^FACEBOOK-INC$' => 'Facebook',
 		'^TFBNET\d+$' => 'Facebook',
 		'^IAD1$' => 'Facebook',
