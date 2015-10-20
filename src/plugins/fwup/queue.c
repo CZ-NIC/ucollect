@@ -26,7 +26,6 @@
 
 #include <stdbool.h>
 #include <unistd.h>
-#include <assert.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
@@ -51,7 +50,7 @@ struct queue *queue_alloc(struct context *context) {
 
 static void start(struct context *context, struct queue *queue) {
 	ulog(LLOG_DEBUG, "Starting ipset subcommand\n");
-	assert(!queue->active);
+	sanity(!queue->active, "Trying to start already active queue\n");
 	int pipes[2];
 	sanity(pipe(pipes) != -1, "Couldn't create FWUp pipe: %s\n", strerror(errno));
 	struct loop *loop = context->loop;
@@ -85,7 +84,7 @@ static void start(struct context *context, struct queue *queue) {
 }
 
 static void lost(struct context *context, struct queue *queue, bool error) {
-	assert(queue->active);
+	sanity(queue->active, "Lost inactive queue\n");
 	if (error)
 		ulog(LLOG_WARN, "Lost connection to ipset command %d, data may be out of sync\n", queue->pid);
 	else
@@ -111,11 +110,11 @@ void enqueue(struct context *context, struct queue *queue, const char *command) 
 	if (!queue->active)
 		start(context, queue);
 	ulog(LLOG_DEBUG_VERBOSE, "IPset command %s\n", command);
-	assert(queue->active);
-	assert(queue->ipset_pipe > 0);
+	sanity(queue->active, "Failed to start the queue\n");
+	sanity(queue->ipset_pipe > 0, "Strange pipe FD to the ip set command: %i\n", queue->ipset_pipe);
 	size_t len = strlen(command);
-	assert(len);
-	assert(command[len - 1] == '\n');
+	sanity(len, "Empty ipset command\n");
+	sanity(command[len - 1] == '\n', "IPset command '%s' not terminated by a newline\n", command);
 	while (len) {
 		ssize_t sent = send(queue->ipset_pipe, command, len, MSG_NOSIGNAL);
 		if (sent == -1) {

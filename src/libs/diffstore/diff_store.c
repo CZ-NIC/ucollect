@@ -24,8 +24,6 @@
 #include "../../core/util.h"
 #include "../../core/mem_pool.h"
 
-#include <assert.h>
-
 struct trie_data {
 	int dummy; // Just to prevent warning about empty struct
 };
@@ -33,7 +31,7 @@ struct trie_data {
 static struct trie_data mark; // To have a valid pointer to something, not used by itself
 
 static struct diff_addr_store *diff_addr_store_init(struct mem_pool *pool, const char *name) {
-	assert(name);
+	sanity(name, "No name of store provided\n");
 	struct diff_addr_store *result = mem_pool_alloc(pool, sizeof *result);
 	*result = (struct diff_addr_store) {
 		.trie = trie_alloc(pool),
@@ -44,7 +42,7 @@ static struct diff_addr_store *diff_addr_store_init(struct mem_pool *pool, const
 }
 
 static enum diff_store_action diff_addr_store_action(struct diff_addr_store *store, uint32_t epoch, uint32_t version, uint32_t *orig_version) {
-	assert(store);
+	sanity(store, "No store to operate on\n");
 	if (epoch == store->epoch && version == store->version)
 		return DIFF_STORE_NO_ACTION; // Nothing changed. Ignore the update.
 	size_t active = store->added - store->deleted;
@@ -79,8 +77,8 @@ static void debug_dump(const uint8_t *key, size_t key_size, struct trie_data *da
 #endif
 
 static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, struct diff_addr_store *store, bool full, uint32_t epoch, uint32_t from, uint32_t to, const uint8_t *diff, size_t diff_size, uint32_t *orig_version) {
-	assert(tmp_pool);
-	assert(store);
+	sanity(tmp_pool, "Missing temporary pool\n");
+	sanity(store, "No store to operate on\n");
 	if (epoch != store->epoch && !full)
 		// This is for different epoch than we have. Resynchronize!
 		return DIFF_STORE_FULL;
@@ -149,7 +147,7 @@ static void das_cp(const uint8_t *key, size_t key_size, struct trie_data *data, 
 }
 
 static void diff_addr_store_cp(struct diff_addr_store *target, const struct diff_addr_store *source, struct mem_pool *tmp_pool) {
-	assert(target->added == 0); // It is empty
+	sanity(target->added == 0, "Store copy target not empty on set %s (%zu elements added)\n", target->name, target->added); // It is empty
 	target->epoch = source->epoch;
 	target->version = source->version;
 	trie_walk(source->trie, das_cp, target, tmp_pool);

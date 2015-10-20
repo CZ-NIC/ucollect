@@ -30,7 +30,6 @@
 #include "../../core/uplink.h"
 #include "../../core/util.h"
 
-#include <assert.h>
 #include <string.h>
 #include <arpa/inet.h>
 
@@ -100,7 +99,7 @@ static void remove_item(struct diff_addr_store *store, const uint8_t *addr, size
 static void replace_start(struct diff_addr_store *store) {
 	// In the replace start hook, we prepare a temporary set. All the data are going to be filled into the temporary set and then we switch the sets.
 	struct set *set = store->userdata;
-	assert(!set->tmp_name);
+	sanity(!set->tmp_name, "Replace already started\n");
 	struct mem_pool *tmp_pool = set->context->temp_pool;
 	// It is OK to allocate the data from the temporary memory pool. It's lifetime is at least the length of call to the plugin communication callback, and the whole set replacement happens there.
 	set->tmp_name = mem_pool_printf(tmp_pool, "%s-replace", set->name);
@@ -109,7 +108,7 @@ static void replace_start(struct diff_addr_store *store) {
 
 static void replace_end(struct diff_addr_store *store) {
 	struct set *set = store->userdata;
-	assert(set->tmp_name);
+	sanity(set->tmp_name, "Replace started already\n");
 	struct mem_pool *tmp_pool = set->context->temp_pool;
 	struct queue *queue = set->context->user_data->queue;
 	// Swap the sets and drop the temporary one
@@ -153,7 +152,7 @@ static void version_ask(struct context *context, const char *setname) {
 	size_t rest = blen - 1;
 	uint8_t *bpos = buffer + 1;
 	uplink_render_string(setname, len, &bpos, &rest);
-	assert(rest == 0);
+	sanity(rest == 0, "Buffer leftover when asking for version of %s: %zu bytes\n", setname, rest);
 	// Ignore success result ‒ if it fails, it's because we aren't connected. We shall ask again once we connect.
 	uplink_plugin_send_message(context, buffer, blen);
 }
@@ -196,8 +195,7 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 				u->sets[i].state = SS_PENDING;
 				break;
 			default:
-				assert(0); // It's not supposed to have other states now.
-				break;
+				insane("Unsupported set state %u on old set %s\n", (unsigned)u->sets[i].state, u->sets[i].name);// It's not supposed to have other states now.
 		}
 	// Go through the new ones and look for corresponding sets in the old config
 	for (size_t i = 0; i < target_count; i ++) {

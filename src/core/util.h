@@ -51,8 +51,10 @@ static inline void ulog(enum log_level log_level, const char *format, ...) {
 
 void sanity_internal(const char *file, unsigned line, const char *check, const char *format, ...) __attribute__((format(printf, 4, 5))) __attribute__((noreturn));
 
-// An assert-like function, but with printf message that can be added. It is not omitted from compilation like assert may be. Use for checking input parameters, for example. Logs on the ERROR level and aborts, effectively killing a plugin that failed the check.
+// An assert-like function, but with printf message that can be added. It is not omitted from compilation like assert may be. Use for checking input parameters, for example. It may be used as usual asserts, to ensure we get the logs on server. Logs on the ERROR level and aborts, effectively killing a plugin that failed the check.
 #define sanity(check, ...) do { if (!(check)) sanity_internal(__FILE__, __LINE__, #check, __VA_ARGS__); } while (0)
+// Just failed a sanity check implemented on the caller's side
+#define insane(...) sanity(false, __VA_ARGS__)
 
 // Try very hard to commit a suicide.
 void abort_safe();

@@ -22,27 +22,28 @@
 #include "../../core/util.h"
 #include "../../core/mem_pool.h"
 
-#include <assert.h>
 #include <string.h>
 #include <arpa/inet.h>
 
 static const char *inet2str(const uint8_t *addr, size_t len, struct mem_pool *pool) {
 	sanity(len == 4, "Inet address of size %zu\n", len);
 	struct in_addr addr_str;
-	assert(sizeof addr_str == 4);
+	sanity(sizeof addr_str == 4, "Wrong size of struct in_addr (%zu)\n", sizeof addr_str);
 	memcpy(&addr_str.s_addr, addr, len);
 	const char *result = inet_ntop(AF_INET, &addr_str, mem_pool_alloc(pool, INET_ADDRSTRLEN), INET_ADDRSTRLEN);
-	assert(result);
+	// The mem_pool_hex is misuse of the memory pool, but it happens only when we are about to crash the plugin
+	sanity(result, "Couldn't convert address %s to string\n", mem_pool_hex(pool, addr, len));
 	return result;
 }
 
 static const char *inet62str(const uint8_t *addr, size_t len, struct mem_pool *pool) {
 	sanity(len == 16, "Inet6 address of size %zu\n", len);
 	struct in6_addr addr_str;
-	assert(sizeof addr_str == 16);
+	sanity(sizeof addr_str == 16, "Wrong size of struct in6_addr (%zu)\n", sizeof addr_str);
 	memcpy(&addr_str.s6_addr, addr, len);
 	const char *result = inet_ntop(AF_INET6, &addr_str, mem_pool_alloc(pool, INET6_ADDRSTRLEN), INET6_ADDRSTRLEN);
-	assert(result);
+	// The mem_pool_hex is misuse of the memory pool, but it happens only when we are about to crash the plugin
+	sanity(result, "Couldn't convert address %s to string\n", mem_pool_hex(pool, addr, len));
 	return result;
 }
 
