@@ -140,6 +140,7 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 static void das_cp(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
 	struct diff_addr_store *target = userdata;
 	if (data) {
+		sanity(data == &mark, "Diff address store corrupt, wrong mark\n");
 		target->added ++;
 		struct trie_data **d = trie_index(target->trie, key, key_size);
 		*d = &mark;

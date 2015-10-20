@@ -64,8 +64,9 @@ struct diff_addr_store {
 
 // memory pool to allocate from, name. The name is not copied, it is expected to exist for the whole lifetime of the structure.
 PLUGLIB_FUNC(diff_addr_store_init, struct diff_addr_store *, struct mem_pool *, const char *)
-// Copy (target, source, tmp_pool). The name, and mempool are not copied, only the active addresses.
+// Copy (target, source, tmp_pool). The name, and mempool are not copied, only the active addresses. Hooks are not called.
 PLUGLIB_FUNC(diff_addr_store_cp, void, struct diff_addr_store *, const struct diff_addr_store *, struct mem_pool *)
+// (store, epoch, version, *orig_version) -> action
 PLUGLIB_FUNC(diff_addr_store_action, enum diff_store_action, struct diff_addr_store *, uint32_t, uint32_t, uint32_t *)
 PLUGLIB_FUNC(diff_addr_store_apply, enum diff_store_action, struct mem_pool *, struct diff_addr_store *, bool, uint32_t, uint32_t, uint32_t, const uint8_t *, size_t, uint32_t *)
 

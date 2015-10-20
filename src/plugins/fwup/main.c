@@ -117,6 +117,14 @@ static void replace_end(struct diff_addr_store *store) {
 	set->tmp_name = NULL;
 }
 
+static void store_set_hooks(struct set *set) {
+	set->store->add_hook = add_item;
+	set->store->remove_hook = remove_item;
+	set->store->replace_start_hook = replace_start;
+	set->store->replace_end_hook = replace_end;
+	set->store->userdata = set;
+}
+
 static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t **data, size_t *length) {
 	const char *name = uplink_parse_string(pool, data, length);
 	sanity(name, "Not enough data for set name in FWUp config\n");
@@ -136,11 +144,7 @@ static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t *
 		.max_size = uplink_parse_uint32(data, length),
 		.store = diff_addr_store_init(pool, name)
 	};
-	target->store->add_hook = add_item;
-	target->store->remove_hook = remove_item;
-	target->store->replace_start_hook = replace_start;
-	target->store->replace_end_hook = replace_end;
-	target->store->userdata = target;
+	store_set_hooks(target);
 	return true;
 }
 
@@ -258,11 +262,126 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 	u->configured = true;
 }
 
+// Check the version corresponds to the one we are configured for.
+static bool config_version_check(struct user_data *u, const uint8_t **data, size_t *length, const char *operation) {
+	uint32_t config_version;
+	sanity(*length >= sizeof config_version, "Not enough data to hold config version for %s, only %zu bytes\n", operation, *length);
+	memcpy(&config_version, *data, sizeof config_version);
+	if (u->config_version != config_version) {
+		ulog(LLOG_WARN, "Wrong target config version on %s (%u vs %u)\n", operation, (unsigned)ntohl(u->config_version), (unsigned)ntohl(config_version));
+		return false;
+	}
+	*length -= sizeof config_version;
+	*data += sizeof config_version;
+	return true;
+}
+
+static struct set *set_find(struct user_data *u, const char *name) {
+	for (size_t i = 0; i < u->set_count; i ++)
+		if (strcmp(name, u->sets[i].name) == 0)
+			return &u->sets[i];
+	return NULL;
+}
+
+static void handle_action(struct context *context, const char *name, enum diff_store_action action, uint32_t epoch, uint32_t old_version, uint32_t new_version) {
+	struct user_data *u = context->user_data;
+	switch (action) {
+		case DIFF_STORE_UNKNOWN:
+		case DIFF_STORE_NO_ACTION:
+			break;
+		case DIFF_STORE_CONFIG_RELOAD: {
+			// A reload is requested. Copy all the sets into new memory pool, but with dropping dead elements.
+			struct mem_pool *pool = u->standby_pool;
+			size_t sets_size = u->set_count * sizeof *u->sets;
+			struct set *new = mem_pool_alloc(pool, sets_size);
+			memcpy(new, u->sets, sets_size);
+			for (size_t i = 0; i < u->set_count; i ++) {
+				new[i].name = mem_pool_strdup(pool, new[i].name);
+				sanity(!new[i].tmp_name, "Request to reconfigure during update of %s\n", new[i].name);
+				new[i].store = diff_addr_store_init(pool, new[i].name);
+				store_set_hooks(&new[i]);
+				diff_addr_store_cp(new[i].store, u->sets[i].store, context->temp_pool);
+			}
+			// Update data in the user data
+			u->standby_pool = u->conf_pool;
+			u->conf_pool = pool;
+			u->sets = new;
+			// Try it once more, if it wants data from the server
+			struct set *set = set_find(u, name);
+			action = diff_addr_store_action(set->store, epoch, new_version, &old_version);
+			sanity(action != DIFF_STORE_CONFIG_RELOAD, "Double reload requested on set %s\n", name);
+			// XXX: Check this is OK even when the original message was a diff
+			handle_action(context, name, action, epoch, old_version, new_version);
+			break;
+		}
+		case DIFF_STORE_INCREMENTAL:
+		case DIFF_STORE_FULL: {
+			bool full = (action == DIFF_STORE_FULL);
+			size_t len = 1 /* 'U' */ + 1 /* full? */ + sizeof(uint32_t) + strlen(name) + (2 + !full) * sizeof(uint32_t);
+			uint8_t *message = mem_pool_alloc(context->temp_pool, len);
+			uint8_t *pos = message;
+			size_t rest = len;
+			*(pos ++) = 'U';
+			rest --;
+			*(pos ++) = full;
+			rest --;
+			uplink_render_string(name, strlen(name), &pos, &rest);
+			uplink_render_uint32(epoch, &pos, &rest);
+			if (!full)
+				uplink_render_uint32(old_version, &pos, &rest);
+			uplink_render_uint32(new_version, &pos, &rest);
+			sanity(!rest, "Leftover of %zu bytes after rendering request for update on %s\n", rest, name);
+			uplink_plugin_send_message(context, message, len);
+			break;
+		}
+	}
+}
+
+static void version_received(struct context *context, const uint8_t *data, size_t length) {
+	struct user_data *u = context->user_data;
+	if (!config_version_check(u, &data, &length, "version update"))
+		return;
+	char *name = uplink_parse_string(context->temp_pool, &data, &length);
+	sanity(name, "Message too short to contain IPSet name\n");
+	uint32_t epoch = uplink_parse_uint32(&data, &length);
+	uint32_t version = uplink_parse_uint32(&data, &length);
+	if (length)
+		ulog(LLOG_WARN, "Extra %zu bytes after version for IPSet %s, ignoring for compatibility reasons\n", length, name);
+	struct set *set = set_find(u, name);
+	set->context = context;
+	if (!set) {
+		ulog(LLOG_ERROR, "Update for unknown set %s received\n", name);
+		return;
+	}
+	ulog(LLOG_DEBUG, "Received IPset version update for %s: %u %u\n", name, epoch, version);
+	uint32_t orig_version;
+	enum diff_store_action action = diff_addr_store_action(set->store, epoch, version, &orig_version);
+	handle_action(context, name, action, epoch, orig_version, version);
+	set->context = NULL;
+}
+
+static void diff_received(struct context *context, const uint8_t *data, size_t length) {
+
+}
+
+static void sets_reload(struct context *context __attribute__((unused))) {
+	ulog(LLOG_ERROR, "Reloading of all sets is not implemented yet\n");
+}
+
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
 	sanity(length, "A zero-length message delivered to the FWUp plugin\n");
 	switch (*data) {
 		case 'C':
 			config_parse(context, data + 1, length - 1);
+			break;
+		case 'V': // Information about version of a set
+			version_received(context, data + 1, length - 1);
+			break;
+		case 'D': // A difference update to a set
+			diff_received(context, data + 1, length - 1);
+			break;
+		case 'R': // Reload the data in kernel
+			sets_reload(context);
 			break;
 		default:
 			ulog(LLOG_WARN, "Unknown message opcode on FWUp: '%c' (%hhu), ignoring\n", *data, *data);
