@@ -25,7 +25,6 @@
 #include "../../core/packet.h"
 #include "../../core/uplink.h"
 
-#include <assert.h>
 #include <string.h>
 #include <arpa/inet.h>
 
@@ -90,8 +89,8 @@ static bool filter_value_match(struct mem_pool *tmp_pool, const struct filter *f
 	(void)tmp_pool;
 	const uint8_t *data;
 	size_t size;
-	assert(packet->layer == 'I'); // Checked by the caller
-	assert(packet->direction < DIR_UNKNOWN);
+	sanity(packet->layer == 'I', "Not an IP packet\n"); // Checked by the caller
+	sanity(packet->direction < DIR_UNKNOWN, "Packet of unknown direction\n");
 	enum endpoint local = local_endpoint(packet->direction), remote = remote_endpoint(packet->direction);
 	// Decide which part of packet we match
 	switch (filter->type->code) {
@@ -112,7 +111,7 @@ static bool filter_value_match(struct mem_pool *tmp_pool, const struct filter *f
 			size = packet->addr_len;
 			break;
 		default:
-			assert(0);
+			sanity(false, "Unknown filter code %c/%hhu\n", filter->type->code, filter->type->code);
 			return false;
 	}
 	// Look if this one is one of the matched
@@ -141,7 +140,7 @@ static bool filter_range(struct mem_pool *tmp_pool, const struct filter *filter,
 	if ((filter->v6 && packet->ip_protocol != 6) || (!filter->v6 && packet->ip_protocol != 4))
 		return false;
 	size_t addr_len = filter->v6 ? 16 : 4;
-	assert(packet->addr_len == addr_len);
+	sanity(packet->addr_len == addr_len, "Address length mismatch: %zu/%zu\n", (size_t)packet->addr_len, addr_len);
 	if (MAX_LOG_LEVEL >= LLOG_DEBUG_VERBOSE)
 		ulog(LLOG_DEBUG_VERBOSE, "Comparing address %s with %s/%s\n", mem_pool_hex(tmp_pool, packet->addresses[endpoint], addr_len), mem_pool_hex(tmp_pool, filter->address, addr_len), mem_pool_hex(tmp_pool, filter->mask, addr_len));
 	// Examine the address in 4-byte blocks

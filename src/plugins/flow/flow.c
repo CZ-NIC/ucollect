@@ -21,9 +21,9 @@
 
 #include "../../core/packet.h"
 #include "../../core/mem_pool.h"
+#include "../../core/util.h"
 
 #include <string.h>
-#include <assert.h>
 #include <arpa/inet.h>
 
 void flow_parse(struct flow *target, const struct packet_info *packet) {
@@ -40,8 +40,8 @@ void flow_parse(struct flow *target, const struct packet_info *packet) {
 
 uint8_t *flow_key(const struct packet_info *packet, size_t *size, struct mem_pool *pool) {
 	size_t addr_s = packet->ip_protocol == 4 ? 4 : 16;
-	assert(addr_s == packet->addr_len);
-	assert(packet->direction < DIR_UNKNOWN);
+	sanity(addr_s == packet->addr_len, "Packet address length doesn't match its protocol: %zu/%c\n", addr_s, packet->ip_protocol);
+	sanity(packet->direction < DIR_UNKNOWN, "Packet of unknown direction\n");
 	size_t s = 2 + 2 * sizeof(uint16_t) + 2 * addr_s;
 	uint8_t *result = mem_pool_alloc(pool, s);
 	uint8_t *pos = result;
@@ -76,7 +76,7 @@ size_t flow_size(const struct flow *flow) {
 void flow_render(uint8_t *dst, size_t dst_size, const struct flow *flow) {
 	// Size check
 	size_t size = flow_size(flow);
-	assert(dst_size == size);
+	sanity(dst_size == size, "Flow buffer of wrong length: %zu/%zu\n", size, dst_size);
 	*dst = flow->ipv | flow->proto;
 	for (size_t i = 0; i < 2; i ++)
 		if (flow->seen_flow_start[i])

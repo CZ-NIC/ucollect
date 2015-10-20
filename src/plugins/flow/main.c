@@ -29,7 +29,6 @@
 #include "../../core/util.h"
 #include "../../core/trie.h"
 
-#include <assert.h>
 #include <arpa/inet.h>
 #include <string.h>
 
@@ -97,7 +96,7 @@ static bool flush(struct context *context, bool force) {
 	};
 	ulog(LLOG_INFO, "Sending %zu flows\n", trie_size(u->trie));
 	trie_walk(u->trie, get_size, &d, context->temp_pool);
-	assert(d.i == trie_size(u->trie));
+	sanity(d.i == trie_size(u->trie), "Wrong number of flows counted: %zu/%zu\n", d.i, trie_size(u->trie));
 	size_t total_size = header + d.size;
 	d.output = mem_pool_alloc(context->temp_pool, total_size);
 	*d.output = 'D';
@@ -107,8 +106,8 @@ static bool flush(struct context *context, bool force) {
 	memcpy(d.output + sizeof(char) + sizeof conf_id, &now, sizeof now);
 	d.i = 0;
 	trie_walk(u->trie, format_flow, &d, context->temp_pool);
-	assert(d.i == trie_size(u->trie));
-	assert(d.pos == total_size);
+	sanity(d.i == trie_size(u->trie), "Wrong number of flows flushed: %zu/%zu\n", d.i, trie_size(u->trie));
+	sanity(d.pos == total_size, "Wrong size after flow flush: %zu/%zu\n", d.pos, total_size);
 	if (!uplink_plugin_send_message(context, d.output, total_size) && !force)
 		return false; // Don't clean the data if we failed to send. But do clean them if the force is in effect, to not overflow the limit by too much
 	mem_pool_reset(u->flow_pool);
@@ -119,11 +118,10 @@ static bool flush(struct context *context, bool force) {
 
 static void schedule_timeout(struct context *context);
 
-static void timeout_fired(struct context *context, void *unused_data, size_t unused_id) {
+static void timeout_fired(struct context *context, void *unused_data, size_t id) {
 	(void) unused_data;
-	(void) unused_id;
 	struct user_data *u = context->user_data;
-	assert(u->timeout_scheduled);
+	sanity(u->timeout_scheduled, "Non-existant timeout fired: %zu\n", id);
 	u->timeout_scheduled = false;
 	u->timeout_missed = !flush(context, u->timeout_missed);
 	schedule_timeout(context);
@@ -131,7 +129,7 @@ static void timeout_fired(struct context *context, void *unused_data, size_t unu
 
 static void schedule_timeout(struct context *context) {
 	struct user_data *u = context->user_data;
-	assert(!u->timeout_scheduled);
+	sanity(!u->timeout_scheduled, "Scheduling timeout when one already exists: %zu\n", u->timeout_id);
 	u->timeout_id = loop_timeout_add(context->loop, u->timeout, context, NULL, timeout_fired);
 	u->timeout_scheduled = true;
 }
@@ -143,7 +141,7 @@ static void configure(struct context *context, uint32_t conf_id, uint32_t max_fl
 		ulog(LLOG_DEBUG, "Replacing old configuration\n");
 		// Switching configuration, so flush the old data
 		flush(context, true);
-		assert(u->timeout_scheduled);
+		sanity(u->timeout_scheduled, "Missing timeout after flush\n");
 		loop_timeout_cancel(context->loop, u->timeout_id);
 		u->timeout_scheduled = false;
 		mem_pool_reset(u->conf_pool);
@@ -173,13 +171,13 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 	size_t key_size;
 	uint8_t *key = flow_key(info, &key_size, context->temp_pool);
 	struct trie_data **data = trie_index(u->trie, key, key_size);
-	assert(data);
+	sanity(data, "Trie index fault\n");
 	if (!*data) {
 		// We don't have this flow yet
 		if (trie_size(u->trie) >= u->max_flows) {
 			// We are full, no space for another flow
 			flush(context, trie_size(u->trie) >= 2 * u->max_flows);
-			assert(u->timeout_scheduled);
+			sanity(u->timeout_scheduled, "Missing timeout after flush\n");
 			loop_timeout_cancel(context->loop, u->timeout_id);
 			u->timeout_scheduled = false;
 			schedule_timeout(context);
@@ -268,7 +266,7 @@ static void handle_filter_action(struct context *context, enum flow_filter_actio
 			if (!full)
 				uplink_render_uint32(old_version, &pos, &rest);
 			uplink_render_uint32(new_version, &pos, &rest);
-			assert(!rest);
+			sanity(!rest, "Leftover buffer when requesting filter update: %zu bytes left\n", rest);
 			uplink_plugin_send_message(context, message, len);
 			break;
 		}
