@@ -32,6 +32,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <string.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <openssl/sha.h>
 #include <atsha204.h>
@@ -406,7 +407,9 @@ char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t 
 	if (*length < len_size) {
 		return NULL;
 	}
-	const uint32_t len = ntohl(*(const uint32_t *) *buffer);
+	uint32_t len;
+	memcpy(&len, *buffer, sizeof len);
+	len = ntohl(len);
 	if (*length < len + len_size) {
 		return NULL;
 	}
@@ -419,33 +422,178 @@ char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t 
 }
 
 uint32_t uplink_parse_uint32(const uint8_t **buffer, size_t *length) {
-	sanity(*length >= sizeof(uint32_t), "Message buffer too short to read an uint32_t (%zu available)\n", *length);
 	uint32_t result;
-	memcpy(&result, *buffer, sizeof result);
-	result = ntohl(result);
-	*length -= sizeof result;
-	*buffer += sizeof result;
+	uplink_parse(buffer, length, "u", &result, "Anonymous uint32_t");
+	return result;
+}
+
+void uplink_parse(const uint8_t **buffer, size_t *length, const char *format, ...) {
+	va_list args;
+	va_start(args, format);
+	for (const char *command = format; *command; command ++) {
+		switch (*command) {
+			case 's': {
+				ulog(LLOG_DEBUG_VERBOSE, "Going to parse uplink string\n");
+				char **result = va_arg(args, char **);
+				sanity(result, "Need string result\n");
+				size_t *str_length = va_arg(args, size_t *);
+				struct mem_pool *pool = va_arg(args, struct mem_pool *);
+				sanity(pool, "Need memory pool\n");
+				const char *message = va_arg(args, const char *);
+				uint32_t len_wire;
+				sanity(*length >= sizeof len_wire, "Reading uplink string length failed, with only %zu bytes available: %s\n", *length, message);
+				memcpy(&len_wire, *buffer, sizeof len_wire);
+				*length -= sizeof len_wire;
+				*buffer += sizeof len_wire;
+				len_wire = ntohl(len_wire);
+				if (str_length)
+					*str_length = len_wire;
+				sanity(*length >= len_wire, "Reading uplink string failed, with only %zu bytes available, but %zu needed: %s\n", *length, (size_t)len_wire, message);
+				*result = mem_pool_alloc(pool, len_wire + 1);
+				memcpy(*result, *buffer, len_wire);
+				*length -= len_wire;
+				*buffer += len_wire;
+				(*result)[len_wire] = '\0';
+				break;
+			}
+			case 'u': {
+				ulog(LLOG_DEBUG_VERBOSE, "Going to parse uint32_t\n");
+				uint32_t *result = va_arg(args, uint32_t *);
+				sanity(result, "Need uint32_t result\n");
+				const char *message = va_arg(args, const char *);
+				sanity(*length >= sizeof *result, "Reading uint32_t failed, only %zu bytes available: %s\n", *length, message);
+				memcpy(result, *buffer, sizeof *result);
+				*length -= sizeof *result;
+				*buffer += sizeof *result;
+				*result = ntohl(*result);
+				break;
+			}
+			case 'b': {
+				ulog(LLOG_DEBUG_VERBOSE, "Going to parse bool\n");
+				bool *result = va_arg(args, bool *);
+				sanity(result, "Need bool result\n");
+				sanity(sizeof *result == 1, "Confused. Bool should have size 1, not %zu\n", sizeof *result);
+				const char *message = va_arg(args, const char *);
+				sanity(*length, "Reading bool failed, no data available: %s\n", message);
+				*result = **buffer;
+				(*buffer) ++;
+				(*length) --;
+				break;
+			}
+			case 'c': {
+				ulog(LLOG_DEBUG_VERBOSE, "Going to parse char\n");
+				char *result = va_arg(args, char *);
+				sanity(result, "Need char result\n");
+				sanity(sizeof *result == 1, "Confused. Char should have size 1, not %zu\n", sizeof *result);
+				const char *message = va_arg(args, const char *);
+				sanity(*length, "Reading char failed, no data available: %s\n", message);
+				*result = **buffer;
+				(*buffer) ++;
+				(*length) --;
+				break;
+			}
+			default:
+				insane("Passed invalid uplink_parse type %c\n", *command);
+		}
+	}
+	va_end(args);
+}
+
+static void v_uplink_render(uint8_t **buffer, size_t *length, const char *format, va_list args) {
+	for (const char *command = format; *command; command ++) {
+		switch (*command) {
+			case 's': {
+				ulog(LLOG_DEBUG_VERBOSE, "Going to encode uplink string\n");
+				const char *s = va_arg(args, const char *);
+				size_t len = va_arg(args, size_t);
+				uint32_t len_encoded = htonl(len);
+				sanity(*length >= sizeof len_encoded, "Not enough space to encode string length, only %zu bytes available.\n", *length);
+				memcpy(*buffer, &len_encoded, sizeof len_encoded);
+				*buffer += sizeof len_encoded;
+				*length -= sizeof len_encoded;
+				sanity(*length >= len, "Not enough space to encode string data, only %zu bytes available.\n", *length);
+				memcpy(*buffer, s, len);
+				*buffer += len;
+				*length -= len;
+				break;
+			}
+			case 'u': {
+				ulog(LLOG_DEBUG_VERBOSE, "Going to encode uplink uint32_t\n");
+				uint32_t u = va_arg(args, uint32_t);
+				sanity(*length >= sizeof u, "Not enough space to encode uint32_t, only %zu bytes available.\n", *length);
+				u = htonl(u);
+				memcpy(*buffer, &u, sizeof u);
+				*buffer += sizeof u;
+				*length -= sizeof u;
+				break;
+			}
+			case 'b':
+			case 'c': {
+				const char *name = *command == 'b' ? "bool" : "char";
+				ulog(LLOG_DEBUG_VERBOSE, "Going to encode %s\n", name);
+				char val = va_arg(args, int); // Variadic functions store small values as ints
+				sanity(*length, "Not enough space to encode %s.\n", name);
+				**buffer = val;
+				(*buffer) ++;
+				(*length) --;
+				break;
+			}
+			default:
+				insane("Passed invalid uplink_render type %c\n", *command);
+		};
+	}
+}
+
+void uplink_render(uint8_t **buffer, size_t *length, const char *format, ...) {
+	va_list args;
+	va_start(args, format);
+	v_uplink_render(buffer, length, format, args);
+	va_end(args);
+}
+
+uint8_t *uplink_render_alloc(size_t *length, size_t extra_space, struct mem_pool *pool, const char *format, ...) {
+	// First compute the needed space
+	size_t l = extra_space;
+	va_list args;
+	va_start(args, format);
+	for (const char *command = format; *command; command ++) {
+		switch (*command) {
+			case 's':
+				va_arg(args, const char *); // The buffer itself
+				l += va_arg(args, size_t);
+				break;
+			case 'u':
+				va_arg(args, uint32_t);
+				l += sizeof(uint32_t);
+				break;
+			case 'b':
+			case 'c':
+				va_arg(args, int); // These are converted to int by the variadic functions
+				l ++;
+				break;
+			default:
+				insane("Unknown storage size of uplink type %c\n", *command);
+		}
+	}
+	va_end(args);
+	// Allocate the space
+	uint8_t *result = mem_pool_alloc(pool, l), *buffer = result;
+	*length = l;
+	// Render into the buffer
+	va_start(args, format);
+	v_uplink_render(&buffer, &l, format, args);
+	sanity(l == extra_space, "Extra space doesn't match in upling_render_alloc with format %s: %zu vs %zu\n", format, l, extra_space);
+	sanity(buffer = result + *length - l, "Buffer position doesn't match in uplink_render_alloc with format %s\n", format);
+	va_end(args);
 	return result;
 }
 
 void uplink_render_string(const void *string, uint32_t length, uint8_t **buffer_pos, size_t *buffer_len) {
-	// Network byte order
-	uint32_t len_encoded = htonl(length);
-	assert(*buffer_len >= length + sizeof(len_encoded));
-	// Copy the data
-	memcpy(*buffer_pos, &len_encoded, sizeof(len_encoded));
-	memcpy(*buffer_pos + sizeof(len_encoded), string, length);
-	// Update the buffer position
-	*buffer_pos += sizeof(len_encoded) + length;
-	*buffer_len -= sizeof(len_encoded) + length;
+	uplink_render(buffer_pos, buffer_len, "s", string, length);
 }
 
 void uplink_render_uint32(uint32_t value, uint8_t **buffer_pos, size_t *buffer_len) {
-	assert(*buffer_len >= sizeof value);
-	value = htonl(value);
-	memcpy(*buffer_pos, &value, sizeof value);
-	*buffer_pos += sizeof value;
-	*buffer_len -= sizeof value;
+	uplink_render(buffer_pos, buffer_len, "u", value);
 }
 
 static void handle_activation(struct uplink *uplink) {
