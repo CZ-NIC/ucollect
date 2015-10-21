@@ -305,7 +305,6 @@ static void handle_action(struct context *context, const char *name, enum diff_s
 			struct set *set = set_find(u, name);
 			action = diff_addr_store_action(set->store, epoch, new_version, &old_version);
 			sanity(action != DIFF_STORE_CONFIG_RELOAD, "Double reload requested on set %s\n", name);
-			// XXX: Check this is OK even when the original message was a diff
 			handle_action(context, name, action, epoch, old_version, new_version);
 			break;
 		}
@@ -328,6 +327,7 @@ static void handle_action(struct context *context, const char *name, enum diff_s
 }
 
 static void version_received(struct context *context, const uint8_t *data, size_t length) {
+	ulog(LLOG_DEBUG, "Parsing IPSet version offer\n");
 	struct user_data *u = context->user_data;
 	if (!config_version_check(u, &data, &length, "version update"))
 		return;
@@ -340,11 +340,11 @@ static void version_received(struct context *context, const uint8_t *data, size_
 	if (length)
 		ulog(LLOG_WARN, "Extra %zu bytes after version for IPSet %s, ignoring for compatibility reasons\n", length, name);
 	struct set *set = set_find(u, name);
-	set->context = context;
 	if (!set) {
 		ulog(LLOG_ERROR, "Update for unknown set %s received\n", name);
 		return;
 	}
+	set->context = context;
 	ulog(LLOG_DEBUG, "Received IPset version update for %s: %u %u\n", name, epoch, version);
 	uint32_t orig_version;
 	enum diff_store_action action = diff_addr_store_action(set->store, epoch, version, &orig_version);
@@ -353,7 +353,37 @@ static void version_received(struct context *context, const uint8_t *data, size_
 }
 
 static void diff_received(struct context *context, const uint8_t *data, size_t length) {
-
+	ulog(LLOG_DEBUG, "Parsing IPSet diff update\n");
+	struct user_data *u = context->user_data;
+	if (!config_version_check(u, &data, &length, "diff update"))
+		return;
+	char *name;
+	bool full;
+	uint32_t epoch, from = 0, to;
+	uplink_parse(&data, &length, "sbu",
+			&name, NULL, context->temp_pool, "diff IPset",
+			&full, "diff fullness flag",
+			&epoch, "diff epoch");
+	if (full)
+		from = uplink_parse_uint32(&data, &length);
+	to = uplink_parse_uint32(&data, &length);
+	struct set *set = set_find(u, name);
+	if (!set) {
+		ulog(LLOG_ERROR, "Diff for unknown set %s received\n", name);
+		return;
+	}
+	set->context = context;
+	uint32_t orig_version;
+	enum diff_store_action action = diff_addr_store_apply(context->temp_pool, set->store, full, epoch, from, to, data, length, &orig_version);
+	switch (action) {
+		case DIFF_STORE_INCREMENTAL:
+		case DIFF_STORE_FULL:
+			ulog(LLOG_WARN, "IPSet %s out of sync, dropping diff\n", name);
+			break;
+		default:;
+	}
+	handle_action(context, name, action, epoch, orig_version, to);
+	set->context = NULL;
 }
 
 static void sets_reload(struct context *context __attribute__((unused))) {
