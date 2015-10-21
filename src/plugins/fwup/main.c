@@ -126,12 +126,13 @@ static void store_set_hooks(struct set *set) {
 }
 
 static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t **data, size_t *length) {
-	const char *name = uplink_parse_string(pool, data, length);
-	sanity(name, "Not enough data for set name in FWUp config\n");
-	sanity(length, "Not enough data for set type in FWUp config\n");
-	uint8_t t = **data;
-	(*data) ++;
-	(*length) --;
+	char *name;
+	uint8_t t;
+	uint32_t max_size;
+	uplink_parse(data, length, "scu",
+			&name, NULL, pool, "set name in FWUp config",
+			&t, "set type in FWUp config",
+			&max_size, "max size of set in FWUp config");
 	const struct set_type *type = &set_types[t];
 	if (!type->desc) {
 		ulog(LLOG_WARN, "Set %s of unknown type '%c' (%hhu), ignoring\n", name, t, t);
@@ -141,7 +142,7 @@ static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t *
 		.name = name,
 		.type = type,
 		.state = SS_NEWBORN,
-		.max_size = uplink_parse_uint32(data, length),
+		.max_size = max_size,
 		.store = diff_addr_store_init(pool, name)
 	};
 	store_set_hooks(target);
@@ -149,16 +150,10 @@ static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t *
 }
 
 static void version_ask(struct context *context, const char *setname) {
-	size_t len = strlen(setname);
-	size_t blen = len + sizeof(uint32_t) + 1;
-	uint8_t *buffer = mem_pool_alloc(context->temp_pool, blen);
-	*buffer = 'A'; // Ask for version
-	size_t rest = blen - 1;
-	uint8_t *bpos = buffer + 1;
-	uplink_render_string(setname, len, &bpos, &rest);
-	sanity(rest == 0, "Buffer leftover when asking for version of %s: %zu bytes\n", setname, rest);
+	size_t len;
+	const uint8_t *message = uplink_render_alloc(&len, 0, context->temp_pool, "cs", 'A' /* 'A'sk for a version */, setname, strlen(setname));
 	// Ignore success result ‒ if it fails, it's because we aren't connected. We shall ask again once we connect.
-	uplink_plugin_send_message(context, buffer, blen);
+	uplink_plugin_send_message(context, message, len);
 }
 
 static void config_parse(struct context *context, const uint8_t *data, size_t length) {
@@ -321,12 +316,7 @@ static void handle_action(struct context *context, const char *name, enum diff_s
 			uint8_t *message = mem_pool_alloc(context->temp_pool, len);
 			uint8_t *pos = message;
 			size_t rest = len;
-			*(pos ++) = 'U';
-			rest --;
-			*(pos ++) = full;
-			rest --;
-			uplink_render_string(name, strlen(name), &pos, &rest);
-			uplink_render_uint32(epoch, &pos, &rest);
+			uplink_render(&pos, &rest, "csu", 'U', name, strlen(name), epoch);
 			if (!full)
 				uplink_render_uint32(old_version, &pos, &rest);
 			uplink_render_uint32(new_version, &pos, &rest);
@@ -341,10 +331,12 @@ static void version_received(struct context *context, const uint8_t *data, size_
 	struct user_data *u = context->user_data;
 	if (!config_version_check(u, &data, &length, "version update"))
 		return;
-	char *name = uplink_parse_string(context->temp_pool, &data, &length);
-	sanity(name, "Message too short to contain IPSet name\n");
-	uint32_t epoch = uplink_parse_uint32(&data, &length);
-	uint32_t version = uplink_parse_uint32(&data, &length);
+	char *name;
+	uint32_t epoch, version;
+	uplink_parse(&data, &length, "suu",
+			&name, NULL, context->temp_pool, "version IPSet name",
+			&epoch, "version epoch",
+			&version, "version");
 	if (length)
 		ulog(LLOG_WARN, "Extra %zu bytes after version for IPSet %s, ignoring for compatibility reasons\n", length, name);
 	struct set *set = set_find(u, name);
