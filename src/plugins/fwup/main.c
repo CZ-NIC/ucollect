@@ -29,6 +29,7 @@
 #include "../../core/loop.h"
 #include "../../core/uplink.h"
 #include "../../core/util.h"
+#include "../../core/trie.h"
 
 #include <string.h>
 #include <arpa/inet.h>
@@ -386,8 +387,24 @@ static void diff_received(struct context *context, const uint8_t *data, size_t l
 	set->context = NULL;
 }
 
-static void sets_reload(struct context *context __attribute__((unused))) {
-	ulog(LLOG_ERROR, "Reloading of all sets is not implemented yet\n");
+static void replace_add(const uint8_t *key, size_t key_size, struct trie_data *data, void *userdata) {
+	struct diff_addr_store *store = userdata;
+	if (data) // Skip over the entries that are not there
+		add_item(store, key, key_size);
+}
+
+static void sets_reload(struct context *context) {
+	ulog(LLOG_INFO, "Reloading all IPsets\n");
+	struct user_data *u = context->user_data;
+	for (size_t i = 0; i < u->set_count; i ++) {
+		struct set *s = &u->sets[i];
+		s->context = context;
+		// Reuse the hooks to replace the content of the set and to add items there.
+		replace_start(s->store);
+		trie_walk(s->store->trie, replace_add, s->store, context->temp_pool);
+		replace_end(s->store);
+		s->context = NULL;
+	}
 }
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
