@@ -418,6 +418,8 @@ struct plugin *plugin_info(void) {
 	static struct pluglib_import *imports[] = {
 		&diff_addr_store_init_import,
 		&diff_addr_store_cp_import,
+		&diff_addr_store_apply_import,
+		&diff_addr_store_action_import,
 		NULL
 	};
 	static struct plugin plugin = {
