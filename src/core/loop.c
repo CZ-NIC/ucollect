@@ -1220,8 +1220,12 @@ void loop_register_fd(struct loop *loop, int fd, struct epoll_handler *handler) 
 }
 
 void loop_unregister_fd(struct loop *loop, int fd) {
-	if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_DEL, fd, NULL) == -1)
-		die("Couldn't remove fd %d from epoll %d (%s)\n", fd, loop->epoll_fd, strerror(errno));
+	if (epoll_ctl(loop->epoll_fd, EPOLL_CTL_DEL, fd, NULL) == -1) {
+		if (errno == EBADF || errno == ENOENT)
+			ulog(LLOG_WARN, "Asked to unregister already closed FD %d\n", fd);
+		else
+			die("Couldn't remove fd %d from epoll %d (%s)\n", fd, loop->epoll_fd, strerror(errno));
+	}
 	loop->fd_invalidated = true;
 }
 
