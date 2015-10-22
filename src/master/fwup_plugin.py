@@ -22,6 +22,7 @@ import logging
 import database
 import diff_addr_store
 import struct
+from protocol import extract_string
 
 logger = logging.getLogger(name='FWUp')
 
@@ -47,13 +48,22 @@ class FWUpPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 		self.__config_message = self.__build_config()
 		self.broadcast(self.__config_message)
 
+	def __build_version_info(self, name, epoch, version):
+		return 'V' + struct.pack('!II' + str(len(name)) + 'sII', int(self._conf.get('version', 0)), len(name), name, epoch, version)
+
 	def _broadcast_version(self, name, epoch, version):
-		pass
+		self.broadcast(self.__build_version_info(name, epoch, version))
 
 	def message_from_client(self, message, client):
 		if message[0] == 'C':
 			logger.debug('Sending config to %s', client)
 			self.send(self.__config_message, client)
+		elif message[0] == 'A':
+			(name, rest) = extract_string(message[1:])
+			if rest:
+				logger.warn("Extra info after version query of %s from %s: %s", name, client, repr(rest))
+			version = self._addresses.get(name, (0, 0))
+			self.send(self.__build_version_info(name, version[0], version[1]), client)
 		else:
 			logger.warn('Unknown message opcode %s', message[0])
 
