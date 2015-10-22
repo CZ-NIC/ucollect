@@ -46,7 +46,7 @@ class DiffAddrStore:
 			t.execute(self.__version_query)
 			addresses = {}
 			for a in t.fetchall():
-				(name, epoch, version) = f
+				(name, epoch, version) = a
 				addresses[name] = (epoch, version)
 		if self._conf != config:
 			self.__logger.info("Config changed, broadcasting")
