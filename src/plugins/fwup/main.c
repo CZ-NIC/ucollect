@@ -316,7 +316,7 @@ static void handle_action(struct context *context, const char *name, enum diff_s
 			uint8_t *message = mem_pool_alloc(context->temp_pool, len);
 			uint8_t *pos = message;
 			size_t rest = len;
-			uplink_render(&pos, &rest, "csu", 'U', name, strlen(name), epoch);
+			uplink_render(&pos, &rest, "cbsu", 'U', full, name, strlen(name), epoch);
 			if (!full)
 				uplink_render_uint32(old_version, &pos, &rest);
 			uplink_render_uint32(new_version, &pos, &rest);
