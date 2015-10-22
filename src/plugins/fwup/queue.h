@@ -50,4 +50,9 @@ void enqueue(struct context *context, struct queue *queue, const char *command) 
  */
 void queue_flush(struct context *context, struct queue *queue) __attribute__((nonnull));
 
+/*
+ * Callback for when there are data on our FD.
+ */
+void queue_fd_data(struct context *context, int fd, void *userdata) __attribute__((nonnull));
+
 #endif

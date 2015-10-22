@@ -445,6 +445,7 @@ struct plugin *plugin_info(void) {
 		.init_callback = initialize,
 		.uplink_data_callback = communicate,
 		.uplink_connected_callback = connected,
+		.fd_callback = queue_fd_data,
 		.imports = imports
 	};
 	return &plugin;

@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -51,32 +52,36 @@ struct queue *queue_alloc(struct context *context) {
 static void start(struct context *context, struct queue *queue) {
 	ulog(LLOG_DEBUG, "Starting ipset subcommand\n");
 	sanity(!queue->active, "Trying to start already active queue\n");
-	int pipes[2];
-	sanity(pipe(pipes) != -1, "Couldn't create FWUp pipe: %s\n", strerror(errno));
+	int conn[2];
+	sanity(socketpair(AF_UNIX, SOCK_STREAM, 0, conn) != -1, "Couldn't create FWUp socketpair: %s\n", strerror(errno));
 	struct loop *loop = context->loop;
 	/*
-	 * Register the write end. This one will be in the parent process,
+	 * Register the local end. This one will be in the parent process,
 	 * therefore it needs to be watched and killed in case the plugin
 	 * dies. It will also be auto-closed in the child by loop_fork(),
 	 * saving us the bother to close it manually there.
 	 */
-	loop_plugin_register_fd(context, pipes[1], NULL);
+	loop_plugin_register_fd(context, conn[1], queue);
 	pid_t pid = loop_fork(loop);
 	if (pid)
-		// The parent doesn't need the read end, no matter if the fork worked or not.
-		sanity(close(pipes[0]) != -1, "Couldn't close the read end of FWUp pipe: %s\n", strerror(errno));
+		// The parent doesn't need the remote end, no matter if the fork worked or not.
+		sanity(close(conn[0]) != -1, "Couldn't close the read end of FWUp pipe: %s\n", strerror(errno));
 	sanity(pid != -1, "Couldn't fork the ipset command: %s\n", strerror(errno));
 	if (pid) {
 		// The parent. Update the queue and be done with it.
 		queue->active = true;
-		queue->ipset_pipe = pipes[1];
+		queue->ipset_pipe = conn[1];
 		queue->pid = pid;
 	} else {
-		// The child. Screw the pipe into our input and exec to ipset command.
-		if (dup2(pipes[0], 0) == -1)
-			die("Couldn't attach the pipe to ipset input: %s\n", strerror(errno));
+		// The child. Screw the socket into our input and stderr and exec to ipset command.
+		if (dup2(conn[0], 0) == -1)
+			die("Couldn't attach the socketpair to ipset input: %s\n", strerror(errno));
+		if (dup2(conn[0], 1) == -1)
+			die("Couldn't attach the socketpair to ipset stdout: %s\n", strerror(errno));
+		if (dup2(conn[0], 2) == -1)
+			die("Couldn't attach the socketpair to ipset stderr: %s\n", strerror(errno));
 		// Get rid of the original.
-		close(pipes[0]);
+		close(conn[0]);
 		execl("/usr/sbin/ipset", "ipset", "-exist", "restore", (char *)NULL);
 		// Still here? The above must have failed :-(
 		die("Couldn't exec ipset: %s\n", strerror(errno));
@@ -89,8 +94,8 @@ static void lost(struct context *context, struct queue *queue, bool error) {
 		ulog(LLOG_WARN, "Lost connection to ipset command %d, data may be out of sync\n", queue->pid);
 	else
 		ulog(LLOG_DEBUG, "Closing ipset subcommand\n");
-	sanity(close(queue->ipset_pipe) == 0, "Error closing the ipset pipe: %s\n", strerror(errno));
 	loop_plugin_unregister_fd(context, queue->ipset_pipe);
+	sanity(close(queue->ipset_pipe) == 0, "Error closing the ipset pipe: %s\n", strerror(errno));
 	queue->ipset_pipe = 0;
 	queue->active = false;
 	queue->pid = 0;
@@ -109,12 +114,12 @@ static void flush_timeout(struct context *context, void *data, size_t id __attri
 void enqueue(struct context *context, struct queue *queue, const char *command) {
 	if (!queue->active)
 		start(context, queue);
-	ulog(LLOG_DEBUG_VERBOSE, "IPset command %s\n", command);
 	sanity(queue->active, "Failed to start the queue\n");
 	sanity(queue->ipset_pipe > 0, "Strange pipe FD to the ip set command: %i\n", queue->ipset_pipe);
 	size_t len = strlen(command);
 	sanity(len, "Empty ipset command\n");
 	sanity(command[len - 1] == '\n', "IPset command '%s' not terminated by a newline\n", command);
+	ulog(LLOG_DEBUG_VERBOSE, "IPset command %s", command); // Now newline at the end of format, command contains one
 	while (len) {
 		ssize_t sent = send(queue->ipset_pipe, command, len, MSG_NOSIGNAL);
 		if (sent == -1) {
@@ -142,4 +147,51 @@ void enqueue(struct context *context, struct queue *queue, const char *command) 
 
 void queue_flush(struct context *context, struct queue *queue) {
 	lost(context, queue, false);
+}
+
+void queue_fd_data(struct context *context, int fd, void *userdata) {
+	struct queue *q = userdata;
+	if (!q->active || q->ipset_pipe != fd) {
+		ulog(LLOG_WARN, "Queue FD confusion\n");
+		// Sleep for 0.1 second, to limit the possible confused FD storms
+		nanosleep(&(struct timespec) {
+			.tv_sec = 0,
+			.tv_nsec = 100000
+		}, NULL);
+		return;
+	}
+	const size_t buf_size = 512;
+	char *err_msg = mem_pool_alloc(context->temp_pool, buf_size + 1 /* Extra one for \0 at the end */);
+	ssize_t result = recv(fd, err_msg, buf_size, MSG_DONTWAIT);
+	switch (result) {
+		case -1:
+			switch (errno) {
+				case EAGAIN:
+#if EAGAIN != EWOULDBLOCK
+				case EWOULDBLOCK:
+#endif
+				case EINTR:
+					// It might work next time
+					return;
+				default:
+					// Default isn't last on purpose.
+					insane("Error reading from IPSet stderr: %s\n", strerror(errno));
+				case ECONNRESET:
+					; // Fall through from this case statement out and out of the case -1 into the close
+			}
+			// No break. See above comment.
+		case 0: // Close
+			ulog(LLOG_WARN, "IPSet closed by other end\n");
+			lost(context, q, false);
+			return;
+		default:
+			err_msg[result] = '\0';
+			if (err_msg[result - 1] == '\n')
+				err_msg[result - 1] = '\0';
+			char *pos = err_msg;
+			while ((pos = index(pos, '\n')))
+				*pos = '\\';
+			ulog(LLOG_WARN, "IPSet output: %s\n", err_msg);
+			return;
+	}
 }
