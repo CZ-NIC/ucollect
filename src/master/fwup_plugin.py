@@ -17,27 +17,45 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet.task import LoopingCall
 import plugin
 import logging
+import database
+import diff_addr_store
+import struct
 
 logger = logging.getLogger(name='FWUp')
 
-class FWUpPlugin(plugin.Plugin):
+class FWUpPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 	"""
 	Plugin for remotely updating firewall IP sets.
 	"""
 	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
-		self.__conf_checker = LoopingCall(self.__check_conf)
-		self.__conf_checker.start(60, True)
+		self.__sets = {}
+		diff_addr_store.DiffAddrStore.__init__(self, logger, "fwup", "fwup_addresses", "set")
 
-	def __check_conf(self):
-		logger.trace("Checking FWUp configs")
-		# TODO
+	def __build_config(self):
+		def convert(name):
+			return struct.pack('!I' + str(len(name)) + 'scI', len(name), name, self.__sets[name][0], self.__sets[name][1])
+		return ''.join(['C', struct.pack('!II', int(self._conf.get('version', 0)), len(self.__sets))] + map(convert, self.__sets.keys()))
+
+	def _broadcast_config(self):
+		# Read the rest of the config
+		with database.transaction() as t:
+			t.execute("SELECT name, type, maxsize FROM fwup_sets")
+			self.__sets = dict(map(lambda (name, tp, maxsize): (name, (tp, maxsize)), t.fetchall()))
+		self.__config_message = self.__build_config()
+		self.broadcast(self.__config_message)
+
+	def _broadcast_version(self, name, epoch, version):
+		pass
 
 	def message_from_client(self, message, client):
-		pass
+		if message[0] == 'C':
+			logger.debug('Sending config to %s', client)
+			self.send(self.__config_message, client)
+		else:
+			logger.warn('Unknown message opcode %s', message[0])
 
 	def name(self):
 		return 'FWUp'
