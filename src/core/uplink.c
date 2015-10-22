@@ -560,7 +560,7 @@ uint8_t *uplink_render_alloc(size_t *length, size_t extra_space, struct mem_pool
 		switch (*command) {
 			case 's':
 				va_arg(args, const char *); // The buffer itself
-				l += va_arg(args, size_t);
+				l += va_arg(args, size_t) + sizeof(uint32_t);
 				break;
 			case 'u':
 				va_arg(args, uint32_t);
