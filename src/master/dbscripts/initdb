@@ -65,7 +65,7 @@ ALTER TABLE clients ALTER COLUMN id SET DEFAULT NEXTVAL('clients_id');
 CREATE TABLE activity_types (
 	id SMALLINT PRIMARY KEY NOT NULL,
 	name TEXT UNIQUE NOT NULL,
-	plugin TEXT,
+	plugin TEXT
 );
 CREATE SEQUENCE activity_types_ids OWNED BY activity_types.id;
 ALTER TABLE activity_types ALTER COLUMN id SET DEFAULT NEXTVAL('activity_types_ids');
@@ -88,8 +88,7 @@ CREATE TABLE known_plugins (
 	status plugin_status NOT NULL DEFAULT 'allowed',
 	introduced TIMESTAMP NOT NULL DEFAULT NOW(),
 	note TEXT,
-	UNIQUE(name, version, hash),
-	FOREIGN KEY (activity) REFERENCES activities(id)
+	UNIQUE(name, version, hash)
 );
 CREATE INDEX ON known_plugins(name);
 CREATE TABLE active_plugins (
@@ -688,9 +687,7 @@ GRANT DELETE ON spoof TO $DBCLEANER;
 GRANT DELETE ON refused TO $DBCLEANER;
 GRANT DELETE ON ssh_sessions TO $DBCLEANER;
 GRANT DELETE ON ssh_commands TO $DBCLEANER;
-GRANT SELECT ON fake_blacklist_logs TO $DBCLEANER;
 GRANT SELECT ON fake_logs TO $DBCLEANER;
-ALTER MATERIALIZED VIEW fake_blacklist_cache OWNER TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
