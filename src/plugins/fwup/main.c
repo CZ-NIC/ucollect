@@ -192,7 +192,7 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 				u->sets[i].state = SS_DEAD;
 				break;
 			case SS_PENDING:
-				u->sets[i].state = SS_PENDING;
+				u->sets[i].state = SS_DEAD_PENDING;
 				break;
 			default:
 				insane("Unsupported set state %u on old set %s\n", (unsigned)u->sets[i].state, u->sets[i].name);// It's not supposed to have other states now.
@@ -200,7 +200,7 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 	// Go through the new ones and look for corresponding sets in the old config
 	for (size_t i = 0; i < target_count; i ++) {
 		for (size_t j = 0; j < u->set_count; j ++)
-			if (strcmp(sets[i].name, u->sets[j].name) == 0 && sets[i].type == sets[j].type) {
+			if (strcmp(sets[i].name, u->sets[j].name) == 0 && sets[i].type == u->sets[j].type && sets[i].max_size == u->sets[j].max_size) {
 				switch (u->sets[j].state) {
 					case SS_DEAD:
 						diff_addr_store_cp(sets[i].store, u->sets[j].store, context->temp_pool);
@@ -213,7 +213,7 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 						u->sets[j].state = SS_COPIED;
 						break;
 					default:
-						sanity(false, "Invalid set state when copying: %s %hhu\n", u->sets[j].name, (uint8_t)u->sets[j].state); // Invalid states now
+						insane("Invalid set state when copying: %s %hhu\n", u->sets[j].name, (uint8_t)u->sets[j].state); // Invalid states now
 						break;
 				}
 			}
@@ -228,7 +228,7 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 				// OK, nothing to do here
 				break;
 			default:
-				sanity(false, "Invalid set state when destroying: %s %hhu\n", u->sets[i].name, (uint8_t)u->sets[i].state); // Invalid states now
+				insane("Invalid set state when destroying: %s %hhu\n", u->sets[i].name, (uint8_t)u->sets[i].state); // Invalid states now
 				break;
 		}
 	}
@@ -244,7 +244,7 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 				version_ask(context, sets[i].name);
 				break;
 			default:
-				sanity(false, "Invalid set state when creating: %s %hhu\n", sets[i].name, (uint8_t)sets[i].state); // Invalid states now
+				insane("Invalid set state when creating: %s %hhu\n", sets[i].name, (uint8_t)sets[i].state); // Invalid states now
 				break;
 		}
 	}
