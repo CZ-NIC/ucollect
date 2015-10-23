@@ -87,13 +87,15 @@ static enum diff_store_action diff_addr_store_apply(struct mem_pool *tmp_pool, s
 		return DIFF_STORE_INCREMENTAL;
 	}
 	bool signal_end = false; // Do we want to signal an end of replace operation?
-	if (full && store->added != store->deleted) {
+	if (full) {
 		// We're doing a full update and there's something in the trie. Reset it.
 		if (store->replace_start_hook)
 			store->replace_start_hook(store);
 		signal_end = true;
-		store->deleted = store->added;
-		store->trie = trie_alloc(store->pool);
+		if (store->added != store->deleted) {
+			store->deleted = store->added;
+			store->trie = trie_alloc(store->pool);
+		}
 	}
 	size_t addr_no = 0;
 	while (diff_size --) {
