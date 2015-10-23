@@ -47,6 +47,24 @@ def addr_convert(address, logger):
 	raise e
 
 class DiffAddrStore:
+	"""
+	A mixin to allow plugins easily integrate updating of diff address stores.
+	It expects the database to contain a table similar to fw_addresses
+	or flow_filters. Provide the name of the table and the name of the
+	name column.
+
+	Also provide methods _broadcast_config (in which you want to notify
+	clients about changes inside the config table, cached in self._conf dict)
+	and _broadcast_version, which notifies about new versions of given
+	address store.
+
+	You may use _provide_diff to send a diff between two versions to
+	a client when it asks. It parses the request from client. It expets
+	there is a send method available (provided by plugin.Plugin base class).
+
+	Internally, it checks the DB for new data every minute. It caches the
+	config and also requested diffs.
+	"""
 	def __init__(self, logger, plugname, table, column):
 		self.__logger = logger
 		self.__plugname = plugname
@@ -129,6 +147,11 @@ class DiffAddrStore:
 		return result
 
 	def _provide_diff(self, message, client, prefix=''):
+		"""
+		Decode a message from client, asking for a diff between two versions
+		of the same diff address store (or asking for a full update).
+		The answer is directly sent.
+		"""
 		(full,) = struct.unpack('!?', message[:1])
 		(name, message) = extract_string(message[1:])
 		l = 2 if full else 3
