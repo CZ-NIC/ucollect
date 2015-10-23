@@ -64,6 +64,8 @@ class FWUpPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 				logger.warn("Extra info after version query of %s from %s: %s", name, client, repr(rest))
 			version = self._addresses.get(name, (0, 0))
 			self.send(self.__build_version_info(name, version[0], version[1]), client)
+		elif message[0] == 'U':
+			self._provide_diff(message[1:], client, struct.pack('!I', int(self._conf.get('version', 0))))
 		else:
 			logger.warn('Unknown message opcode %s', message[0])
 

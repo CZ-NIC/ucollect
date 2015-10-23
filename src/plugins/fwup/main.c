@@ -365,7 +365,7 @@ static void diff_received(struct context *context, const uint8_t *data, size_t l
 			&name, NULL, context->temp_pool, "diff IPset",
 			&full, "diff fullness flag",
 			&epoch, "diff epoch");
-	if (full)
+	if (!full)
 		from = uplink_parse_uint32(&data, &length);
 	to = uplink_parse_uint32(&data, &length);
 	struct set *set = set_find(u, name);

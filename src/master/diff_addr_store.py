@@ -19,6 +19,32 @@
 
 from twisted.internet.task import LoopingCall
 import database
+import socket
+import struct
+from protocol import extract_string
+
+def addr_convert(address, logger):
+	"""
+	Convert the string IP address to binary representation.
+	Just try the possibilities one by one, using the first
+	one that works.
+	"""
+	variants = [(address, '')]
+	try:
+		(ip, port) = address.rsplit(':', 1)
+		ip = ip.strip('[]')
+		port = struct.pack('!H', int(port))
+		variants.append((ip, port))
+	except:
+		pass
+	for (a, p) in variants:
+		for family in [socket.AF_INET, socket.AF_INET6]:
+			try:
+				return socket.inet_pton(family, a) + p
+			except Exception as e:
+				logger.trace("Addr %s, family %s, error %s", a, family, e)
+				excp = e
+	raise e
 
 class DiffAddrStore:
 	def __init__(self, logger, plugname, table, column):
@@ -33,8 +59,28 @@ class DiffAddrStore:
 			(SELECT %COLUMN% AS name, MAX(epoch) AS epoch FROM %TABLE% GROUP BY %COLUMN%) AS addresses
 		ON raw_addresses.%COLUMN% = addresses.name AND raw_addresses.epoch = addresses.epoch
 		GROUP BY addresses.name, addresses.epoch'''.replace("%TABLE%", table).replace("%COLUMN%", column)
+		self.__diff_query = '''
+			SELECT %TABLE%.address, add
+		FROM
+			(SELECT
+				address, MAX(version) AS version
+			FROM
+				%TABLE%
+			WHERE
+				%COLUMN% = %s AND epoch = %s AND version > %s AND version <= %s
+			GROUP BY
+				address) AS lasts
+		JOIN
+			%TABLE%
+		ON
+			%TABLE%.address = lasts.address AND %TABLE%.version = lasts.version
+		WHERE
+			%TABLE%.%COLUMN% = %s AND epoch = %s
+		ORDER BY
+			address'''.replace("%TABLE%", table).replace("%COLUMN%", column)
 		self._conf = {}
 		self._addresses = {}
+		self.__cache = {} # Reset whenever the DB contains something new.
 		self.__conf_checker = LoopingCall(self.__check_conf)
 		self.__conf_checker.start(60, True)
 
@@ -51,10 +97,46 @@ class DiffAddrStore:
 		if self._conf != config:
 			self.__logger.info("Config changed, broadcasting")
 			self._conf = config
+			self.__cache = {}
 			self._broadcast_config()
 		if self._addresses != addresses:
+			self.__cache = {}
 			for a in addresses:
 				if self._addresses.get(a) != addresses[a]:
 					self.__logger.debug("Broadcasting new version of %s", a)
 					self._broadcast_version(a, addresses[a][0], addresses[a][1])
 			self._addresses = addresses
+
+	def __diff_update(self, name, full, epoch, from_version, to_version, prefix):
+		key = (name, full, epoch, from_version, to_version)
+		if key in self.__cache: # Someone already asked for this, just reuse the result instead of asking the DB
+			return self.__cache[key]
+		with database.transaction() as t:
+			t.execute(self.__diff_query, (name, epoch, from_version, to_version, name, epoch))
+			addresses = t.fetchall()
+		params = [len(name), name, full, epoch]
+		if not full:
+			params.append(from_version)
+		params.append(to_version)
+		result = 'D' + prefix + struct.pack('!I' + str(len(name)) + 's?II' + ('' if full else 'I'), *params)
+		for (address, add) in addresses:
+			if not add and full:
+				continue # Don't mention deleted addresses on full update
+			addr = addr_convert(address, self.__logger)
+			self.__logger.trace("Addr: %s/%s", repr(addr), len(addr))
+			result += struct.pack('!B', len(addr) + add) + addr
+		self.__cache[key] = result
+		return result
+
+	def _provide_diff(self, message, client, prefix=''):
+		(full,) = struct.unpack('!?', message[:1])
+		(name, message) = extract_string(message[1:])
+		l = 2 if full else 3
+		numbers = struct.unpack('!' + str(l) + 'I', message)
+		if full:
+			(epoch, to_version) = numbers
+			from_version = 0
+		else:
+			(epoch, from_version, to_version) = numbers
+		self.__logger.debug('Sending diff for %s@%s from %s to %s to client %s', name, epoch, from_version, to_version, client)
+		self.send(self.__diff_update(name, full, epoch, from_version, to_version, prefix), client)
