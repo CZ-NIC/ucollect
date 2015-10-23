@@ -85,27 +85,27 @@ class DiffAddrStore:
 		self.__conf_checker.start(60, True)
 
 	def __check_conf(self):
-		self.__logger.trace("Checking " + self.__plugname + " configs")
+		self.__logger.trace("Checking %s configs", self.__plugname)
 		with database.transaction() as t:
 			t.execute("SELECT name, value FROM config WHERE plugin = '" + self.__plugname + "'")
 			config = dict(t.fetchall())
 			t.execute(self.__version_query)
 			addresses = {}
-			for a in t.fetchall():
-				(name, epoch, version) = a
+			for (name, epoch, version) in t.fetchall():
 				addresses[name] = (epoch, version)
+		addresses_orig = self._addresses
+		self._addresses = addresses
 		if self._conf != config:
 			self.__logger.info("Config changed, broadcasting")
 			self._conf = config
 			self.__cache = {}
 			self._broadcast_config()
-		if self._addresses != addresses:
+		if addresses_orig != addresses:
 			self.__cache = {}
 			for a in addresses:
-				if self._addresses.get(a) != addresses[a]:
+				if addresses_orig.get(a) != addresses[a]:
 					self.__logger.debug("Broadcasting new version of %s", a)
 					self._broadcast_version(a, addresses[a][0], addresses[a][1])
-			self._addresses = addresses
 
 	def __diff_update(self, name, full, epoch, from_version, to_version, prefix):
 		key = (name, full, epoch, from_version, to_version)

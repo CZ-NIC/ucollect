@@ -26,6 +26,7 @@ import activity
 import database
 import socket
 import re
+import diff_addr_store
 
 logger = logging.getLogger(name='flow')
 token_re = re.compile('\(?\s*(.*?)\s*([,\(\)])(.*)')
@@ -216,64 +217,31 @@ def store_flows(client, message, expect_conf_id, now):
 		t.executemany("INSERT INTO biflows (client, ip_local, ip_remote, port_local, port_remote, proto, start_in, start_out, stop_in, stop_out, count_in, count_out, size_in, size_out, seen_start_in, seen_start_out) SELECT clients.id, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
 	logger.debug("Stored %s flows for %s", count, client)
 
-class FlowPlugin(plugin.Plugin):
+class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 	"""
 	Plugin for storing netflow information.
 	"""
 	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
-		self.__config = {}
-		self.__filters = {}
-		self.__filter_cache = {}
 		self.__top_filter_cache = {}
-		self.__conf_checker = LoopingCall(self.__check_conf)
-		self.__conf_checker.start(60, True)
+		diff_addr_store.DiffAddrStore.__init__(self, logger, "flow", "flow_filters", "filter")
 
-	def __check_conf(self):
-		logger.trace("Checking flow configs")
-		with database.transaction() as t:
-			t.execute("SELECT name, value FROM config WHERE plugin = 'flow'")
-			config = dict(t.fetchall())
-			# Doh. We just want the newest version in the newest epoch of each filter name.
-			# There just have to be a simpler way to say this!
-			t.execute('''SELECT
-				filters.filter, MAX(filters.epoch), MAX(flow_filters.version)
-			FROM
-				flow_filters
-			JOIN
-				(SELECT filter, MAX(epoch) AS epoch FROM flow_filters GROUP BY filter) AS filters
-			ON flow_filters.filter = filters.filter AND filters.epoch = flow_filters.epoch
-			GROUP BY filters.filter''')
-			filters = {}
-			for f in t.fetchall():
-				(name, epoch, version) = f
-				filters[name] = (epoch, version)
-		if self.__config != config:
-			logger.info('Config changed, broadcasting')
-			self.__top_filter_cache = {}
-			self.__config = config
-			self.broadcast(self.__build_config(''), lambda version: version < 2)
-			self.broadcast(self.__build_config('-diff'), lambda version: version >= 2)
-			for f in filters:
-				self.broadcast(self.__build_filter_version(f, filters[f][0], filters[f][1]), lambda version: version >= 2)
-			self.__filter_cache = {}
-		else:
-			for f in filters:
-				# It should not happen there are different filters than in the previous version,
-				# such thing should happen only with config change. But we still do it by the new ones
-				# so we send the appearing ones. Not mentioning disapearing ones is OK and actually
-				# what we want.
-				if f not in self.__filters or filters[f] != self.__filters[f]:
-					self.broadcast(self.__build_filter_version(f, filters[f][0], filters[f][1]), lambda version: version >= 2)
-					self.__filter_cache = {}
-		self.__filters = filters
+	def _broadcast_config(self):
+		self.__top_filter_cache = {}
+		self.broadcast(self.__build_config(''), lambda version: version < 2)
+		self.broadcast(self.__build_config('-diff'), lambda version: version >= 2)
+		for a in self._addresses:
+			self._broadcast_version(a, self._addresses[a][0], self._addresses[a][1])
+
+	def _broadcast_version(self, name, epoch, version):
+		self.broadcast(self.__build_filter_version(name, epoch, version), lambda version: version >= 2)
 
 	def __build_filter_version(self, name, epoch, version):
 		return 'U' + struct.pack('!I' + str(len(name)) + 'sII', len(name), name, epoch, version)
 
 	def __build_config(self, filter_suffix):
 		filter_data = ''
-		fil = self.__config['filter' + filter_suffix]
+		fil = self._conf['filter' + filter_suffix]
 		if fil in self.__top_filter_cache:
 			return self.__top_filter_cache[fil]
 		if fil:
@@ -281,61 +249,9 @@ class FlowPlugin(plugin.Plugin):
 			f.parse(fil[0], fil[1:])
 			logger.debug('Filter: %s', f)
 			filter_data = f.serialize()
-		result = 'C' + struct.pack('!IIII', int(self.__config['version']), int(self.__config['max_flows']), int(self.__config['timeout']), int(self.__config['minpackets'])) + filter_data
+		result = 'C' + struct.pack('!IIII', int(self._conf['version']), int(self._conf['max_flows']), int(self._conf['timeout']), int(self._conf['minpackets'])) + filter_data
 		self.__top_filter_cache[fil] = result
 		return result
-
-	def __build_filter_diff(self, name, full, epoch, from_version, to_version):
-		key = (name, full, epoch, from_version, to_version)
-		if key in self.__filter_cache:
-			return self.__filter_cache[key]
-		with database.transaction() as t:
-			t.execute('''SELECT
-				flow_filters.address, add
-			FROM
-				(SELECT
-					address, MAX(version) AS version
-				FROM
-					flow_filters
-				WHERE
-					filter = %s AND epoch = %s AND version > %s AND version <= %s
-				GROUP BY
-					address)
-				AS lasts
-			JOIN
-				flow_filters
-			ON
-				flow_filters.address = lasts.address AND flow_filters.version = lasts.version
-			WHERE
-				filter = %s AND epoch = %s
-			ORDER BY
-				address''', (name, epoch, from_version, to_version, name, epoch))
-			addresses = t.fetchall()
-		params = [len(name), name, full, epoch]
-		if not full:
-			params.append(from_version)
-		params.append(to_version)
-		data = 'D' + struct.pack('!I' + str(len(name)) + 's?II' + ('' if full else 'I'), *params)
-		for addr in addresses:
-			(address, add) = addr
-			if not add and full:
-				continue # Don't mention addresses that were deleted on full update
-			add = 1 if add else 0
-			# Try parsing the string. First as IPv4, then IPv6, IPv4:port, IPv6:port
-			try:
-				data += struct.pack('!B', 4 + add) + socket.inet_pton(socket.AF_INET, address)
-			except Exception:
-				try:
-					data += struct.pack('!B', 16 + add) + socket.inet_pton(socket.AF_INET6, address)
-				except Exception:
-					(ip, port) = address.rsplit(':', 1)
-					ip = ip.strip('[]')
-					try:
-						data += struct.pack('!B', 6 + add) + socket.inet_pton(socket.AF_INET, ip) + struct.pack('!H', int(port))
-					except Exception:
-						data += struct.pack('!B', 18 + add) + socket.inet_pton(socket.AF_INET6, ip) + struct.pack('!H', int(port))
-		self.__filter_cache[key] = data
-		return data
 
 	def message_from_client(self, message, client):
 		if message[0] == 'C':
@@ -344,26 +260,14 @@ class FlowPlugin(plugin.Plugin):
 				self.send(self.__build_config(''), client)
 			else:
 				self.send(self.__build_config('-diff'), client)
-				for f in self.__filters:
-					self.send(self.__build_filter_version(f, self.__filters[f][0], self.__filters[f][1]), client)
+				for a in self._addresses:
+					self.send(self.__build_filter_version(a, self._addresses[a][0], self._addresses[a][1]), client)
 		elif message[0] == 'D':
 			logger.debug('Flows from %s', client)
 			activity.log_activity(client, 'flow')
 			reactor.callInThread(store_flows, client, message[1:], int(self.__config['version']), database.now())
 		elif message[0] == 'U':
-			# Client is requesting difference in a filter
-			(full, name_len) = struct.unpack('!?I', message[1:6])
-			name = message[6:6+name_len]
-			message = message[6+name_len:]
-			l = 2 if full else 3
-			numbers = struct.unpack('!' + str(l) + 'I', message)
-			if full:
-				(epoch, to_version) = numbers
-				from_version = 0
-			else:
-				(epoch, from_version, to_version) = numbers
-			logger.debug('Sending diff for filter %s@%s from %s to %s to client %s', name, epoch, from_version, to_version, client)
-			self.send(self.__build_filter_diff(name, full, epoch, from_version, to_version), client)
+			self._provide_diff(message[1:], client)
 
 	def name(self):
 		return 'Flow'
