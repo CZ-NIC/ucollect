@@ -1,0 +1,114 @@
+The `fwup` plugin
+=================
+
+The plugin is there to keep content of several ipsets up to date with
+fast updates. Instead of polling for new versions, it uses pushed
+differential updates through the ucollect uplink connection.
+
+High-level overview
+-------------------
+
+The plugin asks for config on start-up. The config contains list of
+sets to be created in kernel, with types and maximum sizes.
+
+Then it requests version informations for each of the sets. The server
+provides the versions. In turn, the plugin asks for update diffs for
+each set it received the version info for.
+
+The server can push both new config and individual version info
+messages for the sets. The client then decides if it needs to request
+some diffs.
+
+Also, the plugin asks for the config and versions on reconnect.
+
+The diffs may be full ones (from version 0 to now, containing addition
+of all the addresses in the set) or incremental (changes since some
+older version, containing both additions and deletions).
+
+Note that the server is allowed to answer by a full update to
+an incremental request.
+
+Versioning
+----------
+
+There's a version of the config. Each change to the config should
+change the version, since clients update it only when the version
+differs. It is 32-bit unsigned integer.
+
+Furthermore, each set has its own versions. There's epoch, which
+changes in case the old history needs to be discarded. Then there's
+version, which is increasing during time and the history needs to be
+preserved through the versions, since the client may ask for diff
+between any two versions of the latest epoch. Both numbers are 32-bit
+unsigned integers.
+
+Set types
+---------
+
+The sets may have different types. The types are specified by
+single-character code in the protocol.
+
+[options="header"]
+|===================================================================================
+|Code |Kernel type  |Family |Description           |Note
+|`i`  |hash:ip      |IPv4   |Single IPv4 address   |
+|`I`  |hash:ip      |IPv6   |Single IPv6 address   |
+|`b`  |hash:ip,port |IPv4   |IPv4 address and port |Both tcp and udp ports are added
+|`B`  |hash:ip,port |IPv6   |IPv6 address and port |Both tcp and udp ports are added
+|===================================================================================
+
+Protocol
+--------
+
+Messages are prefixed with single-byte opcode. All numbers are in
+network byte order and strings are as described in the `uplink`
+documentation.
+
+These are the messages a client sends:
+
+`C`:: Request for a config. There's no further payload.
+`A`:: Asking about a version of a set. It is followed by the name of
+  the set.
+`U`:: Asking for a differential update. It has the following fields:
+  `bool`;; If the update should be a full update or incremental one.
+    True means full update.
+  string;; Name of the set.
+  `uint32_t`;; The epoch.
+  `uint32_t`;; Previous version. Present only if the update is
+    incremental.
+  `uint32_t`;; The desired target version.
+
+The server sends these kinds of messages:
+
+`C`:: Config. It has these fields:
+  `uint32_t`;; Version of the config.
+  `uint32_t`;; Number of IP sets.
+  IP set descripition;; This one is present as many times as needed
+    (by the previous option). It is composed of these fields:
+      string::: Name of the set.
+      `char`::: Type of the set. See above.
+      `uint32_t`::: Maximum size of the set.
+`R`:: Request from the server to reload all the sets in kernel.
+`V`:: Version of set info. It is followed by:
+  `uint32_t`;; Current version of config. If it doesn't match, the
+    client discards this message, it is expected this discrepancy will
+    get solved soon.
+  string;; Name of the set in question.
+  `uint32_t`;; Current epoch of the set.
+  `uint32_t`;; Current version of the set.
+`D`:: A diff update for the set content. It is followed by:
+  `uint32_t`;; Current version of config. If it doesn't match, the
+    client discards the message.
+  string;; Name of the set.
+  `bool`;; Fullness flag ‒ is it a full update or an incremental one?
+  `uint32_t`;; Epoch of the set.
+  `uint32_t`;; The starting version of the diff. This is present only
+    if the diff is incremental, otherwise it is omitted.
+  `uint32_t`;; The end version of the diff.
+  Addresses;; The rest of the message is filled in with the content.
+    First byte of each record starts with single-byte bit field. Bit 0
+    (the lowest value bit) is set to 1 if the address should be added,
+    to 0 if it should be removed. The rest of the bits specify the
+    length of address (4 for IPv4 address, 6 for IPv4 address and
+    port, 16 for IPv6 and 18 for IPv6 and port). Then there's as many
+    bytes of the address.
