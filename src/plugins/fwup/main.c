@@ -86,7 +86,17 @@ struct config {
 
 static void addr_cmd(struct diff_addr_store *store, const char *cmd, const uint8_t *addr, size_t length) {
 	struct set *set = store->userdata;
-	enqueue(set->context, set->context->user_data->queue, mem_pool_printf(set->context->temp_pool, "%s %s %s\n", cmd, set->tmp_name ? set->tmp_name : set->name, set->type->addr2str(addr, length, set->context->temp_pool)));
+	char *composed = mem_pool_printf(set->context->temp_pool, "%s %s %s\n", cmd, set->tmp_name ? set->tmp_name : set->name, set->type->addr2str(addr, length, set->context->temp_pool));
+	// If we have the port, we need to push both tcp and udp. The XXX is a mark.
+	char *proto = strstr(composed, "XXX");
+	if (proto) {
+		memcpy(proto, "tcp", 3);
+		enqueue(set->context, set->context->user_data->queue, composed);
+		memcpy(proto, "udp", 3);
+		enqueue(set->context, set->context->user_data->queue, composed);
+	} else {
+		enqueue(set->context, set->context->user_data->queue, composed);
+	}
 }
 
 static void add_item(struct diff_addr_store *store, const uint8_t *addr, size_t length) {

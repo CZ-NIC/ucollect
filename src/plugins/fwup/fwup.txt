@@ -57,6 +57,10 @@ single-character code in the protocol.
 |`B`  |hash:ip,port |IPv6   |IPv6 address and port |Both tcp and udp ports are added
 |===================================================================================
 
+Note that in case it says that both tcp and udp ports are added, there
+are two items generated in the kernel for each one address sent from
+the server. Consider having twice as large maximum size of the set.
+
 Protocol
 --------
 

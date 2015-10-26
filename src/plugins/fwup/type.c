@@ -54,7 +54,7 @@ static const char *inetup2str(const uint8_t *addr, size_t len, size_t alen, cons
 	// Copy out first, we worry about alignment of the data.
 	memcpy(&port, addr + alen, 2);
 	port = ntohs(port);
-	return mem_pool_printf(pool, "%s,%u", addrs, port);
+	return mem_pool_printf(pool, "%s,XXX:%u", addrs, port);
 }
 
 static const char *inetp2str(const uint8_t *addr, size_t len, struct mem_pool *pool) {
