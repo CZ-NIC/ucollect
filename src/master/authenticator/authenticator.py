@@ -36,8 +36,20 @@ if len(sys.argv) != 2:
 config_data = ConfigParser.RawConfigParser()
 with open(sys.argv[1]) as f:
 	config_data.readfp(f, sys.argv[1])
-db = psycopg2.connect(database=config_data.get('main', 'db'), user=config_data.get('main', 'dbuser'), password=config_data.get('main', 'dbpasswd'))
-cursor = db.cursor()
+
+db = None
+cursor = None
+
+def openDB():
+	global db
+	global cursor
+	db = psycopg2.connect(database=config_data.get('main', 'db'), user=config_data.get('main', 'dbuser'), password=config_data.get('main', 'dbpasswd'))
+	cursor = db.cursor()
+
+openDB()
+
+def queryExecute(client):
+	cursor.execute('SELECT passwd, mechanism, builtin_passwd, slot_id FROM clients WHERE name = %s', (client.lower(),))
 
 class AuthClient(basic.LineReceiver):
 	def connectionMade(self):
@@ -52,7 +64,12 @@ class AuthClient(basic.LineReceiver):
 		match = auth.match(line)
 		if match:
 			mode, client, challenge, response = match.groups()
-			cursor.execute('SELECT passwd, mechanism, builtin_passwd, slot_id FROM clients WHERE name = %s', (client.lower(),))
+			try:
+				queryExecute(client)
+			except (psycopg2.OperationalError, psycopg2.InterfaceError):
+				print "DB broken, recreating"
+				openDB()
+				queryExecute(client)
 			log_info = cursor.fetchone()
 			db.rollback()
 			if log_info:
