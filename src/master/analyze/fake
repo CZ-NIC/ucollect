@@ -2,6 +2,15 @@
 
 set -ex
 
+LOCK_DIR=/tmp/fake_export.lock
+
+if ! mkdir "$LOCK_DIR" ; then
+	echo "Already running?" 2>&1
+	exit 1
+fi
+
+trap 'rm -rf "$LOCK_DIR"' EXIT INT QUIT TERM ABRT
+
 cd $HOME/ucollect/src/master/analyze
 ./fake.pl analyze.ini >$HOME/fake.csv.tmp
 chmod a+r $HOME/fake.csv.tmp
