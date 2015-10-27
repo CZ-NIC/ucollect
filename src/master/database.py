@@ -32,14 +32,17 @@ class __CursorContext:
 	"""
 	def __init__(self, connection):
 		self.__connection = connection
-		self.__cursor = connection.cursor()
 		self.__depth = 0
+		self.reuse()
+
+	def reuse(self):
+		self._cursor = self.__connection.cursor()
 
 	def __enter__(self):
 		if not self.__depth:
 			logger.debug('Entering transaction %s', self)
 		self.__depth += 1
-		return self.__cursor
+		return self._cursor
 
 	def __exit__(self, exc_type, exc_val, exc_tb):
 		self.__depth -= 1
@@ -51,6 +54,7 @@ class __CursorContext:
 		else:
 			logger.debug('Commit of transaction %s', self)
 			self.__connection.commit()
+		self._cursor = None
 
 __cache = threading.local()
 
@@ -75,6 +79,8 @@ def transaction(reuse=True):
 		if 'context' not in __cache.__dict__:
 			__cache.context = __CursorContext(__cache.connection)
 			logger.debug("Initializing cursor")
+		else:
+			__cache.context.reuse()
 		return __cache.context
 	else:
 		return __CursorContext(__cache.connection)
