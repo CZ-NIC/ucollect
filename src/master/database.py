@@ -58,7 +58,7 @@ class __CursorContext:
 
 __cache = threading.local()
 
-def transaction(reuse=True):
+def transaction_raw(reuse=True):
 	"""
 	A single transaction. It is automatically commited on success and
 	rolled back on exception. Use as following:
@@ -84,6 +84,22 @@ def transaction(reuse=True):
 		return __cache.context
 	else:
 		return __CursorContext(__cache.connection)
+
+def transaction(reuse=True):
+	result = transaction_raw(reuse)
+	if reuse:
+		try: # if the cursor works
+			result._cursor.execute("SELECT 1")
+			(one,) = result._cursor.fetchone()
+			return result
+		except (psycopg2.OperationalError, psycopg2.InterfaceError):
+			# It is broken. Drop the old cursor and connection and create a new one.
+			logger.error("Broken DB connection, recreating")
+			global __cache
+			del __cache.__dict__['connection']
+			del __cache.__dict__['context']
+			return transaction_raw(True)
+	return result
 
 __time_update = 0
 __time_db = 0
