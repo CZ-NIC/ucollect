@@ -72,9 +72,15 @@ def transaction_raw(reuse=True):
 	"""
 	global __cache
 	if 'connection' not in __cache.__dict__:
-		__cache.connection = psycopg2.connect(database=get('db'), user=get('dbuser'), password=get('dbpasswd'), host=get('dbhost'))
 		logger.debug("Initializing connection to DB")
-
+		retry = True
+		while retry:
+			try:
+				__cache.connection = psycopg2.connect(database=get('db'), user=get('dbuser'), password=get('dbpasswd'), host=get('dbhost'))
+				retry = False
+			except Exception as e:
+				logger.error("Failed to create DB connection (blocking until it works): %s", e)
+				time.sleep(1)
 	if reuse:
 		if 'context' not in __cache.__dict__:
 			__cache.context = __CursorContext(__cache.connection)
