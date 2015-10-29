@@ -8,8 +8,9 @@ BEGIN;
 DROP VIEW IF EXISTS fake_bad_connections;
 DROP VIEW IF EXISTS fake_bad_connections_telnet;
 DROP VIEW IF EXISTS fake_blacklist;
-DROP VIEW IF EXISTS plugin_activities;
-DROP MATERIALIZED VIEW IF EXISTS fake_blacklist_cache;
+DROP VIEW IF EXISTS plugin_activity;
+DROP VIEW IF EXISTS fake_blacklist_cache_fill;
+DROP TABLE IF EXISTS fake_blacklist_cache;
 DROP TABLE IF EXISTS fake_logs;
 DROP TABLE IF EXISTS fake_server_names;
 DROP TABLE IF EXISTS fake_blacklist_limits;
@@ -465,7 +466,7 @@ INSERT INTO fake_blacklist_limits (server, client_pass, score_total, clients_tot
 	('telnet', 25, 100, 0, 0, 3, 'hard'),
 	('telnet', 25, 75, 0, 0, 2, 'soft'),
 	('telnet', 200, 0, 0, 0, 1, 'soft');
-CREATE MATERIALIZED VIEW fake_blacklist_cache AS SELECT
+CREATE OR REPLACE VIEW fake_blacklist_cache_fill AS SELECT
 	fl.server,
 	fl.remote,
 	fl.client,
@@ -475,6 +476,17 @@ FROM
 	(SELECT * FROM fake_logs WHERE timestamp < CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - INTERVAL '1 hour') AS fl
 	JOIN fake_blacklist_scores ON fl.server = fake_blacklist_scores.server AND fl.event = fake_blacklist_scores.event
 GROUP BY fl.server, fl.remote, fl.client;
+CREATE UNLOGGED TABLE fake_blacklist_cache (
+	server fake_server NOT NULL,
+	remote INET NOT NULL,
+	client INT NOT NULL,
+	score BIGINT NOT NULL,
+	timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+	CHECK(score >= 0),
+	FOREIGN KEY (client) REFERENCES clients(id)
+);
+CREATE INDEX fake_blacklist_cache_compound_idx ON fake_blacklist_cache(server, remote, client);
+CREATE INDEX fake_blacklist_timestamp ON fake_blacklist_cache(timestamp);
 CREATE OR REPLACE VIEW fake_blacklist AS SELECT
 	t.server,
 	t.remote,
@@ -507,7 +519,7 @@ FROM
 				fl.client,
 				SUM(fake_blacklist_scores.score) AS score,
 				MAX(fl.timestamp) AS timestamp
-			FROM (SELECT * FROM fake_logs WHERE timestamp > (SELECT MAX(timestamp) FROM fake_blacklist_cache)) AS fl
+			FROM (SELECT * FROM fake_logs WHERE timestamp > (SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM fake_blacklist_cache)) AS fl
 			JOIN fake_blacklist_scores ON fl.server = fake_blacklist_scores.server AND fl.event = fake_blacklist_scores.event
 			GROUP BY fl.server, fl.remote, fl.client) AS fl
 		JOIN fake_blacklist_limits ON fl.server = fake_blacklist_limits.server
@@ -727,6 +739,12 @@ GRANT UPDATE ON config TO $DBFLOWTAGGER;
 GRANT SELECT ON flow_filters TO $DBFLOWTAGGER;
 GRANT INSERT ON flow_filters TO $DBFLOWTAGGER;
 GRANT SELECT ON fake_blacklist TO $DBFLOWTAGGER;
+GRANT TRUNCATE ON fake_blacklist_cache TO $DBFLOWTAGGER;
+GRANT TRUNCATE ON fake_blacklist_cache TO $DBCLEANER;
+GRANT INSERT ON fake_blacklist_cache TO $DBFLOWTAGGER;
+GRANT INSERT ON fake_blacklist_cache TO $DBCLEANER;
+GRANT SELECT ON fake_blacklist_cache_fill TO $DBFLOWTAGGER;
+GRANT SELECT ON fake_blacklist_cache_fill TO $DBCLEANER;
 
 GRANT INSERT ON ssh_sessions TO $DBKIPPO;
 GRANT INSERT ON ssh_commands TO $DBKIPPO;
