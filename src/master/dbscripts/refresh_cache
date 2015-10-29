@@ -15,6 +15,7 @@ trap 'rm -rf "$LOCK_DIR"' EXIT INT QUIT TERM ABRT
 
 (
 	echo "BEGIN;"
+	echo "LOCK TABLE fake_blacklist_cache IN SHARE MODE;" # We don't want to conflict with any other updates running
 	echo "DELETE FROM fake_blacklist_cache;"
 	echo "INSERT INTO fake_blacklist_cache (server, remote, client, score, timestamp) SELECT server, remote, client, score, timestamp FROM fake_blacklist_cache_fill;"
 	echo 'COMMIT;'
