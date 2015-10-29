@@ -485,8 +485,6 @@ CREATE UNLOGGED TABLE fake_blacklist_cache (
 	CHECK(score >= 0),
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
-CREATE INDEX fake_blacklist_cache_compound_idx ON fake_blacklist_cache(server, remote, client);
-CREATE INDEX fake_blacklist_timestamp ON fake_blacklist_cache(timestamp);
 CREATE OR REPLACE VIEW fake_blacklist AS SELECT
 	t.server,
 	t.remote,
