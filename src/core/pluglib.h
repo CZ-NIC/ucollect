@@ -28,12 +28,9 @@
 
 typedef void (*pluglib_function)(void);
 
-struct pluglib_export {
-	const char *name;
-	pluglib_function function;
-	const char *prototype;
-};
+struct pluglib_export;
 
+// This is the structure the pluglib exports.
 struct pluglib {
 	const char *name;
 	size_t ref_count; // For use by the core app, do not fill in.
@@ -41,6 +38,13 @@ struct pluglib {
 	size_t version;
 	struct pluglib *recycler_next; // For use by the core app, do not fill in.
 	struct pluglib_export **exports;
+};
+
+// Other structures are not handled explicitly by pluglibs or plugins.
+struct pluglib_export {
+	const char *name;
+	pluglib_function function;
+	const char *prototype;
 };
 
 struct pluglib_import {
@@ -66,8 +70,9 @@ bool pluglib_resolve_functions(const struct pluglib_list *libraries, struct plug
 // Check if all the imports could be satisfied.
 bool pluglib_check_functions(const struct pluglib_list *libraries, struct pluglib_import **imports) __attribute__((nonnull(1)));
 
-#define PLUGLIB_IMPORT(NAME, RETURN, ...) static RETURN (*NAME)(__VA_ARGS__); static struct pluglib_import NAME##_import = { .name = #NAME, .function = (pluglib_function *)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN }
-
-#define PLUGLIB_EXPORT(NAME, RETURN, ...) static RETURN NAME(__VA_ARGS__); static struct pluglib_export NAME##_export = { .name = #NAME, .function = (pluglib_function)&NAME, .prototype = #__VA_ARGS__ "->" #RETURN }
+// What should be imported by the import macros
+#define PLUGLIB_LOCAL 1		// Both the import structures and the function pointer, all defined as static. For use in the same file as the plugins entry point.
+#define PLUGLIB_FUNCTIONS 2	// Declarations for extern functions. To be used in other files than the one with plugin entry point.
+#define PLUGLIB_PUBLIC 3	// The structures and function pointers, but the function pointers being accessible from outside of the compilation unit.
 
 #endif

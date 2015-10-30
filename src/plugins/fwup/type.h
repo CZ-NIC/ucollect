@@ -17,25 +17,22 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#define PLUGLIB_DO_EXPORT
-#include "test.h"
+#ifndef UCOLLECT_FWUP_TYPE_H
+#define UCOLLECT_FWUP_TYPE_H
 
-#include "../../core/util.h"
+#include <stdint.h>
+#include <stdlib.h>
 
-void hello_world(void) {
-	ulog(LLOG_WARN, "Hello new world!\n");
-}
+struct mem_pool;
 
-struct pluglib *pluglib_info(void) {
-	static struct pluglib_export *exports[] = {
-		&hello_world_export,
-		NULL
-	};
-	static struct pluglib pluglib = {
-		.name = "TestLib",
-		.compat = 1,
-		.version = 2,
-		.exports = exports
-	};
-	return &pluglib;
-}
+typedef const char *(*addr2str_t)(const uint8_t *addr, size_t size, struct mem_pool *pool);
+
+struct set_type {
+	const char *desc;
+	const char *family;
+	addr2str_t addr2str;
+};
+
+extern const struct set_type set_types[256];
+
+#endif

@@ -20,6 +20,9 @@
 #include "filter.h"
 #include "flow.h"
 
+#define PLUGLIB_DO_IMPORT PLUGLIB_PUBLIC
+#include "../../libs/diffstore/diff_store.h"
+
 #include "../../core/plugin.h"
 #include "../../core/context.h"
 #include "../../core/mem_pool.h"
@@ -242,17 +245,17 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 	configure(context, ntohl(config.conf_id), ntohl(config.max_flows), ntohl(config.timeout), ntohl(config.min_packets), data + sizeof config, length - sizeof config);
 }
 
-static void handle_filter_action(struct context *context, enum flow_filter_action action, const char *name, uint32_t epoch, uint32_t old_version, uint32_t new_version) {
+static void handle_filter_action(struct context *context, enum diff_store_action action, const char *name, uint32_t epoch, uint32_t old_version, uint32_t new_version) {
 	switch (action) {
-		case FILTER_UNKNOWN:
-		case FILTER_NO_ACTION:
+		case DIFF_STORE_UNKNOWN:
+		case DIFF_STORE_NO_ACTION:
 			break;
-		case FILTER_CONFIG_RELOAD:
+		case DIFF_STORE_CONFIG_RELOAD:
 			uplink_plugin_send_message(context, "C", 1);
 			break;
-		case FILTER_INCREMENTAL:
-		case FILTER_FULL: {
-			bool full = (action == FILTER_FULL);
+		case DIFF_STORE_INCREMENTAL:
+		case DIFF_STORE_FULL: {
+			bool full = (action == DIFF_STORE_FULL);
 			size_t len = 1 + 1 + sizeof(uint32_t) + strlen(name) + (2 + !full) * sizeof(uint32_t);
 			uint8_t *message = mem_pool_alloc(context->temp_pool, len);
 			uint8_t *pos = message;
@@ -289,18 +292,15 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			data ++;
 			length --;
 			char *name = uplink_parse_string(context->temp_pool, &data, &length);
-			if (!name) {
-				ulog(LLOG_ERROR, "Update message too short to contain filter name\n");
-				abort();
-			}
+			sanity(name, "Update message too short to contain filter name\n");
 			uint32_t epoch = uplink_parse_uint32(&data, &length);
 			uint32_t version = uplink_parse_uint32(&data, &length);
 			if (length)
 				ulog(LLOG_WARN, "Extra data at the end of diff-filter update message (%zu bytes: %s)\n", length, mem_pool_hex(context->temp_pool, data, length));
 			uint32_t orig_version;
 			ulog(LLOG_DEBUG, "Received version update of diff filter %s: %u %u\n", name, epoch, version);
-			enum flow_filter_action action = filter_action(context->user_data->filter, name, epoch, version, &orig_version);
-			if (action == FILTER_UNKNOWN)
+			enum diff_store_action action = filter_action(context->user_data->filter, name, epoch, version, &orig_version);
+			if (action == DIFF_STORE_UNKNOWN)
 				ulog(LLOG_WARN, "Update for unknown filter %s received\n", name);
 			handle_filter_action(context, action, name, epoch, orig_version, version);
 			break;
@@ -330,13 +330,13 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			uint32_t to = uplink_parse_uint32(&data, &length);
 			uint32_t orig_version;
 			ulog(LLOG_DEBUG_VERBOSE, "Length: %zu\n", length);
-			enum flow_filter_action action = filter_diff_apply(context->user_data->conf_pool, context->temp_pool, context->user_data->filter, name, full, epoch, from, to, data, length, &orig_version);
+			enum diff_store_action action = filter_diff_apply(context->temp_pool, context->user_data->filter, name, full, epoch, from, to, data, length, &orig_version);
 			switch (action) {
-				case FILTER_UNKNOWN:
+				case DIFF_STORE_UNKNOWN:
 					ulog(LLOG_WARN, "Diff for unknown filter %s received \n", name);
 					break;
-				case FILTER_INCREMENTAL:
-				case FILTER_FULL:
+				case DIFF_STORE_INCREMENTAL:
+				case DIFF_STORE_FULL:
 					ulog(LLOG_WARN, "Filter %s out of sync, dropping diff\n", name);
 					break;
 				default:;
@@ -350,18 +350,31 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	}
 }
 
+#ifndef STATIC
+unsigned api_version() {
+	return UCOLLECT_PLUGIN_API_VERSION;
+}
+#endif
+
 #ifdef STATIC
 struct plugin *plugin_info_flow(void) {
 #else
 struct plugin *plugin_info(void) {
 #endif
+	static struct pluglib_import *imports[] = {
+		&diff_addr_store_init_import,
+		&diff_addr_store_action_import,
+		&diff_addr_store_apply_import,
+		NULL
+	};
 	static struct plugin plugin = {
 		.packet_callback = packet_handle,
 		.init_callback = initialize,
 		.uplink_connected_callback = connected,
 		.uplink_data_callback = communicate,
 		.name = "Flow",
-		.version = 2
+		.version = 2,
+		.imports = imports
 	};
 	return &plugin;
 }

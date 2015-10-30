@@ -98,13 +98,44 @@ bool uplink_plugin_send_message(struct context *context, const void *data, size_
 // Some parsing & rendering functions
 
 // Get a string from buffer. Returns NULL if badly formatted. The buffer position is updated.
-char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
+char *uplink_parse_string(struct mem_pool *pool, const uint8_t **buffer, size_t *length) __attribute__((nonnull)) __attribute__((malloc));
 // Parses a uint32_t from the buffer. Aborts if not enough data. The buffer position is updated.
 uint32_t uplink_parse_uint32(const uint8_t **buffer, size_t *length) __attribute__((nonnull));
 // Render string to the wire format. Update position and length of buffer.
 void uplink_render_string(const void *string, uint32_t string_len, uint8_t **buffer_pos, size_t *buffer_length) __attribute__((nonnull));
 // Render a uint32_t value to wire formate. Update position and length of the buffer.
 void uplink_render_uint32(uint32_t value, uint8_t **buffer_pol, size_t *buffer_length) __attribute__((nonnull));
+
+/*
+ * Printf/scanf like functions to encode or decode multiple elements.
+ * They take buffer (pointer and length) as reference, updating it as it goes.
+ * Each one takes a format string, describing which elements to read or write.
+ * Each letter there describes one element. In case of parse, each one has
+ * a corresponding data argument passed as reference, and an error message for the case it
+ * can't be read due to insufficient data/space. In case of render, insufficient
+ * buffer size is considered a programmer error, so the error is auto-generated.
+ * Only the element itself is passed (by value).
+ *
+ * The letters are:
+ * s ‒ string (or buffer). This one actually takes two/three parameters ‒ pointer to
+ *     the string and size_t length field. The field may be NULL on parse, in which
+ *     case it is ignored. In case of parse, the memory pool to allocate the string
+ *     from is passed next.
+ * u ‒ uint32_t.
+ * b ‒ bool.
+ * c ‒ char.
+ *
+ * They crash on error, producing the corresponding error message.
+ */
+void uplink_parse(const uint8_t **buffer, size_t *length, const char *format, ...);
+void uplink_render(uint8_t **buffer, size_t *length, const char *format, ...);
+/*
+ * Just like uplink_render, but calculates the needed space and allocates it
+ * from the given memory pool. Adds extra_space bytes to the end.
+ *
+ * Length is stored in length.
+ */
+uint8_t *uplink_render_alloc(size_t *length, size_t extra_space, struct mem_pool *pool, const char *format, ...);
 
 // Is the uplink connected and authenticated right now?
 bool uplink_connected(const struct uplink *uplink);

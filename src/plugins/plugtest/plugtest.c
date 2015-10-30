@@ -21,7 +21,8 @@
 #include "../../core/loop.h"
 #include "../../core/context.h"
 
-PLUGLIB_IMPORT(hello_world, void, void);
+#define PLUGLIB_DO_IMPORT PLUGLIB_LOCAL
+#include "../../libs/test/test.h"
 
 static void timeout(struct context *context, void *data __attribute__((unused)), size_t id __attribute__((unused))) {
 	hello_world();

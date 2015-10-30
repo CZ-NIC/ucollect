@@ -11,6 +11,8 @@ DROP VIEW IF EXISTS fake_blacklist;
 DROP VIEW IF EXISTS plugin_activity;
 DROP VIEW IF EXISTS fake_blacklist_cache_fill;
 DROP TABLE IF EXISTS fake_blacklist_cache;
+DROP TABLE IF EXISTS fwup_addresses;
+DROP TABLE IF EXISTS fwup_sets;
 DROP TABLE IF EXISTS fake_logs;
 DROP TABLE IF EXISTS fake_server_names;
 DROP TABLE IF EXISTS fake_blacklist_limits;
@@ -66,7 +68,7 @@ ALTER TABLE clients ALTER COLUMN id SET DEFAULT NEXTVAL('clients_id');
 CREATE TABLE activity_types (
 	id SMALLINT PRIMARY KEY NOT NULL,
 	name TEXT UNIQUE NOT NULL,
-	plugin TEXT,
+	plugin TEXT
 );
 CREATE SEQUENCE activity_types_ids OWNED BY activity_types.id;
 ALTER TABLE activity_types ALTER COLUMN id SET DEFAULT NEXTVAL('activity_types_ids');
@@ -89,8 +91,7 @@ CREATE TABLE known_plugins (
 	status plugin_status NOT NULL DEFAULT 'allowed',
 	introduced TIMESTAMP NOT NULL DEFAULT NOW(),
 	note TEXT,
-	UNIQUE(name, version, hash),
-	FOREIGN KEY (activity) REFERENCES activities(id)
+	UNIQUE(name, version, hash)
 );
 CREATE INDEX ON known_plugins(name);
 CREATE TABLE active_plugins (
@@ -403,7 +404,7 @@ CREATE TABLE config (
 	value TEXT NOT NULL,
 	UNIQUE(plugin, name)
 );
-INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('flow', 'filter-diff', 'D(addresses)'), ('sniff', 'nat-interval', '3 days'), ('spoof', 'answer_timeout', '60'), ('spoof', 'dest_addr', 'api.turris.cz'), ('spoof', 'src_addr', '192.0.2.1'), ('spoof', 'interval', '1 day'), ('spoof', 'port', '5678');
+INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('flow', 'filter-diff', 'D(addresses)'), ('sniff', 'nat-interval', '3 days'), ('spoof', 'answer_timeout', '60'), ('spoof', 'dest_addr', 'api.turris.cz'), ('spoof', 'src_addr', '192.0.2.1'), ('spoof', 'interval', '1 day'), ('spoof', 'port', '5678'), ('fwup', 'version', '1');
 
 CREATE TABLE flow_filters (
 	filter TEXT NOT NULL,
@@ -412,6 +413,22 @@ CREATE TABLE flow_filters (
 	add BOOL NOT NULL,
 	address TEXT NOT NULL,
 	UNIQUE(filter, epoch, version, address)
+);
+
+CREATE TABLE fwup_sets (
+	name TEXT NOT NULL PRIMARY KEY,
+	type CHAR NOT NULL,
+	maxsize INT NOT NULL,
+	CHECK(maxsize > 0)
+);
+CREATE TABLE fwup_addresses (
+	set TEXT NOT NULL,
+	epoch INT NOT NULL,
+	version INT NOT NULL,
+	add BOOL NOT NULL,
+	address TEXT NOT NULL,
+	UNIQUE(set, epoch, version, address),
+	FOREIGN KEY (set) REFERENCES fwup_sets(name)
 );
 
 CREATE TYPE fake_log_type AS ENUM ('connect', 'disconnect', 'lost', 'extra', 'timeout', 'login');
@@ -650,7 +667,8 @@ GRANT SELECT ON config TO $DBUPDATER;
 GRANT SELECT ON flow_filters TO $DBUPDATER;
 GRANT SELECT ON fake_server_names TO $DBUPDATER;
 GRANT INSERT ON fake_logs TO $DBUPDATER;
-GRANT SELECT ON flow_filters to $DBUPDATER;
+GRANT SELECT ON fwup_sets TO $DBUPDATER;
+GRANT SELECT ON fwup_addresses TO $DBUPDATER;
 GRANT SELECT (batch) ON spoof TO $DBUPDATER;
 GRANT INSERT ON spoof TO $DBUPDATER;
 GRANT INSERT ON refused TO $DBUPDATER;
@@ -698,9 +716,7 @@ GRANT DELETE ON spoof TO $DBCLEANER;
 GRANT DELETE ON refused TO $DBCLEANER;
 GRANT DELETE ON ssh_sessions TO $DBCLEANER;
 GRANT DELETE ON ssh_commands TO $DBCLEANER;
-GRANT SELECT ON fake_blacklist_logs TO $DBCLEANER;
 GRANT SELECT ON fake_logs TO $DBCLEANER;
-ALTER MATERIALIZED VIEW fake_blacklist_cache OWNER TO $DBCLEANER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
@@ -765,7 +781,7 @@ INSERT INTO groups (name) VALUES ('all'), ('ruth');
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups ON groups.name = clients.name;
 INSERT INTO ping_requests (host, proto, amount, size, active) VALUES ('turris.cz', '6', 5, 100, TRUE), ('turris.cz', '4', 5, 100, TRUE), ('8.8.8.8', 'X', 3, 64, TRUE);
-INSERT INTO known_plugins (name) VALUES ('Count'), ('Bandwidth'), ('Fake'), ('Flow'), ('Refused'), ('Sniff'), ('Spoof');
+INSERT INTO known_plugins (name) VALUES ('Count'), ('Bandwidth'), ('Fake'), ('Flow'), ('Refused'), ('Sniff'), ('Spoof'), ('FWUp');
 COMMIT;
 ENDSQL
 else

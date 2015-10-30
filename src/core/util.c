@@ -90,3 +90,16 @@ void sanity_internal(const char *file, unsigned line, const char *check, const c
 	ulog(LLOG_ERROR, "%s:%u: Failed check '%s': %s", file, line, check, output);
 	abort();
 }
+
+void abort_safe(void) {
+	// Disable catching the signal first.
+	struct sigaction sa = {
+		.sa_handler = SIG_DFL
+	};
+	sigaction(SIGABRT, &sa, NULL);
+	abort();
+	// Couldn't commit suicide yet? Try exit.
+	exit(1);
+	// Still nothing?
+	kill(getpid(), SIGKILL);
+}

@@ -11,6 +11,7 @@ UCOLLECT_PLUGINS:= \
 	spoof \
 	refused \
 	fake \
-	plugtest
+	plugtest \
+	fwup
 
 include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,$(UCOLLECT_PLUGINS))
