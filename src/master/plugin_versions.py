@@ -17,12 +17,12 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet.task import LoopingCall
 from twisted.internet import reactor
 import collections
 import weakref
 import time
 import database
+import timers
 
 __cache = collections.defaultdict(set)
 __cache_time = 0
@@ -100,5 +100,4 @@ def __time_check():
 	if __update_cache():
 		__propagate_now()
 
-checker = LoopingCall(__time_check)
-checker.start(300) # Once every 5 minutes
+checker = timers.timer(__time_check, 300, False)

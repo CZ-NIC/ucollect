@@ -49,7 +49,7 @@ class __CursorContext:
 		if self.__depth:
 			return # Didn't exit all the contexts yet
 		if exc_type:
-			logger.debug('Rollback of transaction %s:%s/%s/%s', self, exc_type, exc_val, traceback.format_tb(exc_tb))
+			logger.error('Rollback of transaction %s:%s/%s/%s', self, exc_type, exc_val, traceback.format_tb(exc_tb))
 			self.__connection.rollback()
 		else:
 			logger.debug('Commit of transaction %s', self)

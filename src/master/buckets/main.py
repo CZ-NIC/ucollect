@@ -17,7 +17,6 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet.task import LoopingCall
 from twisted.internet import reactor, threads
 from twisted.python.failure import Failure
 import time
@@ -26,6 +25,7 @@ import socket
 import logging
 import importlib
 import re
+import timers
 
 import database
 import activity
@@ -94,8 +94,7 @@ class BucketsPlugin(plugin.Plugin):
 		self.__max_timeslots = int(float(config['max_timeslots']))
 		# Just an arbitrary number
 		self.__seed = 872945724987
-		self.__downloader = LoopingCall(self.__init_download)
-		self.__downloader.start(int(config['interval']), False)
+		self.__downloader = timers.timer(self.__init_download, int(config['interval'], False))
 		# We are just gathering data between these two time stamps
 		self.__lower_time = 0
 		self.__upper_time = 0

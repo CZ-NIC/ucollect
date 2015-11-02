@@ -17,13 +17,13 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet.task import LoopingCall
 from twisted.internet import reactor
 import logging
 import struct
 import re
 import importlib
 import random
+import timers
 
 import plugin
 
@@ -47,8 +47,7 @@ class SniffPlugin(plugin.Plugin):
 		self.__task_timeout = int(config['task_timeout']) * 60
 		self.__start_interval = int(config['start_interval'])
 		interval = int(config['interval']) * 60
-		self.__checker = LoopingCall(self.__check_schedules)
-		self.__checker.start(interval, False)
+		self.__checker = timers.timer(self.__check_schedules, interval, False)
 		self.__connected = plugins.get_clients # Store function to get list of clients
 		self.__active_tasks = {}
 		self.__last_id = 0
@@ -122,8 +121,8 @@ class SniffPlugin(plugin.Plugin):
 		task.task_id = task_id
 		self.__active_tasks[task_id] = task
 		logger.info("Starting task %s as id %s", task.name(), task_id)
-		task.starter = LoopingCall(lambda: self.__send_to_client(task))
-		task.starter.start(self.__start_interval, True)
+		task.starter = timers.timer(lambda: self.__send_to_client(task), self.__start_interval, False)
+		self.__send_to_client(task)
 		self.__check_finished(task) # In case we have no clients connected now, we just finished it.
 
 	def __check_schedules(self):

@@ -17,10 +17,10 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet.task import LoopingCall
 import database
 import socket
 import struct
+import timers
 from protocol import extract_string
 
 def addr_convert(address, logger):
@@ -99,8 +99,7 @@ class DiffAddrStore:
 		self._conf = {}
 		self._addresses = {}
 		self.__cache = {} # Reset whenever the DB contains something new.
-		self.__conf_checker = LoopingCall(self.__check_conf)
-		self.__conf_checker.start(60, True)
+		self.__conf_checker = timers.timer(self.__check_conf, 60, True)
 
 	def __check_conf(self):
 		self.__logger.trace("Checking %s configs", self.__plugname)

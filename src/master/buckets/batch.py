@@ -17,11 +17,11 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet.task import LoopingCall
 from twisted.internet import threads, reactor
 from twisted.python.failure import Failure
 import logging
 import plugin
+import timers
 
 logger = logging.getLogger(name='buckets')
 
@@ -69,5 +69,4 @@ def submit(f, callback, *args):
 	if len(__batch) >= __limit:
 		flush()
 
-flusher = LoopingCall(flush)
-flusher.start(2, False)
+flusher = timers.timer(flush, 2, False)

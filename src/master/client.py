@@ -17,7 +17,6 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet.task import LoopingCall
 from twisted.internet import reactor
 import twisted.internet.protocol
 import twisted.protocols.basic
@@ -30,6 +29,7 @@ import auth
 import time
 import plugin_versions
 import database
+import timers
 
 logger = logging.getLogger(name='client')
 sysrand = random.SystemRandom()
@@ -174,12 +174,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 							# Please tell me when there're changes to the allowed plugins
 							plugin_versions.add_client(self)
 						self.__logged_in = True
-						self.__pinger = LoopingCall(self.__ping)
-						if self.cid() in self.__fastpings:
-							logger.info('Doing fast pings for %s', self.cid())
-							self.__pinger.start(45, False)
-						else:
-							self.__pinger.start(120, False)
+						self.__pinger = timers.timer(self.__ping, 45 if self.cid() in self.__fastpings else 120, False)
 						activity.log_activity(self.cid(), "login")
 						logger.info('Client %s logged in', self.cid())
 					else:

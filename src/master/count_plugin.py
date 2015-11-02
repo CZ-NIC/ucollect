@@ -17,7 +17,6 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet.task import LoopingCall
 from twisted.internet import reactor
 import struct
 import plugin
@@ -25,6 +24,7 @@ import time
 import logging
 import database
 import activity
+import timers
 
 logger = logging.getLogger(name='count')
 
@@ -73,8 +73,7 @@ class CountPlugin(plugin.Plugin):
 		plugin.Plugin.__init__(self, plugins)
 		self.__interval = int(config['interval'])
 		self.__aggregate_delay = int(config['aggregate_delay'])
-		self.__downloader = LoopingCall(self.__init_download)
-		self.__downloader.start(self.__interval, False)
+		self.__downloader = timers.timer(self.__init_download, self.__interval, False)
 		self.__data = {}
 		self.__stats = {}
 		self.__last = int(time.time())

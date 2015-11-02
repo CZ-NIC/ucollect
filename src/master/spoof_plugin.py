@@ -17,7 +17,6 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from twisted.internet.task import LoopingCall
 from twisted.internet import reactor
 import twisted.internet.protocol
 import plugin
@@ -27,6 +26,7 @@ import logging
 import socket
 import struct
 import random
+import timers
 
 logger = logging.getLogger(name='spoof')
 
@@ -89,8 +89,7 @@ class SpoofPlugin(plugin.Plugin):
 		self.__reload_config()
 		self.__receiver = UDPReceiver(self)
 		reactor.listenUDP(self.__port, self.__receiver)
-		self.__check_timer = LoopingCall(self.__check)
-		self.__check_timer.start(300, False)
+		self.__check_timer = timers.timer(self.__check, 300, False)
 		self.__sent = None
 		self.__batch = None
 		self.__prefix = None
