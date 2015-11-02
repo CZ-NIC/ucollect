@@ -264,7 +264,7 @@ class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 		elif message[0] == 'D':
 			logger.debug('Flows from %s', client)
 			activity.log_activity(client, 'flow')
-			reactor.callInThread(store_flows, client, message[1:], int(self.__config['version']), database.now())
+			reactor.callInThread(store_flows, client, message[1:], int(self._conf['version']), database.now())
 		elif message[0] == 'U':
 			self._provide_diff(message[1:], client)
 
