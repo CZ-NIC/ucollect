@@ -450,7 +450,7 @@ struct plugin *plugin_info(void) {
 		NULL
 	};
 	static struct plugin plugin = {
-		.name = "FWUp",
+		.name = "Fwup",
 		.version = 1,
 		.init_callback = initialize,
 		.uplink_data_callback = communicate,

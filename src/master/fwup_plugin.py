@@ -70,4 +70,4 @@ class FWUpPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 			logger.warn('Unknown message opcode %s', message[0])
 
 	def name(self):
-		return 'FWUp'
+		return 'Fwup'
