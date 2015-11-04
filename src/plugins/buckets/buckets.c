@@ -438,7 +438,11 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 			}
 			return;
 		case 'K': // Send keys
-			sanity(context->user_data->initialized, "Asked to send keys before initialization\n"); // The server should track who it asks
+			if (!context->user_data->initialized) {
+				// This can happen on reconnect, for example, when we lost the config.
+				ulog(LLOG_WARN, "Asked to send bucket keys before initialization\n");
+				return;
+			}
 			provide_keys(context, data + 1, length - 1);
 			return;
 		default:
