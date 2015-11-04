@@ -35,6 +35,7 @@
 #include <string.h> // Why is memcpy in string?
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <inttypes.h>
 
@@ -86,6 +87,11 @@ static const int signals[] = {
 
 static void chld_handler(int unused) {
 	(void) unused;
+	/*
+	 * The children are polled repeatedly whenever the loop turns. We
+	 * just need a handler to receive the signal (and interrupt epoll_pwait)
+	 * and get the zombie.
+	 */
 }
 
 static void signal_initialize(void) {
@@ -99,7 +105,7 @@ static void signal_initialize(void) {
 			die("Sigaction failed for signal %d: %s\n", signals[i], strerror(errno));
 	struct sigaction chld_action = {
 		.sa_handler = chld_handler,
-		.sa_flags = SA_NOCLDSTOP | SA_NOCLDWAIT | SA_NODEFER
+		.sa_flags = SA_NOCLDSTOP
 	};
 	if (sigaction(SIGCHLD, &chld_action, NULL) == -1)
 		die("Can't set action for SIGCHLD: %s\n", strerror(errno));
@@ -303,6 +309,7 @@ GEN_CALL_WRAPPER_PARAM(packet, const struct packet_info *)
 GEN_CALL_WRAPPER_PARAM_2(uplink_data, const uint8_t *, size_t)
 GEN_CALL_WRAPPER_PARAM_2(fd, int, void *)
 GEN_CALL_WRAPPER_PARAM(config_finish, bool)
+GEN_CALL_WRAPPER_PARAM_2(child_died, int, pid_t)
 
 static char *gdb_command;
 static volatile sig_atomic_t in_signal = 0;
@@ -611,7 +618,9 @@ static int blocked_signals[] = {
 	SIGTERM,
 	// Reconfiguration
 	SIGHUP,
-	SIGUSR1
+	SIGUSR1,
+	// Children died
+	SIGCHLD
 };
 
 // Not thread safe, not even reentrant :-(
@@ -783,6 +792,33 @@ void loop_run(struct loop *loop) {
 			}
 			goto REINIT;
 		}
+		/*
+		 * Handle dead children. Or, one child. If it is there, retry the loop,
+		 * as the handler may have done something to the timers or file descriptors.
+		 *
+		 * Note that the epoll_pwait would either terminate before the child died, in
+		 * which case we get it here anyway, or it would be interrupted by the SIGCHLD.
+		 * And, even if it wasn't, the child would be picked up eventually anyway.
+		 */
+		int child_state;
+		pid_t child = waitpid(-1, &child_state, WNOHANG);
+		if (child > 0) {
+			ulog(LLOG_DEBUG, "Child %d terminated, status %d\n", (int)child, child_state);
+			LFOR(plugin, plugin, &loop->plugins)
+				if (plugin->api_version >= 2)
+					plugin_child_died(plugin, child_state, child);
+			continue; // The child handler may have manipulated the things here. Get new set of events.
+		} else if (child < 0) {
+			switch (errno) {
+				case ECHILD:
+					break; // That's OK, no children.
+				case EINTR: // This shouldn't happen with WNOHANG, but try again anyway.
+					ulog(LLOG_WARN, "Wait interrupted\n");
+					break;
+				default:
+					die("Error at wait: %s\n", strerror(errno));
+			}
+		} // 0 -> there are some children, but they are still alive
 		// Handle timeouts.
 		bool timeouts_called = false;
 		while (loop->timeout_count && loop->timeouts[0].when <= loop->now) {
