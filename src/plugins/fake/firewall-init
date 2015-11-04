@@ -100,11 +100,14 @@ initialize() {
 	$COMMAND -t nat -E ucollect_fake_new ucollect_fake
 	$COMMAND -t nat -A PREROUTING -j ucollect_fake
 
+	$COMMAND -D turris-log-incoming -j ucollect_fake >/dev/null 2>&1
+	# Remove it from the old chain it was in the previous version as well. Just in case it is still there.
 	$COMMAND -D reject -j ucollect_fake >/dev/null 2>&1
 	$COMMAND -F ucollect_fake >/dev/null 2>&1
 	$COMMAND -X ucollect_fake >/dev/null 2>&1
 	$COMMAND -E ucollect_fake_new ucollect_fake
-	$COMMAND -I reject 2 -j ucollect_fake
+	# We place it in the turris-log-incoming. These are the packets that are just left as incoming without being explicitly allowed and would be either dropped or rejected. But they are not explicitly rejected by an IPset iether, which would mean we don't want them at all.
+	$COMMAND -I turris-log-incoming 2 -j ucollect_fake
 
 	$COMMAND -D delegate_input -j ucollect_fake_accept >/dev/null 2>&1
 	$COMMAND -F ucollect_fake_accept >/dev/null 2>&1
