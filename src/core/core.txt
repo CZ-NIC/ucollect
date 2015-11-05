@@ -112,10 +112,16 @@ config_check_callback:: When ucollect is loading new configuration, it
 config_finish_callback:: According to parameter, either start using
   the new configuration previously scanned by `config_check_callback`,
   or forget it existed.
+child_died_callback:: A callback that's called whenever a child
+  of ucollect terminates. It is called even for children not created
+  by the plugin. The child's pid and exit status from `wait()` is
+  included.
 
 Furthermore, a plugin may declare its API version, by providing a
 function `api_version`, retuning an unsigned number. If none is
-provided, the API version is considered 0.
+provided, the API version is considered 0. The core defines the
+highest API version declared at the time of compilation in
+`UCOLLECT_PLUGIN_API_VERSION`.
 
 Plugin libraries
 ----------------

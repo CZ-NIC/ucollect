@@ -31,20 +31,26 @@
 #include <time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #define QUEUE_FLUSH_TIME 5000
+#define QUEUE_RETRY_TIME 2000
 
 struct queue {
 	bool active, timeout_started;
+	bool broken;
+	bool broken_timeout_id;
 	int ipset_pipe;
 	pid_t pid;
 	size_t timeout_id;
+	reload_callback_t reload_callback;
 };
 
-struct queue *queue_alloc(struct context *context) {
+struct queue *queue_alloc(struct context *context, reload_callback_t reload_callback) {
 	struct queue *result = mem_pool_alloc(context->permanent_pool, sizeof *result);
 	*result = (struct queue) {
-		.active = false
+		.reload_callback = reload_callback
 	};
 	return result;
 }
@@ -88,20 +94,50 @@ static void start(struct context *context, struct queue *queue) {
 	}
 }
 
+static void retry_timeout(struct context *context, void *data, size_t id __attribute__((unused))) {
+	struct queue *queue = data;
+	sanity(!queue->timeout_started, "Timeout started and retry timeout fired\n");
+	ulog(LLOG_WARN, "Trying to re-fill IPsets now\n");
+	// Leave the broken state and retry filling the ipsets
+	queue->broken = false;
+	queue->broken_timeout_id = 0;
+	sanity(queue->reload_callback, "The reload callback is NULL\n");
+	queue->reload_callback(context);
+}
+
 static void lost(struct context *context, struct queue *queue, bool error) {
-	sanity(queue->active, "Lost inactive queue\n");
-	if (error)
-		ulog(LLOG_WARN, "Lost connection to ipset command %d, data may be out of sync\n", queue->pid);
-	else
-		ulog(LLOG_DEBUG, "Closing ipset subcommand\n");
-	loop_plugin_unregister_fd(context, queue->ipset_pipe);
-	sanity(close(queue->ipset_pipe) == 0, "Error closing the ipset pipe: %s\n", strerror(errno));
-	queue->ipset_pipe = 0;
-	queue->active = false;
-	queue->pid = 0;
-	if (queue->timeout_started) {
-		queue->timeout_started = false;
-		loop_timeout_cancel(context->loop, queue->timeout_id);
+	if (queue->broken)
+		// Already lost, don't do it again.
+		return;
+	/*
+	 * In case we got EOF before and errorenous termination of the command later,
+	 * we need not to deactivate, close the pipe and such. But we still
+	 * want to mark it as broken, start the retry timeout and re-synchronize.
+	 *
+	 * If the termination comes sooner than EOF (which is likely, but probably not
+	 * guaranteed), then we mark it broken & inactive in one go and will not
+	 * enter the routine once again.
+	 */
+	if (queue->active) {
+		// Deactivate
+		if (error)
+			ulog(LLOG_WARN, "Lost connection to ipset command %d, data may be out of sync\n", queue->pid);
+		else
+			ulog(LLOG_DEBUG, "Closing ipset subcommand\n");
+		loop_plugin_unregister_fd(context, queue->ipset_pipe);
+		sanity(close(queue->ipset_pipe) == 0, "Error closing the ipset pipe: %s\n", strerror(errno));
+		queue->ipset_pipe = 0;
+		queue->active = false;
+		queue->pid = 0;
+		if (queue->timeout_started) {
+			queue->timeout_started = false;
+			loop_timeout_cancel(context->loop, queue->timeout_id);
+		}
+	} else if (error)
+		ulog(LLOG_WARN, "IPset command considered broken post-morten\n");
+	if (error) {
+		queue->broken = true;
+		queue->broken_timeout_id = loop_timeout_add(context->loop, QUEUE_RETRY_TIME, context, queue, retry_timeout);
 	}
 }
 
@@ -112,6 +148,10 @@ static void flush_timeout(struct context *context, void *data, size_t id __attri
 }
 
 void enqueue(struct context *context, struct queue *queue, const char *command) {
+	if (queue->broken) {
+		ulog(LLOG_DEBUG_VERBOSE, "Not queueing command '%s', the queue is currently broken\n", command);
+		return;
+	}
 	if (!queue->active)
 		start(context, queue);
 	sanity(queue->active, "Failed to start the queue\n");
@@ -194,4 +234,26 @@ void queue_fd_data(struct context *context, int fd, void *userdata) {
 			ulog(LLOG_WARN, "IPSet output: %s\n", err_msg);
 			return;
 	}
+}
+
+void queue_child_died(struct context *context, int state, pid_t child, struct queue *queue) {
+	if (!queue->active)
+		return;		// It can't be our child, no queue is currently active
+	if (queue->pid != child)
+		return;		// Not our child, something else died
+	bool broken = true;
+	if (WIFEXITED(state)) {
+		int ecode = WEXITSTATUS(state);
+		if (ecode != 0)
+			ulog(LLOG_ERROR, "The ipset command %d terminated with status %d\n", (int)child, ecode);
+		else {
+			ulog(LLOG_DEBUG, "The ipset command %d terminated successfully\n", (int)child);
+			broken = false;
+		}
+	} else if (WIFSIGNALED(state)) {
+		int signal = WTERMSIG(state);
+		ulog(LLOG_ERROR, "The ipset command %d terminated with signal %d\n", (int)child, signal);
+	} else
+		ulog(LLOG_ERROR, "The ipset command %d died for unknown reason, call the police to investigate\n", (int)child);
+	lost(context, queue, broken);
 }

@@ -68,17 +68,6 @@ static void connected(struct context *context) {
 	uplink_plugin_send_message(context, "C", 1);
 }
 
-static void initialize(struct context *context) {
-	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
-	*u = (struct user_data) {
-		.conf_pool = loop_pool_create(context->loop, context, "FWUp set pool 1"),
-		.standby_pool = loop_pool_create(context->loop, context, "FWUp set pool 2"),
-		.queue = queue_alloc(context)
-	};
-	// Ask for config, if already connected (unlikely, but then, the message will get blackholed).
-	connected(context);
-}
-
 struct config {
 	uint32_t version;
 	uint32_t set_count;
@@ -438,6 +427,22 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	}
 }
 
+static void child_died(struct context *context, int state, pid_t pid) {
+	sanity(context->user_data->queue, "Missing the ipset queue\n");
+	queue_child_died(context, state, pid, context->user_data->queue);
+}
+
+static void initialize(struct context *context) {
+	struct user_data *u = context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
+	*u = (struct user_data) {
+		.conf_pool = loop_pool_create(context->loop, context, "FWUp set pool 1"),
+		.standby_pool = loop_pool_create(context->loop, context, "FWUp set pool 2"),
+		.queue = queue_alloc(context, sets_reload)
+	};
+	// Ask for config, if already connected (unlikely, but then, the message will get blackholed).
+	connected(context);
+}
+
 #ifdef STATIC
 #error "FWUp is not ready for static linkage. Nobody needed it."
 #else
@@ -456,6 +461,7 @@ struct plugin *plugin_info(void) {
 		.uplink_data_callback = communicate,
 		.uplink_connected_callback = connected,
 		.fd_callback = queue_fd_data,
+		.child_died_callback = child_died,
 		.imports = imports
 	};
 	return &plugin;

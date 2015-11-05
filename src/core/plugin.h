@@ -23,6 +23,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #include "pluglib.h"
 
@@ -54,8 +55,11 @@ struct plugin {
 	/* ----- The below things are available only from API version 1 and above ----- */
 	// Functions imported from plugin libraries
 	struct pluglib_import **imports;
+	/* ----- The below things are available only from API version 2 and above ----- */
+	// Broadcasted when a child of ucollect dies. It may belong to other plugin, for example. The state is one from the wait() function.
+	void (*child_died_callback)(struct context *context, int state, pid_t child);
 };
 
-#define UCOLLECT_PLUGIN_API_VERSION 1
+#define UCOLLECT_PLUGIN_API_VERSION 2
 
 #endif
