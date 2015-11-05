@@ -20,6 +20,8 @@
 #ifndef UCOLLECT_FWUP_QUEUE_H
 #define UCOLLECT_FWUP_QUEUE_H
 
+#include <unistd.h>
+
 struct queue;
 
 struct context;
@@ -54,5 +56,11 @@ void queue_flush(struct context *context, struct queue *queue) __attribute__((no
  * Callback for when there are data on our FD.
  */
 void queue_fd_data(struct context *context, int fd, void *userdata) __attribute__((nonnull));
+
+/*
+ * Callback when some child of ucollect dies. Examines it to see if it
+ * is the ipset command and if so, if it terminated with error or successfully.
+ */
+void queue_child_died(struct context *context, int status, pid_t pid, struct queue *queue) __attribute__((nonnull));
 
 #endif

@@ -438,6 +438,11 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	}
 }
 
+static void child_died(struct context *context, int state, pid_t pid) {
+	sanity(context->user_data->queue, "Missing the ipset queue\n");
+	queue_child_died(context, state, pid, context->user_data->queue);
+}
+
 #ifdef STATIC
 #error "FWUp is not ready for static linkage. Nobody needed it."
 #else
@@ -456,6 +461,7 @@ struct plugin *plugin_info(void) {
 		.uplink_data_callback = communicate,
 		.uplink_connected_callback = connected,
 		.fd_callback = queue_fd_data,
+		.child_died_callback = child_died,
 		.imports = imports
 	};
 	return &plugin;

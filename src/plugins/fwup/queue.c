@@ -31,6 +31,8 @@
 #include <time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #define QUEUE_FLUSH_TIME 5000
 
@@ -194,4 +196,26 @@ void queue_fd_data(struct context *context, int fd, void *userdata) {
 			ulog(LLOG_WARN, "IPSet output: %s\n", err_msg);
 			return;
 	}
+}
+
+void queue_child_died(struct context *context, int state, pid_t child, struct queue *queue) {
+	if (!queue->active)
+		return;		// It can't be our child, no queue is currently active
+	if (queue->pid != child)
+		return;		// Not our child, something else died
+	bool broken = true;
+	if (WIFEXITED(state)) {
+		int ecode = WEXITSTATUS(state);
+		if (ecode != 0)
+			ulog(LLOG_ERROR, "The ipset command %d terminated with status %d\n", (int)child, ecode);
+		else {
+			ulog(LLOG_DEBUG, "The ipset command %d terminated successfully\n", (int)child);
+			broken = false;
+		}
+	} else if (WIFSIGNALED(state)) {
+		int signal = WTERMSIG(state);
+		ulog(LLOG_ERROR, "The ipset command %d terminated with signal %d\n", (int)child, signal);
+	} else
+		ulog(LLOG_ERROR, "The ipset command %d died for unknown reason, call the police to investigate\n", (int)child);
+	lost(context, queue, broken);
 }
