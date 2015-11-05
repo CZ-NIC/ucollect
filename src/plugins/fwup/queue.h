@@ -26,6 +26,8 @@ struct queue;
 
 struct context;
 
+typedef void (*reload_callback_t)(struct context *context);
+
 /*
  * Create a queue for the commands. It will manage
  * running the ipset command and feed commands to it.
@@ -37,8 +39,12 @@ struct context;
  * The ipset command is launched on-demand when data are
  * set to it. It is stopped either by explicit flush or
  * by a short timeout.
+ *
+ * The reload callback is used whenever the ipset command dies
+ * with an error. The queue is disabled for a while and after
+ * a short time, it is retried.
  */
-struct queue *queue_alloc(struct context *context) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
+struct queue *queue_alloc(struct context *context, reload_callback_t reload_callback) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
 /*
  * Enqueue another command. The ipset command is launched
  * or previous one is reused. Due to internal OS buffering,
