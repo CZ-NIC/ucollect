@@ -60,6 +60,6 @@ struct plugin {
 	void (*child_died_callback)(struct context *context, int state, pid_t child);
 };
 
-#define UCOLLECT_PLUGIN_API_VERSION 1
+#define UCOLLECT_PLUGIN_API_VERSION 2
 
 #endif
