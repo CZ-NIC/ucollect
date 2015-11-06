@@ -773,6 +773,15 @@ void loop_run(struct loop *loop) {
 		alarm(0); // The epoll_wait can run forever
 		int ready = epoll_pwait(loop->epoll_fd, events, MAX_EVENTS, wait_time, &original_mask);
 		alarm(60); // But catch any infinite loops in the processing (60 seconds should be enough)
+		bool epoll_interrupted = false;
+		if (ready == -1) {
+			if (errno == EINTR) {
+				ulog(LLOG_WARN, "epoll_wait on %d interrupted, retry\n", loop->epoll_fd);
+				epoll_interrupted = true;
+				// Do the retry after reading children. It might have been interrupted because of that.
+			} else
+				die("epoll_wait on %d failed: %s\n", loop->epoll_fd, strerror(errno));
+		}
 		loop_get_now(loop);
 		loop->fd_invalidated = false;
 		if (loop->reconfigure) { // We are asked to reconfigure
@@ -819,6 +828,8 @@ void loop_run(struct loop *loop) {
 					die("Error at wait: %s\n", strerror(errno));
 			}
 		} // 0 -> there are some children, but they are still alive
+		if (epoll_interrupted)
+			continue; // Do the retry of epoll
 		// Handle timeouts.
 		bool timeouts_called = false;
 		while (loop->timeout_count && loop->timeouts[0].when <= loop->now) {
@@ -834,13 +845,7 @@ void loop_run(struct loop *loop) {
 			timeouts_called = true;
 		}
 		// Handle events from epoll
-		if (ready == -1) {
-			if (errno == EINTR) {
-				ulog(LLOG_WARN, "epoll_wait on %d interrupted, retry\n", loop->epoll_fd);
-				continue;
-			}
-			die("epoll_wait on %d failed: %s\n", loop->epoll_fd, strerror(errno));
-		} else if (!ready && !timeouts_called) {
+		if (!ready && !timeouts_called) {
 			// This is strange. We wait for 1 event idefinitelly and get 0
 			ulog(LLOG_WARN, "epoll_wait on %d returned 0 events and 0 timeouts\n", loop->epoll_fd);
 		} else if (!timeouts_called) { // In case some timeouts happened, get new events. The timeouts could have manipulated existing file descriptors and what we have might be invalid.
