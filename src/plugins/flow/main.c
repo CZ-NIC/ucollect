@@ -137,14 +137,19 @@ static void schedule_timeout(struct context *context) {
 static void configure(struct context *context, uint32_t conf_id, uint32_t max_flows, uint32_t timeout, uint32_t min_packets, const uint8_t *filter_desc, size_t filter_size) {
 	ulog(LLOG_INFO, "Received configuration %u (max. %u flows, %u ms timeout)\n", (unsigned)conf_id, (unsigned)max_flows, (unsigned)timeout);
 	struct user_data *u = context->user_data;
-	if (u->configured && u->conf_id != conf_id) {
-		ulog(LLOG_DEBUG, "Replacing old configuration\n");
-		// Switching configuration, so flush the old data
-		flush(context, true);
-		sanity(u->timeout_scheduled, "Missing timeout after flush\n");
-		loop_timeout_cancel(context->loop, u->timeout_id);
-		u->timeout_scheduled = false;
-		mem_pool_reset(u->conf_pool);
+	if (u->configured) {
+		if (u->conf_id != conf_id) {
+			ulog(LLOG_DEBUG, "Replacing old configuration\n");
+			// Switching configuration, so flush the old data
+			flush(context, true);
+			sanity(u->timeout_scheduled, "Missing timeout after flush\n");
+			loop_timeout_cancel(context->loop, u->timeout_id);
+			u->timeout_scheduled = false;
+			mem_pool_reset(u->conf_pool);
+		} else {
+			ulog(LLOG_DEBUG, "Ignoring the same flow config\n");
+			return;
+		}
 	}
 	u->conf_id = conf_id;
 	u->max_flows = max_flows;
