@@ -34,6 +34,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+#include <endian.h>
 
 // A double-linked list to store the keys we work with atm.
 struct key_candidate {

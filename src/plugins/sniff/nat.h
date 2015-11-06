@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 struct task_data;
 struct context;
