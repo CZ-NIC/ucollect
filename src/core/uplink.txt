@@ -124,3 +124,9 @@ which means the login failed.
 
 Any of the above commands from above are forbidden before the
 authentication step is complete.
+
+During the authentication phase, the client may send an `S` message,
+followed by a 4-byte integer. The integer is a session ID which serves
+to distinguish  a reconnect of the same client from the situation when
+two instances on the same client machine fight over the connection.
+Currently, the PID of the client is used.
