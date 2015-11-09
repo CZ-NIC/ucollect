@@ -287,23 +287,22 @@ static void handle_event(struct context *context, enum event_type type, char nak
 	memcpy(key, addr, addr_len);
 	memcpy(key + addr_len, &loc_port, sizeof loc_port);
 	memcpy(key + addr_len + sizeof loc_port, &rem_port, sizeof rem_port);
-	// Look if the item exists there
-	struct trie_data **node = trie_index(u->connections, key, key_len);
-	if (!*node) { // First access to that thing, create it
+	// Look if the item exists there. Read-only access at first.
+	struct trie_data *d = trie_lookup(u->connections, key, key_len);
+	if (!d) { // First access to that thing, create it
 		assert(type != EVENT_TIMEOUT); // Only existing items may time out
 		if (u->undecided >= u->undecided_limit) {
 			ulog(LLOG_ERROR, "Too many undecided connections, dropping\n");
 			return;
 		}
 		u->undecided ++;
-		struct trie_data *d = *node = timeout_append_pool(u, u->active_pool);
+		d = *trie_index(u->connections, key, key_len) = timeout_append_pool(u, u->active_pool);
 		d->time = loop_now(context->loop);
 		d->completed = false;
 		d->transmitted = false;
 		d->v6 = v6;
 		memset(d->events, 0, sizeof d->events);
 	}
-	struct trie_data *d = *node;
 	if (d->completed) {
 		ulog(LLOG_DEBUG, "Seen event on decided packet %u->(%s):%u\n", (unsigned)loc_port, mem_pool_hex(context->temp_pool, addr, addr_len), (unsigned)rem_port);
 		return;
