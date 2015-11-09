@@ -171,6 +171,8 @@ class Plugins:
 			if self.__clients[client.cid()].last_pong + 900 < time.time():
 				# The client seems connected, but it didn't pong for really long time, kill it
 				logger.warn('Stray connection from %s, dropping old connection', client.cid())
+			if client.session_id is not None and self.__clients[client.cid()].session_id == client.session_id:
+				logger.warn('Taking over previous connection from session %s on client %s', client.session_id, client.cid())
 			else:
 				logger.warn("%s already connected, dropping connection", client.cid())
 				return False

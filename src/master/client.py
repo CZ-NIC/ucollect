@@ -66,6 +66,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__plugin_versions = {}
 		self.MAX_LENGTH = 1024 * 1024 * 1024 # A gigabyte should be enough
 		self.last_pong = time.time()
+		self.session_id = None
 
 	def has_plugin(self, plugin_name):
 		return plugin_name in self.__available_plugins
@@ -182,6 +183,12 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				else:
 					login_failure('Asked for session before loging in')
 					return
+			elif msg == 'S':
+				if len(params) != 4:
+					logger.warn("Wrong session ID length on client %s: %s", self.cid(), len(params))
+					return
+				(self.session_id,) = struct.unpack("!I", params)
+				logger.debug("Client %s uses session ID %s", self.cid(), self.session_id)
 			return
 		elif msg == 'P': # Ping. Answer pong.
 			self.sendString('p' + params)

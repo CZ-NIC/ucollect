@@ -706,6 +706,11 @@ static void handle_buffer(struct uplink *uplink) {
 					uplink->auth_status = AUTHENTICATED; // We are authenticated if the server writes to us
 			} else {
 				if (command == 'C' && uplink->auth_status == NOT_STARTED) {
+					// The server is sending a challenge.
+					// We send a „sesssion ID“ ‒ our PID. This way, the server will know if it's the same process reconnecting and drop the old connection sooner.
+					ulog(LLOG_DEBUG, "Sending session ID\n");
+					uint32_t sid = htonl(getpid());
+					uplink_send_message(uplink, 'S', &sid, sizeof sid);
 					ulog(LLOG_DEBUG, "Sending login info\n");
 					// Prepare data
 #define HALF_SIZE 16
