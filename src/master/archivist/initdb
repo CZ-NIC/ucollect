@@ -143,7 +143,7 @@ CREATE TABLE activities (
 	date DATE NOT NULL,
 	activity SMALLINT NOT NULL,
 	client INTEGER NOT NULL,
-	count SMALLINT NOT NULL,
+	count INTEGER NOT NULL,
 	FOREIGN KEY (activity) REFERENCES activity_types(id) ON DELETE CASCADE,
 	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
 	CHECK(count >= 0)
