@@ -419,6 +419,7 @@ CREATE TABLE fwup_sets (
 	name TEXT NOT NULL PRIMARY KEY,
 	type CHAR NOT NULL,
 	maxsize INT NOT NULL,
+	hashsize INT NOT NULL,
 	CHECK(maxsize > 0)
 );
 CREATE TABLE fwup_addresses (

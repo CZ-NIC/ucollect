@@ -49,7 +49,7 @@ struct set {
 	const char *tmp_name;
 	enum set_state state;
 	const struct set_type *type;
-	size_t max_size;
+	size_t max_size, hash_size;
 	struct diff_addr_store *store;
 	struct context *context; // Filled in before each call on a function manipulating the set. It is needed inside the hooks.
 };
@@ -103,7 +103,7 @@ static void replace_start(struct diff_addr_store *store) {
 	struct mem_pool *tmp_pool = set->context->temp_pool;
 	// It is OK to allocate the data from the temporary memory pool. It's lifetime is at least the length of call to the plugin communication callback, and the whole set replacement happens there.
 	set->tmp_name = mem_pool_printf(tmp_pool, "%s-replace", set->name);
-	enqueue(set->context, set->context->user_data->queue, mem_pool_printf(tmp_pool, "create %s %s family %s maxelem %zu\n", set->tmp_name, set->type->desc, set->type->family, set->max_size));
+	enqueue(set->context, set->context->user_data->queue, mem_pool_printf(tmp_pool, "create %s %s family %s hashsize %zu maxelem %zu\n", set->tmp_name, set->type->desc, set->type->family, set->hash_size, set->max_size));
 }
 
 static void replace_end(struct diff_addr_store *store) {
@@ -129,10 +129,12 @@ static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t *
 	char *name;
 	uint8_t t;
 	uint32_t max_size;
-	uplink_parse(data, length, "scu",
+	uint32_t hash_size;
+	uplink_parse(data, length, "scuu",
 			&name, NULL, pool, "set name in FWUp config",
 			&t, "set type in FWUp config",
-			&max_size, "max size of set in FWUp config");
+			&max_size, "max size of set in FWUp config",
+			&hash_size, "hash size of set in FWUp config");
 	const struct set_type *type = &set_types[t];
 	if (!type->desc) {
 		ulog(LLOG_WARN, "Set %s of unknown type '%c' (%hhu), ignoring\n", name, t, t);
@@ -143,6 +145,7 @@ static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t *
 		.type = type,
 		.state = SS_NEWBORN,
 		.max_size = max_size,
+		.hash_size = hash_size,
 		.store = diff_addr_store_init(pool, name)
 	};
 	store_set_hooks(target);
@@ -183,7 +186,7 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 		else
 			target_count --; // The set is strange, skip it.
 	if (length)
-		ulog(LLOG_WARN, "Extra data after FWUp filter (%zu)\n", length);
+		ulog(LLOG_WARN, "Extra data after set list (%zu)\n", length);
 	// Go through the old sets and mark them as dead (so they could be resurected in the new ones)
 	for (size_t i = 0; i < u->set_count; i ++)
 		switch (u->sets[i].state) {
@@ -199,7 +202,7 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 	// Go through the new ones and look for corresponding sets in the old config
 	for (size_t i = 0; i < target_count; i ++) {
 		for (size_t j = 0; j < u->set_count; j ++)
-			if (strcmp(sets[i].name, u->sets[j].name) == 0 && sets[i].type == u->sets[j].type && sets[i].max_size == u->sets[j].max_size) {
+			if (strcmp(sets[i].name, u->sets[j].name) == 0 && sets[i].type == u->sets[j].type && sets[i].max_size == u->sets[j].max_size && sets[i].hash_size == u->sets[j].hash_size) {
 				switch (u->sets[j].state) {
 					case SS_DEAD:
 						diff_addr_store_cp(sets[i].store, u->sets[j].store, context->temp_pool);
@@ -234,7 +237,7 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 	for (size_t i = 0; i < target_count; i ++) {
 		switch (sets[i].state) {
 			case SS_NEWBORN:
-				enqueue(context, u->queue, mem_pool_printf(context->temp_pool, "create %s %s family %s maxelem %zu\n", sets[i].name, sets[i].type->desc, sets[i].type->family, sets[i].max_size));
+				enqueue(context, u->queue, mem_pool_printf(context->temp_pool, "create %s %s family %s hashsize %zu maxelem %zu\n", sets[i].name, sets[i].type->desc, sets[i].type->family, sets[i].hash_size, sets[i].max_size));
 				sets[i].state = SS_PENDING;
 				// Fall through to SS_PENDING, as we want to ask for the version too
 			case SS_PENDING:
