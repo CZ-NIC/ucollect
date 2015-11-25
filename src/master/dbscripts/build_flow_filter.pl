@@ -1,38 +1,19 @@
 #!/usr/bin/perl
 use common::sense;
-use DBI;
-use Config::IniFiles;
-use Socket qw(getaddrinfo getnameinfo NI_NUMERICHOST);
+
+# Look for libraries also in the same directory as the script lives
+use FindBin;
+use lib $FindBin::Bin;
+
+use AddrStoreBuild;
 use Data::Dumper;
-use Fcntl ':flock';
 
-my $lockfilename = "/tmp/build-flow-filter.lock";
-open my $lockfile, '>>', $lockfilename or die "Could not open lock file '$lockfilename': $!\n";
-flock $lockfile, LOCK_EX | LOCK_NB or exit;
+# Don't start parallel instances of the script
+single_instance '/tmp/build-flow-filter.lock';
 
-# First connect to the database
-my $cfg = Config::IniFiles->new(-file => $ARGV[0]);
-my ($host, $db, $user, $passwd, $port) = map { $cfg->val('db', $_) } qw(host db user passwd port);
-my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd, { RaiseError => 1, AutoCommit => 0 });
+my $blacklist = blacklist_load;
 
-my $blacklist_file = $cfg->val('blacklist', 'file');
-my %blacklist;
-open my $black_open, '<', $blacklist_file or die "Couldn't read blacklist from $blacklist_file: $!\n";
-while (my $line = <$black_open>) {
-	chomp $line;
-	$line =~ s/#.*//;
-	$line =~ s/^\s*//;
-	$line =~ s/\s*$//;
-	next unless length $line;
-	my ($err, @addresses) = getaddrinfo $line, 0;
-	die "Couldn't resolve $line: $err\n" if $err;
-	for my $addr (@addresses) {
-		my ($err, $ip) = getnameinfo $addr->{addr}, NI_NUMERICHOST;
-		die "Couldn't print address for $line: $err\n" if $err;
-		$blacklist{$ip} = 1;
-	}
-}
-close $black_open;
+my $dbh = db_connect;
 
 # Read the IPset rules and extract addresses
 open my $ipsets, '-|', 'wget', 'https://api.turris.cz/firewall/turris-ipsets', '-q', '-O', '-' or die "Couldn't download ip set rules: $!\n";
@@ -104,7 +85,7 @@ while (my ($ip) = $fb_stm->fetchrow_array) {
 
 # Drop IP addresses from specific rules if they are in the generic one
 while (my ($port, $ips) = each %data) {
-	delete @{$data{$port}}{keys %blacklist};
+	delete @{$data{$port}}{keys %$blacklist};
 	next unless $port;
 	# Magic. See perldoc perldata, talk about hash slices.
 	delete @{$data{$port}}{keys %{$data{''}}};
@@ -179,41 +160,13 @@ while (my ($port, $ips) = each %data) {
 		} keys %$ips} = values %$ips;
 }
 
-my ($max_epoch) = $dbh->selectrow_array("SELECT COALESCE(MAX(epoch), 1) FROM flow_filters WHERE filter = 'addresses'");
-
-my $existing = $dbh->selectall_arrayref("
-SELECT
-	flow_filters.address
-FROM
-	flow_filters
-JOIN
-	(SELECT
-		MAX(epoch) AS epoch,
-		MAX(version) AS version,
-		address
-	FROM
-		flow_filters
-	WHERE
-		filter = 'addresses' AND
-		epoch = ?
-	GROUP BY
-		address)
-	AS selector
-ON
-	flow_filters.version = selector.version AND
-	flow_filters.epoch = selector.epoch AND
-	flow_filters.address = selector.address
-WHERE
-	flow_filters.add AND
-	filter = 'addresses'", undef, $max_epoch);
-
-my %existing = map { $_->[0] => 1 } @$existing;
+my ($max_epoch, $existing) = addr_store_content('flow_filters', 'filter', 'addresses');
 
 # Compute simetric differences between previous and current versions
-my %to_delete = %existing;
+my %to_delete = %$existing;
 delete @to_delete{keys %flattened}; # Delete everything that was except the things that still are to be
 my %to_add = %flattened;
-delete @to_add{keys %existing}; # Add everything that shall be but didn't exist before
+delete @to_add{keys %$existing}; # Add everything that shall be but didn't exist before
 
 my $version = (time / 30) % (2**32); # We won't run it more often than once a minute. Half a minute resolution should be enough to provide security that'll never generate two same versions.
 
