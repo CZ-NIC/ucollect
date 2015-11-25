@@ -377,6 +377,7 @@ static void diff_received(struct context *context, const uint8_t *data, size_t l
 	}
 	set->context = context;
 	uint32_t orig_version;
+	ulog(LLOG_INFO, "Updating ipset %s from version %u to version %u (epoch %u)\n", name, (unsigned)from, (unsigned)to, (unsigned)epoch);
 	enum diff_store_action action = diff_addr_store_apply(context->temp_pool, set->store, full, epoch, from, to, data, length, &orig_version);
 	switch (action) {
 		case DIFF_STORE_INCREMENTAL:
