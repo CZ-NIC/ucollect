@@ -205,12 +205,15 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 	for (size_t i = 0; i < target_count; i ++) {
 		for (size_t j = 0; j < u->set_count; j ++)
 			if (strcmp(sets[i].name, u->sets[j].name) == 0 && sets[i].type == u->sets[j].type) {
+				ulog(LLOG_DEBUG, "Copying previous set %s\n", u->sets[j].name);
 				switch (u->sets[j].state) {
 					case SS_DEAD:
+						ulog(LLOG_DEBUG, "Copying content\n");
 						diff_addr_store_cp(sets[i].store, u->sets[j].store, context->temp_pool);
 						sets[i].state = SS_VALID; // We got the data, it is valid now
 						u->sets[j].state = SS_COPIED;
 						if (sets[i].hash_size != u->sets[j].hash_size || sets[i].max_size != u->sets[j].max_size) {
+							ulog(LLOG_DEBUG, "Changing set size by reloading in kernel\n");
 							/*
 							 * It is the same set with the same content,
 							 * but the sizes changed. Therefore, we need
