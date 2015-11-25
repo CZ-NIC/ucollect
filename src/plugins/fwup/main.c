@@ -159,6 +159,8 @@ static void version_ask(struct context *context, const char *setname) {
 	uplink_plugin_send_message(context, message, len);
 }
 
+static void set_reload(struct context *context, struct set *set);
+
 static void config_parse(struct context *context, const uint8_t *data, size_t length) {
 	struct config c;
 	sanity(length >= sizeof c, "Not enough FWUp data for config, got %zu, needed %zu\n", length, sizeof c);
@@ -202,12 +204,21 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 	// Go through the new ones and look for corresponding sets in the old config
 	for (size_t i = 0; i < target_count; i ++) {
 		for (size_t j = 0; j < u->set_count; j ++)
-			if (strcmp(sets[i].name, u->sets[j].name) == 0 && sets[i].type == u->sets[j].type && sets[i].max_size == u->sets[j].max_size && sets[i].hash_size == u->sets[j].hash_size) {
+			if (strcmp(sets[i].name, u->sets[j].name) == 0 && sets[i].type == u->sets[j].type) {
 				switch (u->sets[j].state) {
 					case SS_DEAD:
 						diff_addr_store_cp(sets[i].store, u->sets[j].store, context->temp_pool);
 						sets[i].state = SS_VALID; // We got the data, it is valid now
 						u->sets[j].state = SS_COPIED;
+						if (sets[i].hash_size != u->sets[j].hash_size || sets[i].max_size != u->sets[j].max_size) {
+							/*
+							 * It is the same set with the same content,
+							 * but the sizes changed. Therefore, we need
+							 * to reload the set in kernel. Swapping sets
+							 * of different sizes seems to work.
+							 */
+							set_reload(context, &sets[i]);
+						}
 						break;
 					case SS_DEAD_PENDING:
 						// No valid data inside. So nothing to copy, really.
@@ -396,17 +407,21 @@ static void replace_add(const uint8_t *key, size_t key_size, struct trie_data *d
 		add_item(store, key, key_size);
 }
 
+static void set_reload(struct context *context, struct set *set) {
+	set->context = context;
+	// Reuse the hooks to replace the content of the set and to add items there.
+	replace_start(set->store);
+	trie_walk(set->store->trie, replace_add, set->store, context->temp_pool);
+	replace_end(set->store);
+	set->context = NULL;
+}
+
 static void sets_reload(struct context *context) {
 	ulog(LLOG_INFO, "Reloading all IPsets\n");
 	struct user_data *u = context->user_data;
 	for (size_t i = 0; i < u->set_count; i ++) {
 		struct set *s = &u->sets[i];
-		s->context = context;
-		// Reuse the hooks to replace the content of the set and to add items there.
-		replace_start(s->store);
-		trie_walk(s->store->trie, replace_add, s->store, context->temp_pool);
-		replace_end(s->store);
-		s->context = NULL;
+		set_reload(context, s);
 	}
 }
 
