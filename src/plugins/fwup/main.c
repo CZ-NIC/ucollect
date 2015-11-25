@@ -299,7 +299,9 @@ static void handle_action(struct context *context, const char *name, enum diff_s
 	struct user_data *u = context->user_data;
 	switch (action) {
 		case DIFF_STORE_UNKNOWN:
+			break;
 		case DIFF_STORE_NO_ACTION:
+			set_find(u, name)->state = SS_VALID;
 			break;
 		case DIFF_STORE_CONFIG_RELOAD: {
 			// A reload is requested. Copy all the sets into new memory pool, but with dropping dead elements.
@@ -328,6 +330,7 @@ static void handle_action(struct context *context, const char *name, enum diff_s
 		case DIFF_STORE_INCREMENTAL:
 		case DIFF_STORE_FULL: {
 			bool full = (action == DIFF_STORE_FULL);
+			set_find(u, name)->state = full ? SS_PENDING : SS_VALID;
 			size_t len = 1 /* 'U' */ + 1 /* full? */ + sizeof(uint32_t) + strlen(name) + (2 + !full) * sizeof(uint32_t);
 			uint8_t *message = mem_pool_alloc(context->temp_pool, len);
 			uint8_t *pos = message;
