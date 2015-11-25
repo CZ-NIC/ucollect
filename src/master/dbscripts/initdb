@@ -761,6 +761,10 @@ GRANT INSERT ON fake_blacklist_cache TO $DBFLOWTAGGER;
 GRANT INSERT ON fake_blacklist_cache TO $DBCLEANER;
 GRANT SELECT ON fake_blacklist_cache_fill TO $DBFLOWTAGGER;
 GRANT SELECT ON fake_blacklist_cache_fill TO $DBCLEANER;
+GRANT SELECT ON fwup_sets TO $DBFLOWTAGGER;
+GRANT UPDATE (hashsize, maxsize) ON fwup_sets TO $DBFLOWTAGGER;
+GRANT SELECT ON fwup_addresses TO $DBFLOWTAGGER;
+GRANT INSERT ON fwup_addresses TO $DBFLOWTAGGER;
 
 GRANT INSERT ON ssh_sessions TO $DBKIPPO;
 GRANT INSERT ON ssh_commands TO $DBKIPPO;
