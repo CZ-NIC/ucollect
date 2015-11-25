@@ -37,14 +37,14 @@ class FWUpPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 
 	def __build_config(self):
 		def convert(name):
-			return struct.pack('!I' + str(len(name)) + 'scI', len(name), name, self.__sets[name][0], self.__sets[name][1])
+			return struct.pack('!I' + str(len(name)) + 'scII', len(name), name, self.__sets[name][0], self.__sets[name][1], self.__sets[name][2])
 		return ''.join(['C', struct.pack('!II', int(self._conf.get('version', 0)), len(self.__sets))] + map(convert, self.__sets.keys()))
 
 	def _broadcast_config(self):
 		# Read the rest of the config
 		with database.transaction() as t:
-			t.execute("SELECT name, type, maxsize FROM fwup_sets")
-			self.__sets = dict(map(lambda (name, tp, maxsize): (name, (tp, maxsize)), t.fetchall()))
+			t.execute("SELECT name, type, maxsize, hashsize FROM fwup_sets")
+			self.__sets = dict(map(lambda (name, tp, maxsize, hashsize): (name, (tp, maxsize, hashsize)), t.fetchall()))
 		self.__config_message = self.__build_config()
 		self.broadcast(self.__config_message)
 

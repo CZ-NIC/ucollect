@@ -419,7 +419,9 @@ CREATE TABLE fwup_sets (
 	name TEXT NOT NULL PRIMARY KEY,
 	type CHAR NOT NULL,
 	maxsize INT NOT NULL,
-	CHECK(maxsize > 0)
+	hashsize INT NOT NULL,
+	CHECK(maxsize > 0),
+	CHECK(hashsize >= maxsize)
 );
 CREATE TABLE fwup_addresses (
 	set TEXT NOT NULL,
@@ -781,7 +783,7 @@ INSERT INTO groups (name) VALUES ('all'), ('ruth');
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients CROSS JOIN groups WHERE groups.name = 'all';
 INSERT INTO group_members (client, in_group) SELECT clients.id, groups.id FROM clients JOIN groups ON groups.name = clients.name;
 INSERT INTO ping_requests (host, proto, amount, size, active) VALUES ('turris.cz', '6', 5, 100, TRUE), ('turris.cz', '4', 5, 100, TRUE), ('8.8.8.8', 'X', 3, 64, TRUE);
-INSERT INTO known_plugins (name) VALUES ('Count'), ('Bandwidth'), ('Fake'), ('Flow'), ('Refused'), ('Sniff'), ('Spoof'), ('FWUp');
+INSERT INTO known_plugins (name) VALUES ('Count'), ('Bandwidth'), ('Fake'), ('Flow'), ('Refused'), ('Sniff'), ('Spoof'), ('Fwup');
 COMMIT;
 ENDSQL
 else

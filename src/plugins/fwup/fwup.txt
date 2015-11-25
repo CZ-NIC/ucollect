@@ -92,6 +92,9 @@ The server sends these kinds of messages:
       string::: Name of the set.
       `char`::: Type of the set. See above.
       `uint32_t`::: Maximum size of the set.
+      `uint32_t`::: Hash size of the set (for now, all our supported
+        types are hashes, so the question what happens for non-hash
+	sets isn't answered yet).
 `R`:: Request from the server to reload all the sets in kernel.
 `V`:: Version of set info. It is followed by:
   `uint32_t`;; Current version of config. If it doesn't match, the
