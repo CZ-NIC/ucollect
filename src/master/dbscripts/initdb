@@ -420,7 +420,8 @@ CREATE TABLE fwup_sets (
 	type CHAR NOT NULL,
 	maxsize INT NOT NULL,
 	hashsize INT NOT NULL,
-	CHECK(maxsize > 0)
+	CHECK(maxsize > 0),
+	CHECK(hashsize >= maxsize)
 );
 CREATE TABLE fwup_addresses (
 	set TEXT NOT NULL,
