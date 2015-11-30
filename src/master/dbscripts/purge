@@ -16,11 +16,11 @@ DATE=$(date -d "$CLEAN_DAYS days ago" "+'%Y-%m-%d'")
 	for TABLE in $BATCH_TABLES ; do
 		echo "DELETE FROM $TABLE WHERE batch < $DATE;"
 	done
+	echo "DELETE FROM celery_taskmeta WHERE date_done < $DATE;"
 	echo "DELETE FROM router_loggedpacket WHERE created_at < $DATE;"
 	echo "DELETE FROM router_registrationcode WHERE date < $DATE;"
 	echo "DELETE FROM biflows WHERE COALESCE(start_in, start_out) < $DATE;"
 	echo "DELETE FROM ssh_sessions WHERE start_time < $DATE;"
-	echo "DELETE FROM celery_taskmeta WHERE date_done < $DATE;"
 	echo "LOCK TABLE fake_blacklist_cache IN SHARE MODE;" # We don't want to conflict with any other updates running
 	echo "DELETE FROM fake_blacklist_cache;"
 	echo "INSERT INTO fake_blacklist_cache (server, remote, client, score, timestamp) SELECT server, remote, client, score, timestamp FROM fake_blacklist_cache_fill;"
