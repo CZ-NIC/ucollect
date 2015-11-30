@@ -16,6 +16,7 @@ DATE=$(date -d "$CLEAN_DAYS days ago" "+'%Y-%m-%d'")
 	for TABLE in $BATCH_TABLES ; do
 		echo "DELETE FROM $TABLE WHERE batch < $DATE;"
 	done
+	echo "DELETE FROM celery_taskmeta WHERE date_done < $DATE;"
 	echo "DELETE FROM router_loggedpacket WHERE created_at < $DATE;"
 	echo "DELETE FROM router_registrationcode WHERE date < $DATE;"
 	echo "DELETE FROM biflows WHERE COALESCE(start_in, start_out) < $DATE;"
