@@ -76,6 +76,16 @@ const struct set_type set_types[256] = {
 		.family = "inet6",
 		.addr2str = inet62str
 	},
+	['n'] = {
+		.desc = "hash:net",
+		.family = "inet",
+		.addr2str = inet2str
+	},
+	['N'] = {
+		.desc = "hash:net",
+		.family = "inet6",
+		.addr2str = inet62str
+	},
 	['b'] = {
 		.desc = "hash:ip,port",
 		.family = "inet",
