@@ -102,7 +102,7 @@ static void replace_start(struct diff_addr_store *store) {
 	sanity(!set->tmp_name, "Replace already started\n");
 	struct mem_pool *tmp_pool = set->context->temp_pool;
 	// It is OK to allocate the data from the temporary memory pool. It's lifetime is at least the length of call to the plugin communication callback, and the whole set replacement happens there.
-	set->tmp_name = mem_pool_printf(tmp_pool, "%s-replace", set->name);
+	set->tmp_name = mem_pool_printf(tmp_pool, "%s-rep", set->name);
 	enqueue(set->context, set->context->user_data->queue, mem_pool_printf(tmp_pool, "create %s %s family %s hashsize %zu maxelem %zu\n", set->tmp_name, set->type->desc, set->type->family, set->hash_size, set->max_size));
 }
 
