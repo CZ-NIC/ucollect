@@ -35,7 +35,7 @@
 #include <sys/wait.h>
 
 #define QUEUE_FLUSH_TIME 5000
-#define QUEUE_RETRY_TIME 2000
+#define QUEUE_RETRY_TIME 60000
 
 struct queue {
 	bool active, timeout_started;
