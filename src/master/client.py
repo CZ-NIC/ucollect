@@ -128,7 +128,6 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				# Keep the connection open, but idle. Prevents very fast
 				# reconnects.
 			if msg == 'L':
-				logger.debug('Client %s sent login info', self.cid())
 				# Client wants to log in.
 				# Extract parameters.
 				(version, params) = (params[0], params[1:])
@@ -137,6 +136,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				self.__cid = cid
 				if version == 'O':
 					self.__cid = self.__cid.encode('hex')
+				logger.debug('Client %s sent login info', self.cid())
 				if params != '':
 					login_failure('Protocol violation')
 					return
@@ -188,7 +188,6 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 					logger.warn("Wrong session ID length on client %s: %s", self.cid(), len(params))
 					return
 				(self.session_id,) = struct.unpack("!I", params)
-				logger.debug("Client %s uses session ID %s", self.cid(), self.session_id)
 			return
 		elif msg == 'P': # Ping. Answer pong.
 			self.sendString('p' + params)
