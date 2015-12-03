@@ -56,8 +56,8 @@ sub fake_set_generate($$$) {
 	}
 }
 
-fake_set_generate 'turris_100FA4E0_lb_a_4', 4, 'hard';
-fake_set_generate 'turris_100FA4E0_lb_a_6', 6, 'hard';
+fake_set_generate 'turris_100FA4E0_lb_a_4_X', 4, 'hard';
+fake_set_generate 'turris_100FA4E0_lb_a_6_X', 6, 'hard';
 
 $dbh->do("UPDATE config SET value = ? WHERE plugin = 'fwup' AND name = 'version'", undef, $version) if $bump_config_version;
 
