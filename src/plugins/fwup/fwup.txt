@@ -49,13 +49,15 @@ The sets may have different types. The types are specified by
 single-character code in the protocol.
 
 [options="header"]
-|===================================================================================
-|Code |Kernel type  |Family |Description           |Note
-|`i`  |hash:ip      |IPv4   |Single IPv4 address   |
-|`I`  |hash:ip      |IPv6   |Single IPv6 address   |
-|`b`  |hash:ip,port |IPv4   |IPv4 address and port |Both tcp and udp ports are added
-|`B`  |hash:ip,port |IPv6   |IPv6 address and port |Both tcp and udp ports are added
-|===================================================================================
+|====================================================================================
+|Code |Kernel type  |Family |Description            |Note
+|`i`  |hash:ip      |IPv4   |Single IPv4 address    |
+|`I`  |hash:ip      |IPv6   |Single IPv6 address    |
+|`b`  |hash:ip,port |IPv4   |IPv4 address and port  |Both tcp and udp ports are added
+|`B`  |hash:ip,port |IPv6   |IPv6 address and port  |Both tcp and udp ports are added
+|`n`  |hash:net     |IPv4   |IPv4 address in net-set|Used for IPs, not nets
+|`N`  |hash:net     |IPv6   |IPv6 address in net-set|Used for IPs, not nets
+|====================================================================================
 
 Note that in case it says that both tcp and udp ports are added, there
 are two items generated in the kernel for each one address sent from
