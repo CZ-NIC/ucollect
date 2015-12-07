@@ -56,9 +56,14 @@ sub fake_set_generate($$$) {
 	}
 }
 
-fake_set_generate 'turris_100FA4E0_lb_a_4', 4, 'hard';
-fake_set_generate 'turris_100FA4E0_lb_a_6', 6, 'hard';
+fake_set_generate 'turris_100FA4E0_lb_a_4_X', 4, 'hard';
+fake_set_generate 'turris_100FA4E0_lb_a_6_X', 6, 'hard';
 
 $dbh->do("UPDATE config SET value = ? WHERE plugin = 'fwup' AND name = 'version'", undef, $version) if $bump_config_version;
 
 $dbh->commit;
+
+# TODO: Solve the problem of propagating the size to the firewall rules somehow
+# Currently, if the sizes don't match, ucollect can't create the set. While we can switch
+# sets of different sizes, ipset -exist create complains.
+die "I had to update the sizes, please propagate them to the firewall rules.\n" if $bump_config_version;
