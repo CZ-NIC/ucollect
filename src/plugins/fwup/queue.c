@@ -120,12 +120,14 @@ static void lost(struct context *context, struct queue *queue, bool error) {
 	 */
 	if (queue->active) {
 		// Deactivate
-		if (error)
-			ulog(LLOG_WARN, "Lost connection to ipset command %d, data may be out of sync\n", queue->pid);
-		else
+		if (error) {
+			ulog(LLOG_WARN, "The ipset command %d died, data may be out of sync\n", queue->pid);
+			// Don't close the pipe yet. It may contain error messages we would like to pass to the log
+		} else {
 			ulog(LLOG_DEBUG, "Closing ipset subcommand\n");
-		loop_plugin_unregister_fd(context, queue->ipset_pipe);
-		sanity(close(queue->ipset_pipe) == 0, "Error closing the ipset pipe: %s\n", strerror(errno));
+			loop_plugin_unregister_fd(context, queue->ipset_pipe);
+			sanity(close(queue->ipset_pipe) == 0, "Error closing the ipset pipe: %s\n", strerror(errno));
+		}
 		queue->ipset_pipe = 0;
 		queue->active = false;
 		queue->pid = 0;
@@ -191,15 +193,6 @@ void queue_flush(struct context *context, struct queue *queue) {
 
 void queue_fd_data(struct context *context, int fd, void *userdata) {
 	struct queue *q = userdata;
-	if (!q->active || q->ipset_pipe != fd) {
-		ulog(LLOG_WARN, "Queue FD confusion\n");
-		// Sleep for 0.1 second, to limit the possible confused FD storms
-		nanosleep(&(struct timespec) {
-			.tv_sec = 0,
-			.tv_nsec = 100000
-		}, NULL);
-		return;
-	}
 	const size_t buf_size = 512;
 	char *err_msg = mem_pool_alloc(context->temp_pool, buf_size + 1 /* Extra one for \0 at the end */);
 	ssize_t result = recv(fd, err_msg, buf_size, MSG_DONTWAIT);
@@ -219,10 +212,16 @@ void queue_fd_data(struct context *context, int fd, void *userdata) {
 				case ECONNRESET:
 					; // Fall through from this case statement out and out of the case -1 into the close
 			}
-			// No break. See above comment.
+			// No break. See the above comment.
 		case 0: // Close
-			ulog(LLOG_WARN, "IPSet closed by other end\n");
-			lost(context, q, false);
+			ulog(LLOG_WARN, "IPSet closed by the other end\n");
+			if (q->active)
+				lost(context, q, false);
+			else {
+				// The command terminated, but the current file descriptor was still alive for a whlie. Close it.
+				loop_plugin_unregister_fd(context, fd);
+				sanity(close(fd) == 0, "Error closing the ipset pipe: %s\n", strerror(errno));
+			}
 			return;
 		default:
 			err_msg[result] = '\0';
