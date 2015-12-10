@@ -1,19 +1,19 @@
 #!/bin/sh
 
-MARK_MASK=$(uci get -q ucollect.@fakes[0].mark_mask || echo 0xC0000)
-PORT_OK="$(uci get -q ucollect.@fakes[0].mark_port_ok || echo 0x40000/$MARK_MASK)"
-ADDR_OK="$(uci get -q ucollect.@fakes[0].mark_addr_ok || echo 0x80000/$MARK_MASK)"
-REDIR="$(uci get -q ucollect.@fakes[0].mark_redir || echo 0xC0000/$MARK_MASK)"
-REDIR_OFFSET="$(uci get -q ucollect.@fakes[0].redir_offset || echo 1369)"
+MARK_MASK=$(uci -q get ucollect.@fakes[0].mark_mask || echo 0xC0000)
+PORT_OK="$(uci -q get ucollect.@fakes[0].mark_port_ok || echo 0x40000/$MARK_MASK)"
+ADDR_OK="$(uci -q get ucollect.@fakes[0].mark_addr_ok || echo 0x80000/$MARK_MASK)"
+REDIR="$(uci -q get ucollect.@fakes[0].mark_redir || echo 0xC0000/$MARK_MASK)"
+REDIR_OFFSET="$(uci -q get ucollect.@fakes[0].redir_offset || echo 1369)"
 
 # Get the list of ports and remove the ones that are disabled. We remove them by making sure
 # that everything that is disabled appears at least twice and then take only the unique lines.
 PORTS=`(
 	echo '23tcp'
-	uci get -q -d '
-' ucollect.@fakes[0].disable
-	uci get -q -d '
-' ucollect.@fakes[0].disable
+	uci -q -d '
+' get ucollect.@fakes[0].disable
+	uci -q -d '
+' get ucollect.@fakes[0].disable
 ) | sort | uniq -u`
 
 # Locking. This may remove lock-file of other instance, but it does ensure we clean stray one eventually
