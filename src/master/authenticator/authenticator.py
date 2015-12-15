@@ -67,9 +67,14 @@ class AuthClient(basic.LineReceiver):
 			try:
 				queryExecute(client)
 			except (psycopg2.OperationalError, psycopg2.InterfaceError):
-				print "DB broken, recreating"
-				openDB()
-				queryExecute(client)
+				try:
+					print "DB broken, recreating"
+					openDB()
+					queryExecute(client)
+				except (psycopg2.OperationalError, psycopg2.InterfaceError):
+					print "DB still broken, dropping request"
+					self.transport.abortConnection()
+					return
 			log_info = cursor.fetchone()
 			db.rollback()
 			if log_info:
