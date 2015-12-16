@@ -92,9 +92,9 @@ def transaction_raw(reuse=True):
 		return __CursorContext(__cache.connection)
 
 def transaction(reuse=True):
-	result = transaction_raw(reuse)
 	if reuse:
 		try: # if the cursor works
+			result = transaction_raw(True)
 			result._cursor.execute("SELECT 1")
 			(one,) = result._cursor.fetchone()
 			return result
@@ -105,7 +105,8 @@ def transaction(reuse=True):
 			del __cache.__dict__['connection']
 			del __cache.__dict__['context']
 			return transaction_raw(True)
-	return result
+	else:
+		return transaction_raw(False)
 
 __time_update = 0
 __time_db = 0
