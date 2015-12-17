@@ -173,6 +173,7 @@ class Plugins:
 				logger.warn('Stray connection from %s, dropping old connection', client.cid())
 			elif client.session_id is not None and self.__clients[client.cid()].session_id == client.session_id:
 				logger.warn('Taking over previous connection from session %s on client %s', client.session_id, client.cid())
+				self.__clients[client.cid()].connectionLost(None)
 			else:
 				logger.warn("%s already connected, dropping connection", client.cid())
 				return False

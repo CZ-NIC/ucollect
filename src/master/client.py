@@ -95,6 +95,8 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		reactor.callLater(60, self.__check_logged)
 
 	def connectionLost(self, reason):
+		if not self.__connected:
+			return
 		self.__connected = False
 		if self.__logged_in:
 			logger.info("Connection lost from %s", self.cid())
