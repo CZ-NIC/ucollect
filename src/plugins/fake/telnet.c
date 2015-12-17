@@ -28,7 +28,6 @@
 #include <string.h>
 #include <stdbool.h>
 #include <errno.h>
-#include <assert.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -184,7 +183,7 @@ static bool process_line(struct context *context, struct fd_tag *tag, struct con
 	(void)tag;
 	switch (conn->position) {
 		case WANT_LOGIN:
-			assert(conn->line);
+			sanity(conn->line, "Missing line buffer for login name\n");
 			*conn->line = '\0';
 			conn->line = conn->line_base = conn->password;
 			if (!ask_for(context, conn, "password"))
@@ -194,7 +193,7 @@ static bool process_line(struct context *context, struct fd_tag *tag, struct con
 		case WANT_PASSWORD:
 			conn->position = WAIT_DENIAL;
 			conn->denial_timeout = loop_timeout_add(context->loop, denial_timeout, context, conn, send_denial);
-			assert(conn->line);
+			sanity(conn->line, "Missing line buffer for password\n");
 			*conn->line = '\0';
 			conn_log_attempt(context, tag, conn->username, conn->password);
 			conn->line = conn->line_base = NULL;
@@ -276,7 +275,7 @@ static bool char_handle(struct context *context, struct fd_tag *tag, struct conn
 			conn->expect = EXPECT_NONE;
 			return true;
 		default:
-			assert(0); // Invalid expect state
+			insane("Invalid expected state %u\n", (unsigned)conn->expect);
 	}
 	// We are in a normal mode, decide if we see anything special
 	switch (ch) {

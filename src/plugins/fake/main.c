@@ -30,7 +30,6 @@
 
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -262,7 +261,7 @@ static void push_info(struct event_info *infos, size_t *pos, const char *content
 			.type = type,
 			.content = content
 		};
-		assert(*pos < MAX_INFOS);
+		sanity(*pos < MAX_INFOS, "Pushing too many additional infos\n");
 		infos[*pos].type = EI_LAST;
 	}
 }
@@ -287,8 +286,8 @@ static void send_timeout(struct context *context, void *data __attribute__((unus
 static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_type type, const char *reason, const char *username, const char *password) {
 	ulog(LLOG_DEBUG, "Logging event %hhu for tag %p\n", (uint8_t)type, (void *)tag);
 	struct user_data *u = context->user_data;
-	assert(tag->rem_addr.sin6_family == AF_INET6);
-	assert(tag->loc_addr.sin6_family == AF_INET6);
+	sanity(tag->rem_addr.sin6_family == AF_INET6, "Wrong remote address family %hhu\n", (uint8_t)tag->rem_addr.sin6_family);
+	sanity(tag->loc_addr.sin6_family == AF_INET6, "Wrong local address family %hhu\n", (uint8_t)tag->loc_addr.sin6_family);
 	struct event_info infos[MAX_INFOS] = { [0] = { .type = EI_LAST } };
 	size_t evpos = 0;
 	push_info(infos, &evpos, reason, EI_REASON);
@@ -325,7 +324,7 @@ void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *u
 
 static void conn_inactive(struct context *context, void *data, size_t id) {
 	struct fd_tag *tag = data;
-	assert(tag->inactivity_timeout == id);
+	sanity(tag->inactivity_timeout == id, "Inactivity timeout ID mismatch\n");
 	ulog(LLOG_DEBUG, "Connection %p/%p with FD %d of fake server %s timed out after %u ms\n", (void *)tag->conn, (void *)tag, tag->fd, tag->desc->name, tag->desc->conn_timeout);
 	tag->inactivity_timeout_active = false; // It fired, no longer active.
 	log_wrapper(context, tag, EVENT_TIMEOUT, NULL, NULL, NULL);
@@ -356,8 +355,8 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 				break;
 			}
 		if (empty) {
-			assert(empty->desc == t->desc);
-			assert(empty->server == t->server);
+			sanity(empty->desc == t->desc, "Description mismatch\n");
+			sanity(empty->server == t->server, "Server mismatch\n");
 			empty->addr_len = sizeof empty->rem_addr;
 			struct sockaddr *addr_p = (struct sockaddr *)&empty->rem_addr;
 			int new = accept(fd, addr_p, &empty->addr_len);
@@ -368,8 +367,8 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			loop_plugin_register_fd(context, new, empty);
 			ulog(LLOG_DEBUG, "Accepted connecion %d from %s on FD %d for fake server %s\n", new, addr2str(context->temp_pool, addr_p, empty->addr_len), fd, t->desc->name);
 			socklen_t len = sizeof empty->loc_addr;
-			assert(getsockname(new, (struct sockaddr *)&empty->loc_addr, &len) == 0);
-			assert(len == empty->addr_len);
+			sanity(getsockname(new, (struct sockaddr *)&empty->loc_addr, &len) == 0, "getsockname failed: %s\n", strerror(errno));
+			sanity(len == empty->addr_len, "getsockname returned wrong address length %zu\n", (size_t)len);
 			empty->fd = new;
 			empty->closed = false;
 			if (empty->desc->conn_set_fd_cb)
@@ -389,8 +388,8 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			}
 			ulog(LLOG_WARN, "Throwing out connection %d from %s accepted on %d of fake server %s, too many opened ones\n", fd, addr2str(context->temp_pool, addr_p, aux_tag.addr_len), fd, t->desc->name);
 			socklen_t len = sizeof aux_tag.loc_addr;
-			assert(getsockname(new, (struct sockaddr *)&aux_tag.loc_addr, &len));
-			assert(len == aux_tag.addr_len);
+			sanity(getsockname(new, (struct sockaddr *)&aux_tag.loc_addr, &len) == 0, "getsockname failed: %s\n", strerror(errno));
+			sanity(len == aux_tag.addr_len, "getsockname returned wrong address length %zu\n", (size_t)len);
 			if (close(new) == -1) {
 				ulog(LLOG_ERROR, "Error throwing newly accepted connection %d from %s accepted on %d of fake server %s: %s\n", new, addr2str(context->temp_pool, addr_p, aux_tag.addr_len), fd, t->desc->name, strerror(errno));
 			}
