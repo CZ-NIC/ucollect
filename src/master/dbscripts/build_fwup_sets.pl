@@ -23,6 +23,8 @@ my $version = (time / 30) % (2**31);
 # Should we update the config version?
 my $bump_config_version;
 
+my ($keep_router_limit, $keep_packet_limit) = map { $cfg->val('keep_blocked_limits', $_) } qw(routers packets);
+
 sub fake_set_generate($$$) {
 	my ($setname, $family, $mode) = @_;
 
@@ -33,17 +35,32 @@ sub fake_set_generate($$$) {
 	# What addresses are there?
 	my ($max_epoch, $content) = addr_store_content('fwup_addresses', 'set', $setname);
 
-	# TODO: We want to keep addresses that drop out of the fake_blacklist but are still active.
-	# We need to look into the firewall logs for the activity of such address to decide that.
-
 	# Decide what to add and what to remove.
 	my %to_delete = %$content;
 	delete @to_delete{keys %required};
 	my %to_add = %required;
 	delete @to_add{keys %$content};
-	my $mod = $dbh->prepare("INSERT INTO fwup_addresses (set, epoch, version, add, address) VALUES (?, ?, ?, ?, ?)");
-	$mod->execute($setname, $max_epoch, $version, 1, $_) for keys %to_add;
-	$mod->execute($setname, $max_epoch, $version, 0, $_) for keys %to_delete;
+	# Directly insert the addresses to be added
+	my $add = $dbh->prepare("INSERT INTO fwup_addresses (set, epoch, version, add, address) VALUES (?, ?, ?, true, ?)");
+	$add->execute($setname, $max_epoch, $version, $_) for keys %to_add;
+	# The candidates to be removed shall be fed into a temporary table.
+	# We then look through the firewalls to see if they get caught (on
+	# several routers). If so, they are still being active and we delete them
+	# from the candidate table. Then we feed what is left into the fwup_addresses.
+	$dbh->do('CREATE TEMPORARY TABLE delete_candidates (address INET)');
+	my $candidate = $dbh->prepare('INSERT INTO delete_candidates (address) VALUES (?)');
+	$candidate->execute($_) for keys %to_delete;
+	$dbh->do('ANALYZE delete_candidates'); # The table is small, but having statisticts may have huge impact on the following query.
+	$dbh->do("DELETE FROM delete_candidates WHERE address IN
+		(SELECT remote_address FROM
+			(SELECT COUNT(DISTINCT router_id) AS rcount, count(*) AS count, remote_address FROM router_loggedpacket WHERE remote_address IN
+				(SELECT address FROM delete_candidates)
+			AND
+				direction = 'I'
+			GROUP BY remote_address) AS counts
+		WHERE counts.rcount > ? AND counts.count > ?)", undef, $keep_router_limit, $keep_packet_limit);
+	$dbh->do("INSERT INTO fwup_addresses (set, epoch, version, add, address) SELECT ?, ?, ?, false, address FROM delete_candidates", undef, $setname, $max_epoch, $version);
+	$dbh->do('DROP TABLE delete_candidates');
 
 	# How many elements are needed in the set?
 	my $needed = keys %required;
