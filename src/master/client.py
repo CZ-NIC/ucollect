@@ -40,6 +40,7 @@ with database.transaction() as t:
 	t.execute("DELETE FROM active_plugins")
 
 class ClientConn(twisted.protocols.basic.Int32StringReceiver):
+	MAX_LENGTH = 1024 ** 3 # A gigabyte should be enough
 	"""
 	Connection from one client. It handles the low-level protocol,
 	sorts the messages, answers pings, times out, etc.
@@ -64,7 +65,6 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			'Sniff': 1
 		}
 		self.__plugin_versions = {}
-		self.MAX_LENGTH = 1024 * 1024 * 1024 # A gigabyte should be enough
 		self.last_pong = time.time()
 		self.session_id = None
 
