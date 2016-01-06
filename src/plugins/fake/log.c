@@ -27,8 +27,8 @@
 #include "../../core/util.h"
 
 #include <string.h>
-#include <assert.h>
 #include <arpa/inet.h>
+#include <inttypes.h>
 
 /*
  * Single event in the log.
@@ -117,7 +117,7 @@ static void log_clean_internal(struct log *log, struct mem_pool *tmp_pool, uint6
 		.now = now
 	};
 	if (log->limit_trie) {
-		assert(tmp_pool);
+		sanity(tmp_pool, "Missing temporary pool\n");
 		trie_walk(log->limit_trie, holdback_store, &tmp, tmp_pool);
 	}
 	mem_pool_reset(log->pool);
@@ -252,9 +252,9 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 	size_t rest = *size - 1;
 	*result = 'L';
 	LFOR(log, event, log) {
-		assert(event->timestamp + limit > now);
-		assert(event->addr_len == 4 || event->addr_len == 16);
-		assert(event->info_count < 16);
+		sanity(event->timestamp + limit > now, "Timestamp %" PRIu64 " is too old for current time %" PRIu64 "\n", event->timestamp, now);
+		sanity(event->addr_len == 4 || event->addr_len == 16, "Wrong event address length %hhu\n", event->addr_len);
+		sanity(event->info_count < 16, "Too many additional info records: %hhu\n", event->info_count);
 		struct event_header header = {
 			.timestamp = htonl(now - event->timestamp),
 			.type = event->type,
@@ -263,7 +263,7 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 			.code = event->code,
 			.remote_port = htons(event->rem_port)
 		};
-		assert(rest >= 2 * event->addr_len + sizeof header);
+		sanity(rest >= 2 * event->addr_len + sizeof header, "Not enough buffer space, %zu available, %zu needed\n", rest, 2 * event->addr_len + sizeof header);
 		memcpy(pos, &header, sizeof header);
 		pos += sizeof header;
 		memcpy(pos, event->rem_addr, event->addr_len);
@@ -271,15 +271,15 @@ uint8_t *log_dump(struct context *context, struct log *log, size_t *size) {
 		pos += 2 * event->addr_len;
 		rest -= 2 * event->addr_len + sizeof header;
 		for (size_t i = 0; i < event->info_count; i ++) {
-			assert(rest > 0);
-			assert(event->extra_info[i].type != EI_LAST);
+			sanity(rest > 0, "No buffer space available for additional info\n");
+			sanity(event->extra_info[i].type != EI_LAST, "Last additional info in the middle of array\n");
 			*pos ++ = event->extra_info[i].type;
 			rest --;
 			uplink_render_string(event->extra_info[i].content, strlen(event->extra_info[i].content), &pos, &rest);
 		}
 	}
-	assert(pos == result + *size);
-	assert(rest == 0);
+	sanity(pos == result + *size, "Length and pointer mismatch at log dump\n");
+	sanity(rest == 0, "Log dump buffer leftover of %zu bytes\n", rest);
 	return result;
 }
 

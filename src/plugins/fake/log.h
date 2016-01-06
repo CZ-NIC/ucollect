@@ -80,7 +80,7 @@ enum log_send_status log_status(struct log *log) __attribute__((nonnull));
  * size is stored in the corresponding parameter. It is already prefixed by
  * a 'L' opcode.
  */
-uint8_t *log_dump(struct context *context, struct log *log, size_t *size) __attribute__((nonnull)) __attribute__((malloc)) __attribute__((returns_nonnull));
+uint8_t *log_dump(struct context *context, struct log *log, size_t *size) __attribute__((nonnull)) __attribute__((malloc));
 /*
  * All the events from the log are cleared.
  */
