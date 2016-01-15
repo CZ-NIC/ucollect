@@ -800,6 +800,7 @@ GRANT SELECT (date) ON router_registrationcode TO $DBCLEANER;
 GRANT SELECT (id, router_id, time, remote_port, remote_address, local_port, direction, rule_id, protocol, count, tcp_flags) ON router_loggedpacket TO $DBARCHIVIST;
 GRANT DELETE ON celery_taskmeta TO $DBCLEANER;
 GRANT DELETE ON router_loggedpacket TO $DBCLEANER;
+GRANT SELECT ON router_loggedpacket TO $DBFLOWTAGGER;
 GRANT DELETE ON router_registrationcode TO $DBCLEANER;
 GRANT SELECT (id, client_id) ON router_router TO $DBARCHIVIST;
 COMMIT;
