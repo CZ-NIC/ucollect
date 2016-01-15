@@ -33,6 +33,9 @@
 
 #include <string.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 enum set_state {
 	SS_VALID,	// The set is valid and up to date, or a diff update would be enough. Propagate changes to the kernel.
@@ -61,7 +64,91 @@ struct user_data {
 	uint32_t config_version; // Stored in network byte order. We compare only for equality.
 	size_t set_count;
 	struct set *sets;
+	// Cache of the query to the kernel what sets exist.
+	const char **existing_sets;
+	size_t existing_set_count;
 };
+
+// Check if a set exists in kernel. The query to kernel is cached.
+static bool set_exists(struct context *context, const char *name) {
+	struct user_data *u = context->user_data;
+	if (!u->existing_sets) {
+		ulog(LLOG_DEBUG, "Asking kernel for a list of IPsets\n");
+		int pipes[2];
+		sanity(pipe(pipes) == 0, "Couldn't create ipset pipe: %s\n", strerror(errno));
+		/*
+		 * Register just to make sure it isn't leaked if we crash here.
+		 * It will get unregistered before it causes any callbacks.
+		 */
+		loop_plugin_register_fd(context, pipes[0], NULL);
+		pid_t pid = loop_fork(context->loop);
+		if (pid == 0) {
+			// We are the child here. Screw the pipe to our stdout and exec.
+			sanity(dup2(pipes[1], 1) != -1, "Failed to dup the ipset pipe: %s\n", strerror(errno));
+			sanity(close(pipes[1]) != -1, "Failed to close the ipset child write end: %s\n", strerror(errno));
+			sanity(execl("/usr/sbin/ipset", "ipset", "-n", "list", (char *)NULL) != -1, "Exec to ipset -n list failed: %s\n", strerror(errno));
+		}
+		sanity(close(pipes[1]) != -1, "Failed to close the ipset write pipe end: %s\n", strerror(errno));
+		sanity(pid != -1, "Failed to fork ipset -n list: %s\n", strerror(errno));
+		// Read the output, into a double-growing buffer
+		size_t block = 1000, pos = 0;
+		char *output = NULL;
+		bool eof = false;
+		while (!eof) {
+			char *new = mem_pool_alloc(context->temp_pool, block);
+			block *= 2;
+			memcpy(new, output, pos);
+			output = new;
+			ssize_t res = read(pipes[0], output + pos, block - pos - 1);
+			sanity(res != -1, "Failed to read output of ipset -n list: %s\n", strerror(errno));
+			if (res == 0) {
+				eof = true;
+			} else {
+				pos += res;
+			}
+			sanity(pos < block, "Confused sizes, %zu bytes in buffer of %zu bytes\n", pos, block);
+		}
+		output[pos] = '\0';
+		loop_plugin_unregister_fd(context, pipes[0]);
+		sanity(close(pipes[0]) != -1, "Failed to close the ipset read pipe end: %s\n", strerror(errno));
+		// Wait for the termination of the child process
+		int status;
+		pid_t terminated = waitpid(pid, &status, 0);
+		sanity(pid == terminated, "Wrong PID returned/error? %d/%s\n", (int)terminated, strerror(errno));
+		sanity(WIFEXITED(status) && WEXITSTATUS(status) == 0, "The ipset -n list died: %d\n", status);
+		// Split the output to lines
+		// Count the number of lines first
+		size_t count = 1;
+		for (size_t i = 0; i < pos; i ++)
+			if (output[i] == '\n')
+				count ++;
+		const char **positions = mem_pool_alloc(context->temp_pool, count);
+		size_t lcount = 0;
+		positions[lcount ++] = output;
+		for (size_t i = 0; i < pos; i ++)
+			if (output[i] == '\n') {
+				output[i] = '\0';
+				positions[lcount ++] = &output[i + 1];
+			}
+		sanity(lcount == count, "Mismatch of newline count, %zu vs %zu\n", lcount, count);
+		u->existing_sets = positions;
+		u->existing_set_count = count;
+	}
+	for (size_t i = 0; i < u->existing_set_count; i ++)
+		if (strcmp(name, u->existing_sets[i]) == 0)
+			return true;
+	return false;
+}
+
+static void set_create(struct context *context, struct set *set) {
+	/*
+	 * Don't try to create the set if it pre-exists.
+	 * It may be the correct type but wrong size,
+	 * which is OK (we'll swap it), but it would produce error here.
+	 */
+	if (!set_exists(context, set->name))
+		enqueue(context, context->user_data->queue, mem_pool_printf(context->temp_pool, "create %s %s family %s hashsize %zu maxelem %zu\n", set->name, set->type->desc, set->type->family, set->hash_size, set->max_size));
+}
 
 static void connected(struct context *context) {
 	// Just ask for config
@@ -103,6 +190,11 @@ static void replace_start(struct diff_addr_store *store) {
 	struct mem_pool *tmp_pool = set->context->temp_pool;
 	// It is OK to allocate the data from the temporary memory pool. It's lifetime is at least the length of call to the plugin communication callback, and the whole set replacement happens there.
 	set->tmp_name = mem_pool_printf(tmp_pool, "%s-rep", set->name);
+	// Make sure the real set exists ‒ we may have missed it in case of broken queue
+	set_create(set->context, set);
+	// Delete any previous instance if it is left there, to prevent problems with creating.
+	if (set_exists(set->context, set->tmp_name))
+		enqueue(set->context, set->context->user_data->queue, mem_pool_printf(tmp_pool, "destroy %s\n", set->tmp_name));
 	enqueue(set->context, set->context->user_data->queue, mem_pool_printf(tmp_pool, "create %s %s family %s hashsize %zu maxelem %zu\n", set->tmp_name, set->type->desc, set->type->family, set->hash_size, set->max_size));
 }
 
@@ -251,7 +343,7 @@ static void config_parse(struct context *context, const uint8_t *data, size_t le
 	for (size_t i = 0; i < target_count; i ++) {
 		switch (sets[i].state) {
 			case SS_NEWBORN:
-				enqueue(context, u->queue, mem_pool_printf(context->temp_pool, "create %s %s family %s hashsize %zu maxelem %zu\n", sets[i].name, sets[i].type->desc, sets[i].type->family, sets[i].hash_size, sets[i].max_size));
+				set_create(context, &sets[i]);
 				sets[i].state = SS_PENDING;
 				// Fall through to SS_PENDING, as we want to ask for the version too
 			case SS_PENDING:
@@ -432,6 +524,8 @@ static void sets_reload(struct context *context) {
 }
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
+	// Reset the cache, it might be outdated and in invalid memory
+	context->user_data->existing_sets = NULL;
 	sanity(length, "A zero-length message delivered to the FWUp plugin\n");
 	switch (*data) {
 		case 'C':
