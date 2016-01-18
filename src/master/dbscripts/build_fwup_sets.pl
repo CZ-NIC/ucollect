@@ -59,7 +59,7 @@ sub fake_set_generate($$$) {
 				direction = 'I'
 			GROUP BY remote_address) AS counts
 		WHERE counts.rcount > ? AND counts.count > ?)", undef, $keep_router_limit, $keep_packet_limit);
-	$dbh->do("INSERT INTO fwup_addresses (set, epoch, version, add, address) SELECT ?, ?, ?, false, address FROM delete_candidates", undef, $setname, $max_epoch, $version);
+	$dbh->do("INSERT INTO fwup_addresses (set, epoch, version, add, address) SELECT ?, ?, ?, false, HOST(address) FROM delete_candidates", undef, $setname, $max_epoch, $version);
 	$dbh->do('DROP TABLE delete_candidates');
 
 	# How many elements are needed in the set?
