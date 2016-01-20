@@ -80,7 +80,3 @@ $dbh->do("UPDATE config SET value = ? WHERE plugin = 'fwup' AND name = 'version'
 
 $dbh->commit;
 
-# TODO: Solve the problem of propagating the size to the firewall rules somehow
-# Currently, if the sizes don't match, ucollect can't create the set. While we can switch
-# sets of different sizes, ipset -exist create complains.
-die "I had to update the sizes, please propagate them to the firewall rules.\n" if $bump_config_version;
