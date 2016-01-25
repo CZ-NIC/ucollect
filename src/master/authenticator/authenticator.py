@@ -21,6 +21,7 @@
 from twisted.internet import protocol, reactor
 from twisted.internet.task import LoopingCall
 from twisted.protocols import basic
+from threading import Lock
 import re
 import psycopg2
 import ConfigParser
@@ -41,6 +42,7 @@ with open(sys.argv[1]) as f:
 db = None
 cursor = None
 cred_cache = {}
+lock = Lock()
 
 def openDB():
 	global db
@@ -63,14 +65,16 @@ def renew():
 renew()
 
 def renew_safe():
-	try:
-		renew()
-	except Exception as e:
-		print "Failed to cache data: " + str(e)
-		# Reconnect the database, it may have been because of that
-		openDB()
+	# Make sure there aren't two attempts to use the DB at once.
+	with lock:
+		try:
+			renew()
+		except Exception as e:
+			print "Failed to cache data: " + str(e)
+			# Reconnect the database, it may have been because of that
+			openDB()
 
-renew_timer = LoopingCall(renew_safe)
+renew_timer = LoopingCall(lambda: reactor.callInThread(renew_safe))
 renew_timer.start(900, False)
 
 class AuthClient(basic.LineReceiver):
