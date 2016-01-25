@@ -19,6 +19,7 @@
 #
 
 from twisted.internet import protocol, reactor
+from twisted.internet.task import LoopingCall
 from twisted.protocols import basic
 import re
 import psycopg2
@@ -54,10 +55,23 @@ def renew():
 	cursor.execute('SELECT name, passwd, mechanism, builtin_passwd, slot_id FROM clients')
 	lines = cursor.fetchall()
 	global cred_cache
+	# This should replace the whole dictionary atomically.
 	cred_cache = dict(map(lambda l: (l[0], l[1:]), lines))
+	db.rollback()
 	print "Caching done"
 
 renew()
+
+def renew_safe():
+	try:
+		renew()
+	except Exception as e:
+		print "Failed to cache data: " + str(e)
+		# Reconnect the database, it may have been because of that
+		openDB()
+
+renew_timer = LoopingCall(renew_safe)
+renew_timer.start(900, False)
 
 class AuthClient(basic.LineReceiver):
 	def connectionMade(self):
@@ -73,7 +87,6 @@ class AuthClient(basic.LineReceiver):
 		if match:
 			mode, client, challenge, response = match.groups()
 			log_info = cred_cache.get(client)
-			db.rollback()
 			if log_info:
 				if log_info[1] == 'Y': # Always answer yes, DEBUG ONLY!
 					print "Debug YES"
