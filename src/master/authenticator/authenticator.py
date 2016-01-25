@@ -39,6 +39,7 @@ with open(sys.argv[1]) as f:
 
 db = None
 cursor = None
+cred_cache = {}
 
 def openDB():
 	global db
@@ -48,8 +49,15 @@ def openDB():
 
 openDB()
 
-def queryExecute(client):
-	cursor.execute('SELECT passwd, mechanism, builtin_passwd, slot_id FROM clients WHERE name = %s', (client.lower(),))
+def renew():
+	print "Caching auth data"
+	cursor.execute('SELECT name, passwd, mechanism, builtin_passwd, slot_id FROM clients')
+	lines = cursor.fetchall()
+	global cred_cache
+	cred_cache = dict(map(lambda l: (l[0], l[1:]), lines))
+	print "Caching done"
+
+renew()
 
 class AuthClient(basic.LineReceiver):
 	def connectionMade(self):
@@ -64,18 +72,7 @@ class AuthClient(basic.LineReceiver):
 		match = auth.match(line)
 		if match:
 			mode, client, challenge, response = match.groups()
-			try:
-				queryExecute(client)
-			except (psycopg2.OperationalError, psycopg2.InterfaceError):
-				try:
-					print "DB broken, recreating"
-					openDB()
-					queryExecute(client)
-				except (psycopg2.OperationalError, psycopg2.InterfaceError):
-					print "DB still broken, dropping request"
-					self.transport.abortConnection()
-					return
-			log_info = cursor.fetchone()
+			log_info = cred_cache.get(client)
 			db.rollback()
 			if log_info:
 				if log_info[1] == 'Y': # Always answer yes, DEBUG ONLY!
