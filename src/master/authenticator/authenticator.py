@@ -40,26 +40,23 @@ with open(sys.argv[1]) as f:
 	config_data.readfp(f, sys.argv[1])
 
 db = None
-cursor = None
 cred_cache = {}
 lock = Lock()
 
 def openDB():
 	global db
-	global cursor
 	db = psycopg2.connect(database=config_data.get('main', 'db'), user=config_data.get('main', 'dbuser'), password=config_data.get('main', 'dbpasswd'))
-	cursor = db.cursor()
 
 openDB()
 
 def renew():
 	print "Caching auth data"
+	cursor = db.cursor()
 	cursor.execute('SELECT name, passwd, mechanism, builtin_passwd, slot_id FROM clients')
 	lines = cursor.fetchall()
 	global cred_cache
 	# This should replace the whole dictionary atomically.
 	cred_cache = dict(map(lambda l: (l[0], l[1:]), lines))
-	db.rollback()
 	print "Caching done"
 
 renew()
