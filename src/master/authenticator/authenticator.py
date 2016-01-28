@@ -19,7 +19,9 @@
 #
 
 from twisted.internet import protocol, reactor
+from twisted.internet.task import LoopingCall
 from twisted.protocols import basic
+from threading import Lock
 import re
 import psycopg2
 import ConfigParser
@@ -38,18 +40,39 @@ with open(sys.argv[1]) as f:
 	config_data.readfp(f, sys.argv[1])
 
 db = None
-cursor = None
+cred_cache = {}
+lock = Lock()
 
 def openDB():
 	global db
-	global cursor
 	db = psycopg2.connect(database=config_data.get('main', 'db'), user=config_data.get('main', 'dbuser'), password=config_data.get('main', 'dbpasswd'))
-	cursor = db.cursor()
 
 openDB()
 
-def queryExecute(client):
-	cursor.execute('SELECT passwd, mechanism, builtin_passwd, slot_id FROM clients WHERE name = %s', (client.lower(),))
+def renew():
+	print "Caching auth data"
+	cursor = db.cursor()
+	cursor.execute('SELECT name, passwd, mechanism, builtin_passwd, slot_id FROM clients')
+	lines = cursor.fetchall()
+	global cred_cache
+	# This should replace the whole dictionary atomically.
+	cred_cache = dict(map(lambda l: (l[0], l[1:]), lines))
+	print "Caching done"
+
+renew()
+
+def renew_safe():
+	# Make sure there aren't two attempts to use the DB at once.
+	with lock:
+		try:
+			renew()
+		except Exception as e:
+			print "Failed to cache data: " + str(e)
+			# Reconnect the database, it may have been because of that
+			openDB()
+
+renew_timer = LoopingCall(lambda: reactor.callInThread(renew_safe))
+renew_timer.start(900, False)
 
 class AuthClient(basic.LineReceiver):
 	def connectionMade(self):
@@ -64,19 +87,7 @@ class AuthClient(basic.LineReceiver):
 		match = auth.match(line)
 		if match:
 			mode, client, challenge, response = match.groups()
-			try:
-				queryExecute(client)
-			except (psycopg2.OperationalError, psycopg2.InterfaceError):
-				try:
-					print "DB broken, recreating"
-					openDB()
-					queryExecute(client)
-				except (psycopg2.OperationalError, psycopg2.InterfaceError):
-					print "DB still broken, dropping request"
-					self.transport.abortConnection()
-					return
-			log_info = cursor.fetchone()
-			db.rollback()
+			log_info = cred_cache.get(client)
 			if log_info:
 				if log_info[1] == 'Y': # Always answer yes, DEBUG ONLY!
 					print "Debug YES"
