@@ -452,8 +452,8 @@ CREATE TABLE fake_logs (
 	local INET,
 	remote_port INT,
 	server fake_server NOT NULL,
-	name TEXT,
-	password TEXT,
+	name BYTEA,
+	password BYTEA,
 	reason TEXT,
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
@@ -613,8 +613,8 @@ CREATE TABLE ssh_sessions (
 	client_id INT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
 	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
 	end_time TIMESTAMP WITH TIME ZONE DEFAULT NULL,
-	login TEXT NOT NULL,
-	password TEXT NOT NULL,
+	login BYTEA NOT NULL,
+	password BYTEA NOT NULL,
 	remote INET NOT NULL
 );
 CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
@@ -626,7 +626,7 @@ CREATE TABLE ssh_commands (
 	session_id INTEGER NOT NULL REFERENCES ssh_sessions(id) ON DELETE CASCADE,
 	ts TIMESTAMP WITH TIME ZONE NOT NULL,
 	success BOOLEAN NOT NULL,
-	command TEXT NOT NULL,
+	command BYTEA NOT NULL,
 	archived BOOL NOT NULL DEFAULT false
 );
 
