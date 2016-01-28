@@ -454,7 +454,7 @@ CREATE TABLE fake_logs (
 	server fake_server NOT NULL,
 	name BYTEA,
 	password BYTEA,
-	reason BYTEA,
+	reason TEXT,
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
 CREATE INDEX fake_logs_server_idx ON fake_logs(server);
