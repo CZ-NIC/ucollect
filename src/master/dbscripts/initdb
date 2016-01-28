@@ -492,7 +492,7 @@ CREATE OR REPLACE VIEW fake_blacklist_cache_fill AS SELECT
 	SUM(fake_blacklist_scores.score) AS score,
 	MAX(fl.timestamp) AS timestamp
 FROM
-	(SELECT * FROM fake_logs WHERE timestamp < CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - INTERVAL '1 hour') AS fl
+	(SELECT server, remote, client, timestamp, event FROM fake_logs WHERE timestamp < CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - INTERVAL '1 hour') AS fl
 	JOIN fake_blacklist_scores ON fl.server = fake_blacklist_scores.server AND fl.event = fake_blacklist_scores.event
 GROUP BY fl.server, fl.remote, fl.client;
 CREATE UNLOGGED TABLE fake_blacklist_cache (
@@ -536,7 +536,7 @@ FROM
 				fl.client,
 				SUM(fake_blacklist_scores.score) AS score,
 				MAX(fl.timestamp) AS timestamp
-			FROM (SELECT * FROM fake_logs WHERE timestamp > (SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM fake_blacklist_cache)) AS fl
+			FROM (SELECT server, remote, client, timestamp, event FROM fake_logs WHERE timestamp > (SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM fake_blacklist_cache)) AS fl
 			JOIN fake_blacklist_scores ON fl.server = fake_blacklist_scores.server AND fl.event = fake_blacklist_scores.event
 			GROUP BY fl.server, fl.remote, fl.client) AS fl
 		JOIN fake_blacklist_limits ON fl.server = fake_blacklist_limits.server
