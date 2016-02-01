@@ -87,7 +87,7 @@ class AuthClient(basic.LineReceiver):
 		match = auth.match(line)
 		if match:
 			mode, client, challenge, response = match.groups()
-			log_info = cred_cache.get(client)
+			log_info = cred_cache.get(client.lower())
 			if log_info:
 				if log_info[1] == 'Y': # Always answer yes, DEBUG ONLY!
 					print "Debug YES"
