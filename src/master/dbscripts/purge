@@ -10,6 +10,10 @@ DATE=$(date -d "$CLEAN_DAYS days ago" "+'%Y-%m-%d'")
 
 (
 	echo "BEGIN;"
+	# Duplicate the last plugin history event. This way, even if
+	# the client is connected for a long time, we won't lose all
+	# the events and we shall know what its state is now or a day ago
+	echo "INSERT INTO plugin_history (client, name, timestamp, version, hash, active) SELECT DISTINCT ph.client, ph.name, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', ph.version, ph.hash, ph.active FROM plugin_history AS ph JOIN (SELECT client, name, MAX(timestamp) AS timestamp FROM plugin_history GROUP BY client, name) AS latest ON ph.client = latest.client AND ph.name = latest.name AND ph.timestamp = latest.timestamp;"
 	for TABLE in $TABLES ; do
 		echo "DELETE FROM $TABLE WHERE timestamp < $DATE;"
 	done
