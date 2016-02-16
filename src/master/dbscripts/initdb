@@ -7,7 +7,12 @@ BEGIN;
 
 DROP VIEW IF EXISTS fake_bad_connections;
 DROP VIEW IF EXISTS fake_bad_connections_telnet;
+DROP VIEW IF EXISTS fake_bad_connections_ssh_honey;
 DROP VIEW IF EXISTS fake_blacklist;
+DROP VIEW IF EXISTS fake_blacklist_remotes;
+DROP VIEW IF EXISTS fake_blacklist_sums;
+DROP VIEW IF EXISTS fake_blacklist_concat;
+DROP VIEW IF EXISTS fake_blacklist_uncached;
 DROP VIEW IF EXISTS plugin_activity;
 DROP VIEW IF EXISTS fake_blacklist_cache_fill;
 DROP TABLE IF EXISTS fake_blacklist_cache;
@@ -434,7 +439,7 @@ CREATE TABLE fwup_addresses (
 );
 
 CREATE TYPE fake_log_type AS ENUM ('connect', 'disconnect', 'lost', 'extra', 'timeout', 'login');
-CREATE TYPE fake_server AS ENUM ('telnet');
+CREATE TYPE fake_server AS ENUM ('telnet', 'ssh_honey');
 CREATE TABLE fake_server_names (
 	name TEXT NOT NULL,
 	code CHAR NOT NULL,
@@ -443,7 +448,7 @@ CREATE TABLE fake_server_names (
 	UNIQUE(code),
 	UNIQUE(type)
 );
-INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet');
+INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet'), ('SSH honeypot', 'S', 'ssh_honey');
 CREATE TABLE fake_logs (
 	client INT NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
@@ -455,7 +460,8 @@ CREATE TABLE fake_logs (
 	name BYTEA,
 	password BYTEA,
 	reason TEXT,
-	FOREIGN KEY (client) REFERENCES clients(id)
+	FOREIGN KEY (client) REFERENCES clients(id),
+	CHECK(server != 'ssh_honey')
 );
 CREATE INDEX fake_logs_server_idx ON fake_logs(server);
 CREATE INDEX fake_logs_client_idx ON fake_logs(client);
@@ -467,24 +473,23 @@ CREATE TABLE fake_blacklist_scores (
 	UNIQUE(server, event)
 );
 INSERT INTO fake_blacklist_scores (server, event, score) VALUES
-	('telnet', 'connect', 1),
-	('telnet', 'login', 5);
+	('telnet', 'connect', 4),
+	('telnet', 'login', 20);
 CREATE TYPE blacklist_mode AS ENUM ('soft', 'hard');
 CREATE TABLE fake_blacklist_limits (
 	server fake_server NOT NULL,
-	client_pass BIGINT NOT NULL,
-	score_total BIGINT NOT NULL,
-	clients_total INT NOT NULL,
-	score_passed BIGINT NOT NULL,
-	clients_passed INT NOT NULL,
+	clients BIGINT NOT NULL,
+	score BIGINT NOT NULL,
 	mode blacklist_mode NOT NULL
 );
 CREATE INDEX fake_blacklist_limit_sc_idx ON fake_blacklist_limits (server, client_pass);
 CREATE INDEX fake_blacklist_limit_s_idx ON fake_blacklist_limits (server);
-INSERT INTO fake_blacklist_limits (server, client_pass, score_total, clients_total, score_passed, clients_passed, mode) VALUES
-	('telnet', 25, 100, 0, 0, 3, 'hard'),
-	('telnet', 25, 75, 0, 0, 2, 'soft'),
-	('telnet', 200, 0, 0, 0, 1, 'soft');
+INSERT INTO fake_blacklist_limits (server, clients, score, mode) VALUES
+	('telnet', 4, 500, 'hard'),
+	('telnet', 3, 300, 'soft'),
+	('telnet', 2, 1000, 'soft'),
+	('ssh_honey', 3, 300, 'soft'),
+	('ssh_honey', 4, 500, 'hard');
 CREATE OR REPLACE VIEW fake_blacklist_cache_fill AS SELECT
 	fl.server,
 	fl.remote,
@@ -504,57 +509,73 @@ CREATE UNLOGGED TABLE fake_blacklist_cache (
 	CHECK(score >= 0),
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
+CREATE OR REPLACE VIEW fake_blacklist_uncached AS SELECT
+	fl.server,
+	fl.remote,
+	fl.client,
+	SUM(fake_blacklist_scores.score) AS score
+FROM
+	(SELECT * FROM fake_logs WHERE timestamp > (SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM fake_blacklist_cache)) AS fl
+	JOIN fake_blacklist_scores ON fl.server = fake_blacklist_scores.server AND fl.event = fake_blacklist_scores.event
+GROUP BY fl.server, fl.remote, fl.client;
+CREATE OR REPLACE VIEW ssh_blacklist_scores AS SELECT
+	'ssh_honey'::fake_server,
+	remote,
+	client_id AS client,
+	COUNT(distinct ssh_sessions.id) * 25 + COUNT(*) * 5 AS score
+FROM
+	ssh_sessions
+	JOIN ssh_commands ON ssh_sessions.id = ssh_commands.session_id
+GROUP BY
+	remote, client_id;
+CREATE OR REPLACE VIEW fake_blacklist_concat AS
+	(SELECT server, remote, client, score FROM fake_blacklist_cache)
+	UNION
+	(SELECT * FROM fake_blacklist_uncached)
+	UNION
+	(SELECT * FROM ssh_blacklist_scores);
+CREATE OR REPLACE VIEW fake_blacklist_sums AS SELECT
+	server, remote, client, SUM(score) AS score
+FROM
+	fake_blacklist_concat
+GROUP BY server, remote, client
+HAVING SUM(score) >= 100;
+CREATE OR REPLACE VIEW fake_blacklist_remotes AS SELECT
+	server, remote, SUM(score) AS score, COUNT(*) AS clients
+FROM
+	fake_blacklist_sums
+GROUP BY server, remote;
 CREATE OR REPLACE VIEW fake_blacklist AS SELECT
-	t.server,
-	t.remote,
-	MAX(t.clients_total) AS clients_total,
-	MAX(t.score_total) AS score_total,
+	fb.server,
+	fb.remote,
+	MAX(fb.clients) AS clients,
+	MAX(fb.score) AS score,
 	MAX(l.mode) AS mode
 FROM
-	(SELECT
-		s.server,
-		s.remote,
-		s.client_pass,
-		COUNT(s.client) AS clients_total,
-		SUM(s.passed) AS clients_passed,
-		SUM(s.score) AS score_total,
-		SUM(s.score * s.passed) AS score_passed
-	FROM (
-		SELECT
-			fl.server,
-			fl.remote,
-			fl.client,
-			fake_blacklist_limits.client_pass,
-			SUM(fl.score) AS score,
-			(SUM(fl.score) >= fake_blacklist_limits.client_pass)::INTEGER AS passed
-		FROM
-			(SELECT * FROM fake_blacklist_cache
-			UNION ALL
-			SELECT
-				fl.server,
-				fl.remote,
-				fl.client,
-				SUM(fake_blacklist_scores.score) AS score,
-				MAX(fl.timestamp) AS timestamp
-			FROM (SELECT server, remote, client, timestamp, event FROM fake_logs WHERE timestamp > (SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM fake_blacklist_cache)) AS fl
-			JOIN fake_blacklist_scores ON fl.server = fake_blacklist_scores.server AND fl.event = fake_blacklist_scores.event
-			GROUP BY fl.server, fl.remote, fl.client) AS fl
-		JOIN fake_blacklist_limits ON fl.server = fake_blacklist_limits.server
-		GROUP BY fl.server, fl.remote, fl.client, fake_blacklist_limits.client_pass
-	) AS s
-	GROUP BY
-		s.server,
-		s.remote,
-		s.client_pass
-	) AS t
-JOIN fake_blacklist_limits AS l ON t.server = l.server AND t.client_pass = l.client_pass
+	fake_blacklist_remotes AS fb
+	JOIN fake_blacklist_limits AS l ON fb.server = l.server AND fb.score >= l.score AND fb.clients >= l.clients
+GROUP BY
+	fb.server,
+	fb.remote;
+CREATE OR REPLACE VIEW fake_bad_connections_ssh_honey AS SELECT
+	'ssh_honey'::fake_server,
+	ssh_sessions.remote,
+	NULL::INT AS remote_port,
+	ssh_sessions.local,
+	22 AS local_port,
+	start_time AS start_time_utc,
+	end_time AS end_time_utc,
+	1::INTEGER AS login_attempts,
+	clients
+FROM
+	ssh_sessions
+	JOIN fake_blacklist ON fake_blacklist.remote = ssh_sessions.remote
 WHERE
-	t.clients_total >= l.clients_total
-	AND t.clients_passed >= l.clients_passed
-	AND t.score_total >= l.score_total
-	AND t.score_passed >= l.score_passed
-GROUP BY t.server, t.remote
-ORDER BY t.server, t.remote;
+	fake_blacklist.server = 'ssh_honey'
+	AND fake_blacklist.mode = 'hard'
+ORDER BY
+	ssh_sessions.remote,
+	start_time;
 CREATE OR REPLACE VIEW fake_bad_connections_telnet AS SELECT
 	fake_logs.server,
 	fake_logs.remote,
@@ -564,7 +585,7 @@ CREATE OR REPLACE VIEW fake_bad_connections_telnet AS SELECT
 	MIN(timestamp) AS start_time_utc,
 	MAX(timestamp) AS end_time_utc,
 	SUM((event = 'login')::INTEGER) AS login_attempts,
-	MIN(clients_total) AS clients_total
+	MIN(clients) AS clients_total
 FROM
 	fake_logs
 	JOIN fake_blacklist ON fake_logs.remote = fake_blacklist.remote
@@ -582,7 +603,7 @@ ORDER BY
 	fake_logs.remote,
 	local,
 	MIN(timestamp);
-CREATE OR REPLACE VIEW fake_bad_connections AS SELECT * FROM fake_bad_connections_telnet;
+CREATE OR REPLACE VIEW fake_bad_connections AS (SELECT * FROM fake_bad_connections_telnet) UNION (SELECT * FROM fake_bad_connections_ssh_honey);
 
 CREATE TABLE spoof (
 	client INT NOT NULL,
@@ -616,6 +637,7 @@ CREATE TABLE ssh_sessions (
 	login BYTEA NOT NULL,
 	password BYTEA NOT NULL,
 	remote INET NOT NULL
+	local INET NOT NULL
 );
 CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
 ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
