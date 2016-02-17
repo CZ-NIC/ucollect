@@ -58,7 +58,7 @@ my @private = (
 	qr/^f[ed]..:/
 );
 
-my $result = $dbh->selectall_arrayref('SELECT server, remote, clients_total, score_total, mode FROM fake_blacklist');
+my $result = $dbh->selectall_arrayref('SELECT server, remote, clients, score, mode FROM fake_blacklist');
 $dbh->rollback;
 $dbh->disconnect;
 #local $\ = "\n";
