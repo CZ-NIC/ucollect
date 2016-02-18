@@ -25,6 +25,7 @@ import activity
 import socket
 import protocol
 import database
+import psycopg2
 
 logger = logging.getLogger(name='fake')
 
@@ -61,10 +62,14 @@ def store_logs(message, client, now, version):
 		for i in range(0, info_count):
 			(kind_i,) = struct.unpack('!B', message[0])
 			(content, message) = protocol.extract_string(message[1:])
+			# Twisted gives us the message as a string. The name and password
+			# columns are bytea in postgres. This needs to be resolved by
+			# a conversion wrapper (because python seems to use escaping, not
+			# bound params)
 			if kind_i == 0:
-				name = content
+				name = psycopg2.Binary(content)
 			elif kind_i == 1:
-				passwd = content
+				passwd = psycopg2.Binary(content)
 			elif kind_i == 2:
 				reason = content
 		values.append((now, age, tp, rem_address, loc_address, rem_port, name, passwd, reason, client, code))
