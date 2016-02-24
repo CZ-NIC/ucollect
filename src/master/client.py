@@ -36,7 +36,10 @@ sysrand = random.SystemRandom()
 challenge_len = 128 # 128 bits of random should be enough for log-in to protect against replay attacks
 
 with database.transaction() as t:
-	# As we just started, there's no plugin active anywhere. Flush whatever is left in the table.
+	# As we just started, there's no plugin active anywhere.
+	# Mark anything active as no longer active in the history and
+	# flush the active ones.
+	t.execute("INSERT INTO plugin_history (client, name, timestamp, active) SELECT client, name, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', false FROM active_plugins")
 	t.execute("DELETE FROM active_plugins")
 
 class ClientConn(twisted.protocols.basic.Int32StringReceiver):
@@ -102,8 +105,10 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			logger.info("Connection lost from %s", self.cid())
 			self.__pinger.stop()
 			self.__plugins.unregister_client(self)
+			now = database.now()
 			def log_plugins(transaction):
 				logger.debug("Dropping plugin list of %s", self.cid())
+				transaction.execute("INSERT INTO plugin_history (client, name, timestamp, active) SELECT ap.client, ap.name, %s, false FROM active_plugins AS ap JOIN clients ON ap.client = clients.id WHERE clients.name = %s", (now, self.cid()))
 				transaction.execute('DELETE FROM active_plugins WHERE client IN (SELECT id FROM clients WHERE name = %s)', (self.cid(),))
 				return True
 			activity.push(log_plugins)
@@ -236,8 +241,11 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		now = database.now()
 		def log_versions(transaction):
 			logger.debug("Replacing plugin list of %s", self.cid())
+			# The current state (override anything previous)
 			transaction.execute('DELETE FROM active_plugins WHERE client IN (SELECT id FROM clients WHERE name = %s)', (self.cid(),))
 			transaction.executemany("INSERT INTO active_plugins (client, name, updated, version, hash, libname, active) SELECT clients.id, %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", map(lambda plug: (plug['name'], now, plug['version'], plug['hash'].encode('hex'), plug['lib'], plug['activity'], self.cid()), versions.values()))
+			# The history, just append (yes, there may be duplicates, but who cares)
+			transaction.executemany("INSERT INTO plugin_history (client, name, timestamp, version, hash, active) SELECT clients.id, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", map(lambda plug: (plug['name'], now, plug['version'], plug['hash'].encode('hex'), plug['activity'], self.cid()), versions.values()))
 			return True
 		activity.push(log_versions)
 
