@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 use common::sense;
 use DBI;
+use DBD::Pg qw(:pg_types); # Import the DBD::Pg::PG_BYTEA constant (and other similar ones)
 use Config::IniFiles;
 use List::Util qw(sum);
 use Date::Format;
@@ -473,9 +474,18 @@ if (fork == 0) {
 	my $get_commands = $source->prepare('SELECT ssh_commands.id, start_time, end_time, login, password, remote, ts, success, command FROM ssh_commands JOIN ssh_sessions ON ssh_commands.session_id = ssh_sessions.id WHERE NOT archived');
 	my $mark_command = $source->prepare('UPDATE ssh_commands SET archived = TRUE WHERE id = ?');
 	my $store_command = $destination->prepare('INSERT INTO ssh_commands (session, timestamp, success, command) VALUES (?, ?, ?, ?)');
+	# Make sure the params are considered the correct type.
+	# bind_param does two things here:
+	# * Sets the value of the parameter to NULL (which we'll override by calling execute with a new value).
+	# * Sets the data type for the column (which stays across the future calls to bind_param or execute).
+	$store_command->bind_param(4, undef, { pg_type => DBD::Pg::PG_BYTEA });
 	my $get_session = $destination->prepare('SELECT id, end_time FROM ssh_sessions WHERE start_time = ? AND login = ? AND password = ?');
+	$get_session->bind_param(2, undef, { pg_type => DBD::Pg::PG_BYTEA });
+	$get_session->bind_param(3, undef, { pg_type => DBD::Pg::PG_BYTEA });
 	my $update_session = $destination->prepare('UPDATE ssh_sessions SET end_time = ? WHERE id = ?');
 	my $store_session = $destination->prepare('INSERT INTO ssh_sessions (start_time, end_time, login, password, remote) VALUES (?, ?, ?, ?, ?) RETURNING id');
+	$store_session->bind_param(3, undef, { pg_type => DBD::Pg::PG_BYTEA });
+	$store_session->bind_param(4, undef, { pg_type => DBD::Pg::PG_BYTEA });
 	$get_commands->execute;
 	my $count_commands = 0;
 	my $count_sessions = 0;
@@ -521,6 +531,12 @@ if (fork == 0) {
 	my $get_passwords = $source->prepare("SELECT timestamp, server, remote, name, password, remote_port FROM fake_logs WHERE name IS NOT NULL AND password IS NOT NULL AND event = 'login' AND timestamp >= ?");
 	$get_passwords->execute($max_date);
 	my $put_password = $destination->prepare("INSERT INTO fake_passwords (timestamp, server, remote, name, password, remote_port) VALUES (?, ?, ?, ?, ?, ?)");
+	# Make sure the params are considered the correct type.
+	# bind_param does two things here:
+	# * Sets the value of the parameter to NULL (which we'll override by calling execute with a new value).
+	# * Sets the data type for the column (which stays across the future calls to bind_param or execute).
+	$put_password->bind_param(4, undef, { pg_type => DBD::Pg::PG_BYTEA });
+	$put_password->bind_param(5, undef, { pg_type => DBD::Pg::PG_BYTEA });
 	my $passwords = -1;
 	$put_password->execute_for_fetch(sub {
 		$passwords ++;

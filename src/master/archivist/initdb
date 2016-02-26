@@ -342,8 +342,8 @@ CREATE TABLE fake_passwords (
 	server fake_server NOT NULL,
 	remote INET NOT NULL,
 	remote_port INT,
-	name TEXT NOT NULL,
-	password TEXT NOT NULL
+	name BYTEA NOT NULL,
+	password BYTEA NOT NULL
 );
 CREATE TABLE fake_server_activity (
 	date DATE NOT NULL,
@@ -361,8 +361,8 @@ CREATE TABLE ssh_sessions (
 	id INT NOT NULL PRIMARY KEY,
 	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
 	end_time TIMESTAMP WITH TIME ZONE,
-	login TEXT NOT NULL,
-	password TEXT NOT NULL,
+	login BYTEA NOT NULL,
+	password BYTEA NOT NULL,
 	remote INET,
 	UNIQUE(start_time, login, password)
 );
@@ -373,7 +373,7 @@ CREATE TABLE ssh_commands (
 	session INT NOT NULL,
 	timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
 	success BOOL NOT NULL,
-	command TEXT NOT NULL,
+	command BYTEA NOT NULL,
 	FOREIGN KEY (session) REFERENCES ssh_sessions(id) ON DELETE CASCADE
 );
 
