@@ -573,7 +573,7 @@ GROUP BY
 CREATE OR REPLACE VIEW fake_bad_connections_ssh_honey AS SELECT
 	'ssh_honey'::fake_server,
 	ssh_sessions.remote,
-	NULL::INT AS remote_port,
+	ssh_sessions.remote_port AS remote_port,
 	ssh_sessions.local,
 	22 AS local_port,
 	start_time AS start_time_utc,
@@ -649,8 +649,11 @@ CREATE TABLE ssh_sessions (
 	end_time TIMESTAMP WITH TIME ZONE DEFAULT NULL,
 	login BYTEA NOT NULL,
 	password BYTEA NOT NULL,
-	remote INET NOT NULL
-	local INET NOT NULL
+	remote INET NOT NULL,
+	remote_port INTEGER NOT NULL,
+	local INET NOT NULL,
+	CHECK(remote_port > 0),
+	CHECK(remote_port <= 65535)
 );
 CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
 ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
