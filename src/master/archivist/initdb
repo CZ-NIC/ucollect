@@ -343,7 +343,9 @@ CREATE TABLE fake_passwords (
 	remote INET NOT NULL,
 	remote_port INT,
 	name BYTEA NOT NULL,
-	password BYTEA NOT NULL
+	password BYTEA NOT NULL,
+	CHECK(remote_port > 0),
+	CHECK(remote_port <= 65535)
 );
 CREATE TABLE fake_server_activity (
 	date DATE NOT NULL,
