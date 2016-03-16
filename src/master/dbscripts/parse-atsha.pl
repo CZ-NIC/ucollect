@@ -6,7 +6,7 @@ $/ = "\n\n";
 my @input = <STDIN>;
 
 my $slot = 0;
-my $tag = 'turris-test';
+my $tag = 'omnia-proto';
 my $start = 3;
 
 print "BEGIN;\n";
