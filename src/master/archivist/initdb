@@ -343,7 +343,9 @@ CREATE TABLE fake_passwords (
 	remote INET NOT NULL,
 	remote_port INT,
 	name BYTEA NOT NULL,
-	password BYTEA NOT NULL
+	password BYTEA NOT NULL,
+	CHECK(remote_port > 0),
+	CHECK(remote_port <= 65535)
 );
 CREATE TABLE fake_server_activity (
 	date DATE NOT NULL,
@@ -364,7 +366,10 @@ CREATE TABLE ssh_sessions (
 	login BYTEA NOT NULL,
 	password BYTEA NOT NULL,
 	remote INET,
-	UNIQUE(start_time, login, password)
+	remote_port INT,
+	UNIQUE(start_time, login, password),
+	CHECK(remote_port > 0),
+	CHECK(remote_port <= 65535)
 );
 CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
 ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
