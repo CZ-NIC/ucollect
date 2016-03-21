@@ -44,6 +44,6 @@ for s in ['a']:
 	log_info = cursor.fetchone()
 	challenge = ('EF' * 32).decode('hex')
 	while log_info:
-		print(log_info[0] + ' ' + atsha204.hmac(log_info[2], log_info[0].decode('hex'), log_info[1].decode('hex'), challenge).encode('hex'))
+		print(log_info[0].upper() + ' ' + atsha204.hmac(log_info[2], log_info[0].decode('hex'), log_info[1].decode('hex'), challenge).encode('hex').lower())
 		log_info = cursor.fetchone()
 
