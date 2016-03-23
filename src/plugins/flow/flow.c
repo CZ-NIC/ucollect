@@ -25,6 +25,7 @@
 
 #include <string.h>
 #include <arpa/inet.h>
+#include <endian.h>
 
 void flow_parse(struct flow *target, const struct packet_info *packet) {
 	enum endpoint local = local_endpoint(packet->direction);

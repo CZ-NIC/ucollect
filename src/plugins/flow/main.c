@@ -34,6 +34,7 @@
 
 #include <arpa/inet.h>
 #include <string.h>
+#include <endian.h>
 
 struct trie_data {
 	struct flow flow;
