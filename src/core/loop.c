@@ -322,9 +322,9 @@ static void sig_handler(int signal, siginfo_t *info, void *unused) {
 	}
 	in_signal = 1;
 	jump_signum = signal;
+	ulog(LLOG_ERROR, "Signal %d/%d/%d on addr %p\n", info->si_signo, info->si_errno, info->si_code, info->si_addr);
 	if (gdb_command) {
 		system(gdb_command);
-		ulog(LLOG_ERROR, "Signal %d/%d/%d on addr %p\n", info->si_signo, info->si_errno, info->si_code, info->si_addr);
 	}
 #ifdef DEBUG
 	/*
@@ -547,9 +547,11 @@ struct loop *loop_create(void) {
 	if (epoll_fd == -1)
 		die("Couldn't create epoll instance (%s)\n", strerror(errno));
 	struct mem_pool *pool = mem_pool_create("Global permanent pool");
+#ifdef GDB_BACKTRACE
 	if (!gdb_command)
 		gdb_command = mem_pool_printf(pool, "gdb --batch -p %d -ex 'bt full' -ex 'info sharedlibrary' 2>/dev/null | sed -e 's/^/CRASH: /' | logger -t %s", (int)getpid(), config_get_package());
 	ulog(LLOG_INFO, "Prepared emergency GDB command: %s\n", gdb_command);
+#endif
 	struct loop *result = mem_pool_alloc(pool, sizeof *result);
 	*result = (struct loop) {
 		.permanent_pool = pool,
