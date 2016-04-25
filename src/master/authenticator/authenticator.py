@@ -57,6 +57,8 @@ def renew():
 	global cred_cache
 	# This should replace the whole dictionary atomically.
 	cred_cache = dict(map(lambda l: (l[0], l[1:]), lines))
+	# Don't keep the transaction open (as we don't modify anything, rollback is good enough and it is safer against accidental edits).
+	db.rollback()
 	print "Caching done"
 
 renew()
