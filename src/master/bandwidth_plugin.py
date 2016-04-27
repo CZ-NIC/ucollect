@@ -179,7 +179,6 @@ def store_bandwidth(data, now):
 				BUCKET_MAP = BUCKET_MAP_PROTO3
 				BUCKETS_CNT = BUCKETS_CNT_PROTO3
 
-			##### DBG #####
 			in_time = [0] * BUCKETS_CNT
 			in_bytes = [0] * BUCKETS_CNT
 			out_time = [0] * BUCKETS_CNT
@@ -192,12 +191,6 @@ def store_bandwidth(data, now):
 				out_time[pos] = bucket.out_time
 				out_bytes[pos] = bucket.out_bytes
 
-			t.execute("""INSERT INTO bandwidth_stats_dbg (client, timestamp, timestamp_dbg, in_time, in_bytes, out_time, out_bytes)
-			SELECT clients.id AS client, %s as timestamp, %s, %s, %s, %s, %s
-			FROM clients
-			WHERE name = %s
-			""", (now, cldata.timestamp_dbg, in_time, in_bytes, out_time, out_bytes, client))
-			##### /DBG #####
 			t.execute("""SELECT client, timestamp, in_time, in_bytes, out_time, out_bytes
 			FROM bandwidth_stats
 			JOIN clients ON bandwidth_stats.client = clients.id
