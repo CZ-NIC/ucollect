@@ -98,7 +98,6 @@ CREATE TABLE known_plugins (
 	note TEXT,
 	UNIQUE(name, version, hash)
 );
-CREATE INDEX ON known_plugins(name);
 CREATE TABLE active_plugins (
 	client INT NOT NULL,
 	name TEXT NOT NULL,
@@ -312,7 +311,6 @@ CREATE TABLE biflows (
 	seen_start_out BOOL NOT NULL,
 	tag TEXT,
 	tagged_on TIMESTAMP,
-	country_remote VARCHAR(2),
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(proto = 'T' OR proto = 'U'),
 	CHECK(start_in <= stop_in),
@@ -321,11 +319,7 @@ CREATE TABLE biflows (
 ) WITH (fillfactor = 50);
 CREATE SEQUENCE biflow_ids OWNED BY biflows.id;
 ALTER TABLE biflows ALTER COLUMN id SET DEFAULT NEXTVAL('biflow_ids');
-CREATE INDEX ON biflows (ip_remote);
 CREATE INDEX ON biflows (tagged_on);
-CREATE INDEX ON biflows (client);
-CREATE INDEX ON biflows (port_remote, proto);
-CREATE INDEX ON biflows (country_remote) WHERE country_remote IS NULL;
 
 INSERT INTO activity_types (name, plugin) VALUES ('login', NULL), ('logout', NULL), ('buckets', 'Buckets'), ('counts', 'Count'), ('pings', 'Sniff'), ('bandwidth', 'Bandwidth'), ('certs', 'Sniff'), ('flow', 'Flow'), ('nat', 'Sniff'), ('spoof', 'Spoof'), ('refused', 'Refused'), ('fake', 'Fake');
 CREATE TABLE starttls_protos (
@@ -463,9 +457,6 @@ CREATE TABLE fake_logs (
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(server != 'ssh_honey')
 );
-CREATE INDEX fake_logs_server_idx ON fake_logs(server);
-CREATE INDEX fake_logs_client_idx ON fake_logs(client);
-CREATE INDEX fake_logs_compound_idx ON fake_logs(server, remote, client);
 CREATE TABLE fake_blacklist_scores (
 	server fake_server NOT NULL,
 	event fake_log_type NOT NULL,
