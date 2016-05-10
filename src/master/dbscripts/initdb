@@ -322,7 +322,6 @@ CREATE TABLE biflows (
 CREATE SEQUENCE biflow_ids OWNED BY biflows.id;
 ALTER TABLE biflows ALTER COLUMN id SET DEFAULT NEXTVAL('biflow_ids');
 CREATE INDEX ON biflows (ip_remote);
-CREATE INDEX ON biflows (tag);
 CREATE INDEX ON biflows (tagged_on);
 CREATE INDEX ON biflows (client);
 CREATE INDEX ON biflows (port_remote, proto);
