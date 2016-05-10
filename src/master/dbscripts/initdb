@@ -444,6 +444,7 @@ CREATE TABLE fake_server_names (
 );
 INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet'), ('SSH honeypot', 'S', 'ssh_honey');
 CREATE TABLE fake_logs (
+	id BIGINT PRIMARY KEY,
 	client INT NOT NULL,
 	timestamp TIMESTAMP NOT NULL,
 	event fake_log_type NOT NULL,
@@ -457,6 +458,8 @@ CREATE TABLE fake_logs (
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(server != 'ssh_honey')
 );
+CREATE SEQUENCE fake_logs_ids OWNED BY fake_logs.id;
+ALTER TABLE fake_logs ALTER COLUMN id SET DEFAULT NEXTVAL('fake_logs_ids');
 CREATE TABLE fake_blacklist_scores (
 	server fake_server NOT NULL,
 	event fake_log_type NOT NULL,
