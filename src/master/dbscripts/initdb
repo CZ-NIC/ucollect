@@ -471,11 +471,14 @@ INSERT INTO fake_blacklist_scores (server, event, score) VALUES
 	('telnet', 'login', 20);
 CREATE TYPE blacklist_mode AS ENUM ('soft', 'hard');
 CREATE TABLE fake_blacklist_limits (
+	id BIGINT PRIMARY KEY,
 	server fake_server NOT NULL,
 	clients BIGINT NOT NULL,
 	score BIGINT NOT NULL,
 	mode blacklist_mode NOT NULL
 );
+CREATE SEQUENCE fake_blacklist_limits_ids OWNED BY fake_blacklist_limits.id;
+ALTER TABLE fake_blacklist_limits ALTER COLUMN id SET DEFAULT NEXTVAL('fake_blacklist_limits_ids');
 CREATE INDEX fake_blacklist_limit_sc_idx ON fake_blacklist_limits (server, client_pass);
 CREATE INDEX fake_blacklist_limit_s_idx ON fake_blacklist_limits (server);
 INSERT INTO fake_blacklist_limits (server, clients, score, mode) VALUES
@@ -503,6 +506,7 @@ CREATE UNLOGGED TABLE fake_blacklist_cache (
 	CHECK(score >= 0),
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
+CREATE UNIQUE INDEX (server, remote, client) ON fake_blacklist_cache;
 CREATE OR REPLACE VIEW fake_blacklist_uncached AS SELECT
 	fl.server,
 	fl.remote,
@@ -600,6 +604,7 @@ ORDER BY
 CREATE OR REPLACE VIEW fake_bad_connections AS (SELECT * FROM fake_bad_connections_telnet) UNION (SELECT * FROM fake_bad_connections_ssh_honey);
 
 CREATE TABLE spoof (
+	id BIGINT PRIMARY KEY,
 	client INT NOT NULL,
 	batch TIMESTAMP NOT NULL,
 	spoofed BOOLEAN NOT NULL,
@@ -608,6 +613,8 @@ CREATE TABLE spoof (
 	ip INET,
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
+CREATE SEQUENCE spoof_ids OWNED BY spoof.id;
+ALTER TABLE spoof ALTER COLUMN id SET DEFAULT NEXTVAL('spoof_ids');
 
 CREATE TABLE refused (
 	id BIGINT NOT NULL PRIMARY KEY,
