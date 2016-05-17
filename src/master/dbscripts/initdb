@@ -506,7 +506,7 @@ CREATE UNLOGGED TABLE fake_blacklist_cache (
 	CHECK(score >= 0),
 	FOREIGN KEY (client) REFERENCES clients(id)
 );
-CREATE UNIQUE INDEX (server, remote, client) ON fake_blacklist_cache;
+CREATE UNIQUE INDEX ON fake_blacklist_cache (server, remote, client);
 CREATE OR REPLACE VIEW fake_blacklist_uncached AS SELECT
 	fl.server,
 	fl.remote,
