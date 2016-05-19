@@ -5,4 +5,4 @@ cd /home/tagger/dist-fw-data/
 git pull -q
 wget https://www.turris.cz/greylist-data/greylist-latest.csv -q -O - | tail -n+2 | cut -f1 -d, | sed -e 's/^/add GREYLIST /' >greylist
 sed -e 's/^/add BAD_DNS /' </home/tagger/misc-internal/analysis/bad-dns >bad-dns
-/home/tagger/ucollect/src/master/dbscripts/tag_flows.pl /home/tagger/ucollect/src/master/dbscripts/db.ini greylist bad-dns turris-ipsets
+/home/tagger/ucollect/src/master/dbscripts/tagger.pl /home/tagger/ucollect/src/master/dbscripts/db.ini -f greylist -f bad-dns -f turris-ipsets
