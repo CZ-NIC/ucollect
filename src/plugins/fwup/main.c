@@ -122,7 +122,7 @@ static bool set_exists(struct context *context, const char *name) {
 		for (size_t i = 0; i < pos; i ++)
 			if (output[i] == '\n')
 				count ++;
-		const char **positions = mem_pool_alloc(context->temp_pool, count);
+		const char **positions = mem_pool_alloc(context->temp_pool, count * sizeof *positions);
 		size_t lcount = 0;
 		positions[lcount ++] = output;
 		for (size_t i = 0; i < pos; i ++)
