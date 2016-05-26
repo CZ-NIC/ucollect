@@ -245,6 +245,7 @@ static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t *
 }
 
 static void version_ask(struct context *context, const char *setname) {
+	ulog(LLOG_DEBUG_VERBOSE, "Asking for version of set %s\n", setname);
 	size_t len;
 	const uint8_t *message = uplink_render_alloc(&len, 0, context->temp_pool, "cs", 'A' /* 'A'sk for a version */, setname, strlen(setname));
 	// Ignore success result ‒ if it fails, it's because we aren't connected. We shall ask again once we connect.
@@ -527,6 +528,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	// Reset the cache, it might be outdated and in invalid memory
 	context->user_data->existing_sets = NULL;
 	sanity(length, "A zero-length message delivered to the FWUp plugin\n");
+	ulog(LLOG_DEBUG_VERBOSE, "FWup communication with %c\n", *data);
 	switch (*data) {
 		case 'C':
 			config_parse(context, data + 1, length - 1);

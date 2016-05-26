@@ -267,7 +267,9 @@ static inline void plugin_##NAME(struct plugin_holder *plugin) { \
 	if (!plugin->plugin.NAME##_callback) \
 		return; \
 	current_context = &plugin->context; \
+	ulog(LLOG_DEBUG_VERBOSE, "Enter " #NAME " of %s\n", plugin->plugin.name); \
 	plugin->plugin.NAME##_callback(&plugin->context); \
+	ulog(LLOG_DEBUG_VERBOSE, "Leave " #NAME " of %s\n", plugin->plugin.name); \
 	mem_pool_reset(plugin->context.temp_pool); \
 	current_context = NULL; \
 }\
@@ -275,7 +277,9 @@ static inline void plugin_##NAME##_noreset(struct plugin_holder *plugin) { \
 	if (!plugin->plugin.NAME##_callback) \
 		return; \
 	current_context = &plugin->context; \
+	ulog(LLOG_DEBUG_VERBOSE, "Enter " #NAME " of %s\n", plugin->plugin.name); \
 	plugin->plugin.NAME##_callback(&plugin->context); \
+	ulog(LLOG_DEBUG_VERBOSE, "Leave " #NAME " of %s (noreset)\n", plugin->plugin.name); \
 	current_context = NULL; \
 }
 
@@ -285,7 +289,9 @@ static inline void plugin_##NAME(struct plugin_holder *plugin, TYPE PARAM) { \
 	if (!plugin->plugin.NAME##_callback) \
 		return; \
 	current_context = &plugin->context; \
+	ulog(LLOG_DEBUG_VERBOSE, "Enter " #NAME " of %s\n", plugin->plugin.name); \
 	plugin->plugin.NAME##_callback(&plugin->context, PARAM); \
+	ulog(LLOG_DEBUG_VERBOSE, "Leave " #NAME " of %s (noreset)\n", plugin->plugin.name); \
 	mem_pool_reset(plugin->context.temp_pool); \
 	current_context = NULL; \
 }
@@ -296,7 +302,9 @@ static inline void plugin_##NAME(struct plugin_holder *plugin, TYPE1 PARAM1, TYP
 	if (!plugin->plugin.NAME##_callback) \
 		return; \
 	current_context = &plugin->context; \
+	ulog(LLOG_DEBUG_VERBOSE, "Enter " #NAME " of %s\n", plugin->plugin.name); \
 	plugin->plugin.NAME##_callback(&plugin->context, PARAM1, PARAM2); \
+	ulog(LLOG_DEBUG_VERBOSE, "Leave " #NAME " of %s (noreset)\n", plugin->plugin.name); \
 	mem_pool_reset(plugin->context.temp_pool); \
 	current_context = NULL; \
 }
