@@ -40,8 +40,6 @@ DROP TABLE IF EXISTS bandwidth;
 DROP TABLE IF EXISTS bandwidth_stats;
 DROP TABLE IF EXISTS activities;
 DROP TABLE IF EXISTS activity_types;
-DROP TABLE IF EXISTS anomalies;
-DROP TABLE IF EXISTS anomaly_types;
 DROP TABLE IF EXISTS group_members;
 DROP TABLE IF EXISTS groups;
 DROP TABLE IF EXISTS pings;
@@ -176,27 +174,6 @@ CREATE TABLE group_members (
 	FOREIGN KEY (client) REFERENCES clients(id) ON DELETE CASCADE,
 	FOREIGN KEY (in_group) REFERENCES groups(id) ON DELETE CASCADE
 );
-CREATE TABLE anomaly_types (
-	code CHAR PRIMARY KEY NOT NULL,
-	description TEXT NOT NULL
-);
-CREATE TABLE anomalies (
-	id BIGINT NOT NULL PRIMARY KEY,
-	from_group INT NOT NULL,
-	type CHAR NOT NULL,
-	timestamp TIMESTAMP NOT NULL,
-	value TEXT NOT NULL,
-	relevance_count SMALLINT NOT NULL,
-	relevance_of SMALLINT NOT NULL,
-	strength REAL DEFAULT 0,
-	country VARCHAR(2),
-	FOREIGN KEY (from_group) REFERENCES groups(id) ON DELETE CASCADE,
-	FOREIGN KEY (type) REFERENCES anomaly_types(code),
-	CHECK(relevance_count <= relevance_of)
-);
-CREATE INDEX ON anomalies (from_group, type, timestamp);
-CREATE SEQUENCE anomaly_ids OWNED BY anomalies.id;
-ALTER TABLE anomalies ALTER COLUMN id SET DEFAULT NEXTVAL('anomaly_ids');
 
 CREATE TABLE count_types (
 	id SMALLINT PRIMARY KEY NOT NULL,
@@ -368,7 +345,6 @@ CREATE TABLE cert_chains (
 	UNIQUE(cert, ord)
 );
 
-INSERT INTO anomaly_types (code, description) VALUES ('I', 'Remote IP address'), ('P', 'Remote port'), ('B', 'Remote IP address and port'), ('L', 'Remote IP address and local port'), ('i', 'Remote IP address of outbound packets'), ('p', 'Remote port of outbound packets'), ('b', 'Remote IP address and port of outbound packets'), ('l', 'Remote IP address and local port of outbound packets');
 INSERT INTO count_types (name, description, ord) VALUES
 	('All', 'Any packet is included in this category', 1),
 	('IPv4', 'Packets sent over the IPv4 protocol.', 2),
@@ -663,9 +639,6 @@ GRANT UPDATE ON SEQUENCE activities_id TO $DBUPDATER;
 GRANT SELECT ON SEQUENCE activities_id TO $DBUPDATER;
 GRANT SELECT ON groups TO $DBUPDATER;
 GRANT SELECT ON group_members TO $DBUPDATER;
-GRANT SELECT ON anomaly_types TO $DBUPDATER;
-GRANT INSERT ON anomalies TO $DBUPDATER;
-GRANT ALL ON anomaly_ids TO $DBUPDATER;
 GRANT SELECT ON count_types TO $DBUPDATER;
 GRANT INSERT ON count_snapshots TO $DBUPDATER;
 GRANT SELECT ON count_snapshots TO $DBUPDATER;
@@ -718,7 +691,6 @@ GRANT INSERT ON known_plugins to $DBJENKINS;
 GRANT SELECT ON known_plugins TO $DBJENKINS;
 
 GRANT SELECT (timestamp) ON activities TO $DBCLEANER;
-GRANT SELECT (timestamp) ON anomalies TO $DBCLEANER;
 GRANT SELECT (timestamp) ON count_snapshots TO $DBCLEANER;
 GRANT SELECT (timestamp) ON bandwidth to $DBCLEANER;
 GRANT SELECT (timestamp) ON bandwidth_stats to $DBCLEANER;
@@ -733,7 +705,6 @@ GRANT SELECT (timestamp) ON refused TO $DBCLEANER;
 GRANT SELECT (start_time, id) ON ssh_sessions TO $DBCLEANER;
 GRANT SELECT (session_id) ON ssh_commands TO $DBCLEANER;
 GRANT DELETE ON activities to $DBCLEANER;
-GRANT DELETE ON anomalies TO $DBCLEANER;
 GRANT DELETE ON count_snapshots TO $DBCLEANER;
 GRANT DELETE ON bandwidth to $DBCLEANER;
 GRANT DELETE ON bandwidth_stats TO $DBCLEANER;
@@ -755,11 +726,9 @@ GRANT ALL ON plugin_history_id TO $DBUPDATER;
 
 GRANT SELECT ON groups TO $DBARCHIVIST;
 GRANT SELECT ON count_types TO $DBARCHIVIST;
-GRANT SELECT ON anomaly_types TO $DBARCHIVIST;
 GRANT SELECT ON activity_types TO $DBARCHIVIST;
 GRANT SELECT ON activities TO $DBARCHIVIST;
 GRANT SELECT (id, name) ON clients TO $DBARCHIVIST;
-GRANT SELECT (from_group, type, timestamp, value, value, relevance_count, relevance_of, strength) ON anomalies TO $DBARCHIVIST;
 GRANT SELECT ON counts TO $DBARCHIVIST;
 GRANT SELECT ON count_snapshots TO $DBARCHIVIST;
 GRANT SELECT ON group_members TO $DBARCHIVIST;
@@ -782,7 +751,6 @@ GRANT UPDATE (archived) ON ssh_commands TO $DBARCHIVIST;
 
 GRANT SELECT ON biflows TO $DBFLOWTAGGER;
 GRANT UPDATE (tag, tagged_on) ON biflows TO $DBFLOWTAGGER;
-GRANT SELECT (value, type) ON anomalies TO $DBFLOWTAGGER;
 GRANT SELECT ON config TO $DBFLOWTAGGER;
 GRANT UPDATE ON config TO $DBFLOWTAGGER;
 GRANT SELECT ON flow_filters TO $DBFLOWTAGGER;

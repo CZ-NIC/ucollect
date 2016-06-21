@@ -22,7 +22,6 @@ my $destination = connect_db 'destination';
 # We do this by reading all data from both databases and comparing. Ugly, but it works.
 my %config_tables = (
 	groups => [qw(id name)],
-	anomaly_types => [qw(code description)],
 	count_types => [qw(ord name description)],
 	activity_types => [qw(id name)],
 	clients => [qw(id name)],
@@ -70,29 +69,6 @@ $destination->commit;
 $source->commit;
 undef $destination;
 undef $source;
-
-if (fork == 0) {
-	my $source = connect_db 'source';
-	my $destination = connect_db 'destination';
-
-	# Migrate anomalies.
-	# First, look for the newest one stored. They are stored in batches in transaction some time from each other, so we wont lose anything.
-	my ($max_anom) = $destination->selectrow_array('SELECT COALESCE(MAX(timestamp), TO_TIMESTAMP(0)) FROM anomalies');
-	tprint "Getting anomalies newer than $max_anom\n";
-	# Keep reading and putting it to the other DB
-	my $store_anomaly = $destination->prepare('INSERT INTO anomalies (from_group, type, timestamp, value, relevance_count, relevance_of, strength) VALUES (?, ?, ?, ?, ?, ?, ?)');
-	my $get_anomalies = $source->prepare('SELECT from_group, type, timestamp, value, relevance_count, relevance_of, strength FROM anomalies WHERE timestamp > ?');
-	$get_anomalies->execute($max_anom);
-	my $count = -1;
-	$store_anomaly->execute_for_fetch(sub {
-		$count ++;
-		return $get_anomalies->fetchrow_arrayref;
-	});
-	tprint "Stored $count anomalies\n";
-	$destination->commit;
-	$source->commit;
-	exit;
-}
 
 if (fork == 0) {
 	my $source = connect_db 'source';
@@ -558,4 +534,4 @@ if (fork == 0) {
 	exit;
 }
 
-wait for (1..13);
+wait for (1..12);

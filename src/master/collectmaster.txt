@@ -84,84 +84,6 @@ aggregate_delay::
   database as one snapshot. This must be less than interval, otherwise
   strange things will happen.
 
-The `buckets` plugin
-~~~~~~~~~~~~~~~~~~~~
-
-The clients hash packets based on some criteria and store their counts
-into buckets depending on the hash value. Then, the server aggregates
-the client data together and checks the bucket sizes look
-statistically similar. If some buckets get out of the line, the
-clients are asked to provide keys (the hashed properties of the
-packets) for the given buckets and, after aggregating them together,
-put to database.
-
-There are therefore many things to configure. This includes
-configuration for clients that is sent to them by the plugin:
-
-bucket_count::
-  How many buckets there are for single hash function. With too few,
-  anomalies might get lost or more keys are attributed to a given
-  anomaly. If too many, it might be too sensitive and find too many
-  anomalies. Besides, more memory will be used on clients and more
-  data sent over network.
-hash_count::
-  How many independent hash functions are used. An anomaly will be
-  anomalous in all the hash functions, therefore by intersecting the
-  sets of keys, it is possible to filter out only the relevant keys.
-  With more, more data is used, but the probability of unrelated key
-  sneaking in the result is smaller.
-criteria::
-  Whitespace separated list of criterion classes to load and use. A
-  criterion extracts is the property of a packet to be hashed.
-  Currently available ones are:
-  buckets.criterion.Port;; The remote port of TCP/UDP packet.
-  buckets.criterion.Address;; The remote address of IP packet.
-  buckets.criterion.AddressAndPort;; Both the remote port and address
-    of a TCP/UDP packet.
-history_size::
-  Number of last key snapshots kept in the client's memory. They are
-  used to answer the query for keys if an anomaly is found. As the
-  server currently asks for the last snapshot only, it is OK to keep
-  it low.
-max_key_count::
-  Limit on number of distinct keys the client keeps in one history
-  snapshot per criterion. This is to limit the amount of memory used
-  in case when many different keys are found. Such thing would be rare
-  in practice and anomalous keys would probably appear early enough to
-  be present, so dropping some should not matter.
-granularity::
-  Each history snapshot is divided into smaller timeslots. Each
-  timeslot has separate packet counts in the buckets, but the keys are
-  for the whole history snapshot. This is to aid the statistic
-  detection of similarity between buckets. The granularity is number
-  of seconds of one timeslot.
-max_timeslots::
-  Number of time slots to allow for one history snapshot. If the
-  server does not request the data before the maximum is reached, the
-  whole history snapshot will be ignored (since the client is probably
-  disconnected, or something). Set this somewhat larger than just
-  `interval / granularity`, to allow for some network jitter, stuck
-  control connections or so.
-interval::
-  Number of seconds between the server asks for bucket counts.
-gather_history_max::
-  How many history snapshots of bucket counts to keep on the server.
-  During the statistical analysis, they are concatenated together to
-  form longer period of time. The bigger the number, the longer-term
-  anomalies are found.
-aggregate_delay::
-  Number of seconds between sending the request for data and
-  processing whatever answers returned. Used both for bucket counts
-  and for keys.
-anomaly_threshold::
-  A magic number, specifying how much different a bucket must be from
-  the average to be considered anomalous. With bigger number, only
-  more serious anomalies are reported. With smaller, even less serious
-  are included, generating more anomalies total.
-config_version::
-  Increase this number every time you change the config of the plugin.
-  This is used to synchronise config with the client.
-
 The database
 ------------
 
@@ -215,22 +137,6 @@ activities [WO]::
   This holds records of when each client performed which activity. The
   purpose is both debugging aids and detection of inactive/dead
   routers.
-
-Tables of the `buckets` plugin
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-groups [RO]::
-  List of groups to which clients are divided.
-group_members [RO]::
-  M-N mapping of users to groups (eg. group can contain multiple users
-  and user can be in multiple groups).
-anomaly_types [RO]::
-  This is table of the criteria by which the plugin detects the
-  anomalies.
-anomalies [WO]::
-  This table holds the found anomalies, one key & time per row.
-  There's relevance of the key in the table in how many clients of all
-  the ones which returned the keys have it.
 
 Tables of the `counts` plugin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

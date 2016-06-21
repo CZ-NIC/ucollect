@@ -48,24 +48,6 @@ sub perform($$) {
 		}
 	}
 
-	# Extract addresses from the anomalies
-	my $an_stm = $dbh->prepare('SELECT DISTINCT value, type FROM anomalies WHERE relevance_count >= ?');
-	$an_stm->execute($cfg->val('anomalies', 'client_treshold'));
-	while (my ($ip, $ano_type) = $an_stm->fetchrow_array) {
-		my ($port, $type) = ('', '');
-		if ($ano_type =~ /[lLbB]/) {
-			my $cp_ip = $ip;
-			die "Invalid compound address $cp_ip" unless ($ip, $type, $port) = ($ip =~ /^(.*)(:|->)(\d+)$/);
-		}
-		$ip =~ s/^\[(.*)\]$/$1/;
-		$type = 'P' if $type eq ':';
-		if ($type eq '->') { # For local-port anomalies, we're going to watch all communication with the remote end
-			$port = '';
-			$type = '';
-		}
-		$data{$type . $port}->{$ip} = 1;
-	}
-
 	my $fb_stm = $dbh->prepare('SELECT DISTINCT remote FROM fake_blacklist_tmp');
 	$fb_stm->execute;
 	while (my ($ip) = $fb_stm->fetchrow_array) {

@@ -22,14 +22,6 @@ sub prepare_tags($@) {
 			}
 		}
 	}
-	# Read the anomalies and use them as tags as well
-	my $anomalies = $dbh->prepare('SELECT DISTINCT value, type FROM anomalies WHERE relevance_count >= ?');
-	$anomalies->execute($cfg->val('anomalies', 'client_treshold'));
-	while (my ($ip, $type) = $anomalies->fetchrow_array) {
-		$ip =~ s/(:|->)\d+//;
-		next if lc $type eq 'p';
-		$tags{$ip}->{values} = "anom-$type";
-	}
 	# Read the fake server generated blacklist and use it as tags as well
 	my $fake_blacklist = $dbh->prepare('SELECT server, remote FROM fake_blacklist_tmp');
 	$fake_blacklist->execute;

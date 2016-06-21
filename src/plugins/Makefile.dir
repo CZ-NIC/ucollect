@@ -1,6 +1,5 @@
 UCOLLECT_PLUGINS:= \
 	count \
-	buckets \
 	crash \
 	badconf \
 	sniff \
