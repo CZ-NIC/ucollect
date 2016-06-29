@@ -70,12 +70,12 @@ for my $row (@$result) {
 	if ($turris_addresses{$remote}) {
 		warn "Address $remote belongs to a turris router\n";
 		$forbidden = 1;
-		continue;
+		next;
 	}
 	if (grep { $remote =~ $_ } @private) {
 		warn "Address $remote is private\n";
 		$forbidden = 1;
-		continue;
+		next;
 	}
 	my $whois = getwhois $remote;
 	my %whois = map { lc $_ => $whois->{$_} } keys %$whois;
@@ -84,3 +84,5 @@ for my $row (@$result) {
 }
 
 store $whois_cache, 'whois.cache';
+
+exit $forbidden;
