@@ -1,0 +1,10 @@
+BEGIN;
+REFRESH MATERIALIZED VIEW permutation;
+REFRESH MATERIALIZED VIEW biflow_loc_ip_permutation;
+\copy (SELECT * FROM biflows_anonymized) TO 'biflows.csv' WITH (FORMAT CSV);
+\copy (SELECT session_id, ts AS timestamp, success, command FROM ssh_commands) TO 'ssh_commands.csv' WITH (FORMAT CSV);
+\copy (SELECT * FROM ssh_sessions_anonymized) TO 'ssh_sessions.csv' WITH (FORMAT CSV);
+\copy (SELECT * FROM fake_logs_anonymized) TO 'fake_logs.csv' WITH (FORMAT CSV);
+REFRESH MATERIALIZED VIEW permutation WITH NO DATA;
+REFRESH MATERIALIZED VIEW biflow_loc_ip_permutation WITH NO DATA;
+END;
