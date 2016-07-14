@@ -10,6 +10,8 @@ my $tag = 'omnia-proto';
 my $start = 3;
 
 print "BEGIN;\n";
+print "Be sure to use the atshakeys user.\n";
+print "\\q\n";
 
 for my $input (@input) {
 	my @data = split /\n/, $input;
