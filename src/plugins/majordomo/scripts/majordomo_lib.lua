@@ -225,17 +225,17 @@ DD_RESOLVED = 11;
 
 DD = {
 --	Match expr, default value, print format
-	{"(%w+)", nil, "%s"},
-	{"([%w\.:]+)", nil, "%s"},
-	{"([%w\.:]+)", nil, "%s"},
-	{"(%w+)", nil, "%s"},
+	{"(%w+)", "UNDEFINED", "%s"},
+	{"([%w\.:]+)", "UNDEFINED", "%s"},
+	{"([%w\.:]+)", "UNDEFINED", "%s"},
+	{"(%w+)", "UNDEFINED", "%s"},
 	{"([%d.]+)", nil, "%f"},
 	{"([%d.]+)", nil, "%f"},
 	{"([%d.]+)", nil, "%f"},
 	{"([%d.]+)", nil, "%f"},
 	{"([%d.]+)", nil, "%f"},
 	{"([%d.]+)", nil, "%f"},
-	{"([%w_.-]+)", nil, "%s"},
+	{"([%w_.-]+)", CACHE_EMPTY_NAME, "%s"},
 }
 
 function restore_line(data)
@@ -262,7 +262,7 @@ function parse_line(line)
 
 		if rest and rest ~= "" then
 			val, rest = rest:match("^"..match..",*(.*)$");
-			table.insert(values, val);
+			table.insert(values, val or default);
 		else
 			table.insert(values, default);
 		end
@@ -284,15 +284,18 @@ function read_file(db, file)
 		local dst = col[DD_DST];
 		--Use port as string... we need value "all"
 		local port = col[DD_PORT];
-		local d_count = col[DD_D_CNT];
-		local d_size = col[DD_D_SIZE];
-		local d_data_size = col[DD_D_DSIZE];
-		local u_count = col[DD_U_CNT];
-		local u_size = col[DD_U_SIZE];
-		local u_data_size = col[DD_U_DSIZE];
+		local d_count = tonumber(col[DD_D_CNT]);
+		local d_size = tonumber(col[DD_D_SIZE]);
+		local d_data_size = tonumber(col[DD_D_DSIZE]);
+		local u_count = tonumber(col[DD_U_CNT]);
+		local u_size = tonumber(col[DD_U_SIZE]);
+		local u_data_size = tonumber(col[DD_U_DSIZE]);
 		local resolved_name = col[DD_RESOLVED];
 		local key = table.concat({ proto, src, dst, port }, ",");
-		if (key ~= "") then
+
+		local line_is_ok = (d_count and d_size and d_data_size and u_count and u_size and u_data_size);
+
+		if (key ~= "" and line_is_ok) then
 			if not db[src] then
 				db[src] = { };
 			end
@@ -305,12 +308,12 @@ function read_file(db, file)
 				}
 			end
 
-			db[src][key].d_count = db[src][key].d_count + tonumber(d_count);
-			db[src][key].d_size = db[src][key].d_size + tonumber(d_size);
-			db[src][key].d_data_size = db[src][key].d_data_size + tonumber(d_data_size);
-			db[src][key].u_count = db[src][key].u_count + tonumber(u_count);
-			db[src][key].u_size = db[src][key].u_size + tonumber(u_size);
-			db[src][key].u_data_size = db[src][key].u_data_size + tonumber(u_data_size);
+			db[src][key].d_count = db[src][key].d_count + d_count;
+			db[src][key].d_size = db[src][key].d_size + d_size;
+			db[src][key].d_data_size = db[src][key].d_data_size + d_data_size;
+			db[src][key].u_count = db[src][key].u_count + u_count;
+			db[src][key].u_size = db[src][key].u_size + u_size;
+			db[src][key].u_data_size = db[src][key].u_data_size + u_data_size;
 			db[src][key].names:add(resolved_name);
 
 			--[[
