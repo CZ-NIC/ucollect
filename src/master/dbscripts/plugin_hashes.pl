@@ -7,20 +7,47 @@ use AnyEvent::HTTP;
 use AnyEvent::Util qw(run_cmd);
 use File::Basename qw(dirname);
 use File::Temp qw(tempdir);
-use Data::Dumper;
+use List::Util qw(reduce);
 
-my ($verbose, $base_url, @list_names, @packages);
+my ($verbose, $base_url, @branch, @board, @suffix, @packages);
 
 GetOptions
 	verbose => \$verbose,
-	'list=s' => \@list_names,
+	'base-url=s' => \$base_url,
+	'branch=s' => \@branch,
+	'board=s' => \@board,
+	'suffix=s' => \@suffix,
 	'url=s' => \$base_url,
 	'package=s' => \@packages
 or die "Bad params\n";
 
 die "No URL given\n" unless $base_url;
-die "No list name given\n" unless @list_names;
-die "No packages allowed\n" unless @packages;
+
+sub cartesian(@) {
+	return reduce {
+		[
+			map {
+				my $append = $_;
+				# Append the new item to each already existing array from the previous step
+				map [ @$_, $append ], @$a
+			} @$b
+		]
+	} [[]], @_;
+}
+
+die "No packages given" unless @packages;
+
+# Generate all possible combinations of board, branch and suffix. This way we
+# guess which URLs might exist (not that all of them do).
+my @urls = ((map {
+	my ($board, $branch, $suffix) = @$_;
+	"$base_url/$board-$branch/$suffix/Packages";
+} @{cartesian \@board, \@branch, \@suffix}), (map {
+	my ($board, $suffix) = @$_;
+	"$base_url/$board/$suffix/Packages";
+} @{cartesian \@board, \@suffix}));
+
+die "No URLs produced" unless @urls;
 
 sub dbg(@) {
 	print STDERR "DBG: ", @_ if $verbose;
@@ -29,8 +56,6 @@ sub dbg(@) {
 my $unpack_cmd = dirname($0) . "/pkg-unpack";
 my $tmp_dir = tempdir(CLEANUP => 1);
 dbg "Using $unpack_cmd to unpack to $tmp_dir\n";
-my %packages = map { $_ => 1 } @packages;
-my %seen;
 my @hashes;
 
 my @condvars;
@@ -44,11 +69,14 @@ sub cv_get() {
 	return $cv;
 }
 
+my $uid;
+
 sub process_package($$$$) {
 	my ($name, $version, $body, $cv) = @_;
 	my $output;
 	dbg "Unpacking $name-$version\n";
-	my $finished = run_cmd [$unpack_cmd, "$tmp_dir/$name/$version", $name, $version],
+	$uid ++;
+	my $finished = run_cmd [$unpack_cmd, "$tmp_dir/$name/$version/$uid", $name, $version],
 		'>' => \$output,
 		'<' => \$body,
 		close_all => 1;
@@ -93,24 +121,56 @@ sub handle_package($$$) {
 	check_unpack_queue;
 }
 
-sub get_pkg($$) {
-	my ($name, $version) = @_;
-	my $full_url = "$base_url/packages/$name-$version.ipk";
-	return dbg "The URL $full_url has already been seen\n" if $seen{$full_url};
-	$seen{$full_url} = 1;
-	dbg "Downloading $full_url\n";
+sub get_pkg($$$) {
+	my ($url, $name, $version) = @_;
+	dbg "Downloading $name/$version $url\n";
 	my $cv = cv_get;
-	http_get $full_url, tls_ctx => "high", sub {
+	http_get $url, tls_ctx => "high", sub {
 		my ($body, $hdrs) = @_;
 		if (defined $body and $hdrs->{Status} == 200) {
 			handle_package $name, $version, $body;
 		} else {
-			warn "Couldn't download $full_url: $hdrs->{Status} $hdrs->{Reason}\n";
+			warn "Couldn't download $url: $hdrs->{Status} $hdrs->{Reason}\n";
 			$err = 1;
 		}
 		$cv->send;
 	};
 }
+
+sub handle_index($$) {
+	my ($url, $body) = @_;
+	my %pkgs = map /^Package:\s*(\S+).*Filename:\s*(\S+)/s, split /\n\n/, $body;
+	for my $pkg (@packages) {
+		my $filename = $pkgs{$pkg};
+		if (defined $filename) {
+			my $u = $url;
+			$u =~ s/Packages$/$filename/;
+			my $v = $filename;
+			$v =~ s/.*?_//;
+			$v =~ s/_.*?$//;
+			get_pkg $u, $pkg, $v;
+		}
+	}
+}
+
+sub get_index(_) {
+	my ($url) = @_;
+	dbg "Downloading $url\n";
+	my $cv = cv_get;
+	http_get $url, tls_ctx => "high", sub {
+		my ($body, $hdrs) = @_;
+		if (defined $body and $hdrs->{Status} == 200) {
+			dbg "Downloaded index $url\n";
+			handle_index $url, $body;
+		} else {
+			warn "Failed to download index $url: $hdrs->{Status} $hdrs->{Reason}\n";
+		}
+		$cv->send;
+	};
+}
+
+get_index for @urls;
+
 
 sub handle_list($$) {
 	my ($name, $list) = @_;
@@ -120,7 +180,7 @@ sub handle_list($$) {
 		chomp;
 		my ($pname, $version, $flags, $hash) = split;
 		next if $flags =~ /R/; # These are to be removed, so ignore them
-		get_pkg $pname, $version if ($packages{$pname});
+		#get_pkg $pname, $version if ($packages{$pname});
 		$have_plugin = 1;
 	}
 	unless ($have_plugin) {
@@ -147,7 +207,7 @@ sub get_list($) {
 	};
 }
 
-get_list $_ for @list_names;
+#get_list $_ for @list_names;
 
 # Wait for all asynchronous tasks (even the ones that appear during other tasks)
 while (@condvars) {
