@@ -20,6 +20,7 @@
 #include "server.h"
 
 #include "telnet.h"
+#include "websrv.h"
 
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -36,6 +37,18 @@ const struct server_desc server_descs_intern[] = {
 		.conn_alloc_cb = telnet_conn_alloc,
 		.conn_set_fd_cb = telnet_conn_set_fd,
 		.server_ready_cb = telnet_data,
+		.max_conn = 20,
+		.conn_timeout = 30 * SECOND
+	},
+	{
+		.name = "http",
+		.code = 'H',
+		.sock_type = SOCK_STREAM,
+		.default_port = 80,
+		// No server-scope data, so skip server_alloc and server_set_fd
+		.conn_alloc_cb = http_conn_alloc,
+		.conn_set_fd_cb = http_conn_set_fd,
+		.server_ready_cb = http_data,
 		.max_conn = 20,
 		.conn_timeout = 30 * SECOND
 	},
