@@ -195,7 +195,7 @@ static bool process_line(struct context *context, struct fd_tag *tag, struct con
 			conn->denial_timeout = loop_timeout_add(context->loop, denial_timeout, context, conn, send_denial);
 			sanity(conn->line, "Missing line buffer for password\n");
 			*conn->line = '\0';
-			conn_log_attempt(context, tag, conn->username, conn->password);
+			conn_log_attempt(context, tag, conn->username, conn->password, NULL, NULL, NULL);
 			conn->line = conn->line_base = NULL;
 			break;
 		case WAIT_DENIAL:

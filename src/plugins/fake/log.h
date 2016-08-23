@@ -41,6 +41,9 @@ enum event_info_type {
 	EI_NAME, // The login name
 	EI_PASSWORD, // The password
 	EI_REASON, // The error or disconnection reason
+	EI_METHOD, // Method (http or so)
+	EI_URI, // URI of the resource
+	EI_HOST, // Hostname
 	EI_LAST // This is the last info bundled to the event
 };
 

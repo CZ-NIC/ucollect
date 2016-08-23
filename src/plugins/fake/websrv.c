@@ -30,12 +30,19 @@
 #include <sys/socket.h>
 
 #define LINE_MAX 512
+#define MAX_HEADER 256
 
 struct conn_data {
 	int fd;
 	char line_data[LINE_MAX];
 	char *line;
 	char *close_reason;
+	char method[MAX_HEADER];
+	char url[MAX_HEADER];
+	char host[MAX_HEADER];
+	char username[MAX_HEADER];
+	char password[MAX_HEADER];
+	bool error;
 	struct fd_tag *tag;
 };
 
@@ -51,6 +58,7 @@ static void line_reset(struct conn_data *conn) {
 }
 
 void http_conn_set_fd(struct context *context __attribute__((unused)), struct fd_tag *tag, struct server_data *server __attribute__((unused)), struct conn_data *conn, int fd) {
+	memset(conn, 0, sizeof *conn);
 	conn->fd = fd;
 	ulog(LLOG_DEBUG, "Accepted http connection %p on tag %p, fd %d\n", (void *)conn, (void *)tag, fd);
 	conn->tag = tag;
@@ -62,7 +70,67 @@ static void do_close(struct context *context, struct conn_data *conn, bool error
 }
 
 static bool line_handle(struct conn_data *data) {
-	// TODO: Implement. The real fun goes here.
+	// Terminate the line (there must be at least 1 byte empty by the check at char_handle)
+	sanity(data->line - data->line_data < LINE_MAX, "Not enough space for http line terminator\n");
+	*data->line = '\0';
+	const char *l = data->line_data;
+	if (*data->method) {
+		if (*l) {
+			// We've read the first line. This is some kind of header.
+			char *colon = index(l, ':');
+			if (!colon) {
+				data->error = true;
+				data->close_reason = "Malformed header";
+				// TODO: Send the refusal
+				return false;
+			}
+			// Terminate the header name
+			*(colon ++) = '\0';
+			// Find where the header data begins
+			while (*colon == ' ' || *colon == '\t')
+				colon ++;
+			if (strcasecmp(l, "Host")) {
+				strncpy(data->host, colon, MAX_HEADER);
+				data->host[MAX_HEADER - 1] = '\0';
+			} else if (strcasecmp(l, "Authorization")) {
+				// TODO: Extract the username and password
+			}
+		} else {
+			// Empty line. OK, let's roll. Log the attempt, send a reply.
+			conn_log_attempt(context, data->tag, data->username, data->password, data->method, data->host, data->url);
+			// Erase all the strings
+			*data->username = *data->password = *data->host = *data->method = *data->url = '\0';
+			// TODO: Send the reply
+			// As we don't parse any possible request body, we just terminate the connection to make it easier for us. That is legal.
+			data->close_reason = "Completed";
+			return false;
+		}
+	} else {
+		// The first line. Split it into: GET URL HTTP/1.1
+		char *space = index(l, ' ');
+		if (!space) {
+			data->error = true;
+			data->close_reason = "Missing URL";
+			// TODO: Send the refusal
+			return false;
+		}
+		*space = '\0';
+		strncpy(data->method, l, MAX_HEADER);
+		data->method[MAX_HEADER - 1] = '\0';
+		// There must be at least that NULL byte we put there at the beginning of this function, so it's OK
+		l = space + 1;
+		space = index(l, ' ');
+		if (!space) {
+			data->error = true;
+			data->close_reason = "Missing protocol";
+			// TODO: Send the refusal
+			return false;
+		}
+		*space = '\0';
+		strncpy(data->url, l, MAX_HEADER);
+		data->url[MAX_HEADER - 1] = '\0';
+	}
+	line_reset(data);
 	return true;
 }
 
@@ -111,7 +179,7 @@ void http_data(struct context *context, struct fd_tag *tag, struct server_data *
 	const uint8_t *data = buffer;
 	for (ssize_t i = 0; i < amount; i ++)
 		if (!char_handle(context, tag, conn, data[i])) {
-			do_close(context, conn, false);
+			do_close(context, conn, conn->error);
 			return;
 		}
 }

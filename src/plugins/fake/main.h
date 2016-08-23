@@ -33,8 +33,8 @@ struct fd_tag *tag;
  */
 void conn_closed(struct context *context, struct fd_tag *tag, bool error, const char *reason);
 /*
- * Log that the other side attemted connection.
+ * Log that the other side attemted to authenticate or use the service in some way.
  */
-void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password);
+void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password, const char *method, const char *host, const char *uri);
 
 #endif

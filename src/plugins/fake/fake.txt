@@ -103,6 +103,9 @@ Each record is prefixed by single `uint8_t` type. Current types are:
   password (1):: The password tried by the attacker.
   reason (2):: The reason for the event. Not all events have reasons,
     this is usually with some kind of connection termination.
+  method (3):: Request method (GET/PUT…)
+  uri (4):: Uri (or part of thereof)
+  host (5):: Hostname
 
 The type of the record is followed by a single string, encoded in the
 usual uplink format (`uint32_t` length, followed by so many

@@ -283,7 +283,7 @@ static void send_timeout(struct context *context, void *data __attribute__((unus
 	}
 }
 
-static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_type type, const char *reason, const char *username, const char *password) {
+static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_type type, const char *reason, const char *username, const char *password, const char *method, const char *host, const char *uri) {
 	ulog(LLOG_DEBUG, "Logging event %hhu for tag %p\n", (uint8_t)type, (void *)tag);
 	struct user_data *u = context->user_data;
 	sanity(tag->rem_addr.sin6_family == AF_INET6, "Wrong remote address family %hhu\n", (uint8_t)tag->rem_addr.sin6_family);
@@ -293,6 +293,9 @@ static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_
 	push_info(infos, &evpos, reason, EI_REASON);
 	push_info(infos, &evpos, username, EI_NAME);
 	push_info(infos, &evpos, password, EI_PASSWORD);
+	push_info(infos, &evpos, method, EI_METHOD);
+	push_info(infos, &evpos, host, EI_HOST);
+	push_info(infos, &evpos, uri, EI_URI);
 	enum log_send_status status = log_event(context, u->log, tag->desc->code, tag->rem_addr.sin6_addr.s6_addr, tag->loc_addr.sin6_addr.s6_addr, 16, ntohs(tag->rem_addr.sin6_port), type, infos);
 	bool sent = false;
 	if (status != LS_NONE)
@@ -305,7 +308,7 @@ static void log_wrapper(struct context *context, struct fd_tag *tag, enum event_
 void conn_closed(struct context *context, struct fd_tag *tag, bool error, const char *reason) {
 	ulog(LLOG_DEBUG, "Close connection %p/%p with FD %d on fake server %s\n", (void *)tag->conn, (void *)tag, tag->fd, tag->desc->name);
 	if (!tag->closed)
-		log_wrapper(context, tag, error ? EVENT_LOST : EVENT_DISCONNECT, reason, NULL, NULL);
+		log_wrapper(context, tag, error ? EVENT_LOST : EVENT_DISCONNECT, reason, NULL, NULL, NULL, NULL, NULL);
 	tag->closed = true;
 	if (tag->inactivity_timeout_active) {
 		tag->inactivity_timeout_active = false;
@@ -317,9 +320,9 @@ void conn_closed(struct context *context, struct fd_tag *tag, bool error, const 
 	tag->fd = -1;
 }
 
-void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password) {
+void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password, const char *method, const char *host, const char *uri) {
 	ulog(LLOG_DEBUG, "Login attempt on %p from %s\n", (void *)tag, addr2str(context->temp_pool, (struct sockaddr *)&tag->rem_addr, tag->addr_len));
-	log_wrapper(context, tag, EVENT_LOGIN, NULL, username, password);
+	log_wrapper(context, tag, EVENT_LOGIN, NULL, username, password, method, host, uri);
 }
 
 static void conn_inactive(struct context *context, void *data, size_t id) {
@@ -327,7 +330,7 @@ static void conn_inactive(struct context *context, void *data, size_t id) {
 	sanity(tag->inactivity_timeout == id, "Inactivity timeout ID mismatch\n");
 	ulog(LLOG_DEBUG, "Connection %p/%p with FD %d of fake server %s timed out after %u ms\n", (void *)tag->conn, (void *)tag, tag->fd, tag->desc->name, tag->desc->conn_timeout);
 	tag->inactivity_timeout_active = false; // It fired, no longer active.
-	log_wrapper(context, tag, EVENT_TIMEOUT, NULL, NULL, NULL);
+	log_wrapper(context, tag, EVENT_TIMEOUT, NULL, NULL, NULL, NULL, NULL, NULL);
 	tag->closed = true;
 	conn_closed(context, tag, false, "timeout");
 }
@@ -373,7 +376,7 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			empty->closed = false;
 			if (empty->desc->conn_set_fd_cb)
 				empty->desc->conn_set_fd_cb(context, empty, empty->server, empty->conn, new);
-			log_wrapper(context, empty, EVENT_CONNECT, NULL, NULL, NULL);
+			log_wrapper(context, empty, EVENT_CONNECT, NULL, NULL, NULL, NULL, NULL, NULL);
 			activity(context, empty);
 		} else {
 			// No place to put it into.
@@ -393,7 +396,7 @@ static void fd_ready(struct context *context, int fd, void *tag) {
 			if (close(new) == -1) {
 				ulog(LLOG_ERROR, "Error throwing newly accepted connection %d from %s accepted on %d of fake server %s: %s\n", new, addr2str(context->temp_pool, addr_p, aux_tag.addr_len), fd, t->desc->name, strerror(errno));
 			}
-			log_wrapper(context, &aux_tag, EVENT_CONNECT_EXTRA, NULL, NULL, NULL);
+			log_wrapper(context, &aux_tag, EVENT_CONNECT_EXTRA, NULL, NULL, NULL, NULL, NULL, NULL);
 		}
 	} else {
 		activity(context, t);
