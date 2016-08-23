@@ -253,7 +253,7 @@ static bool log_send(struct context *context, bool force) {
 	return false;
 }
 
-#define MAX_INFOS 4
+#define MAX_INFOS 7
 
 static void push_info(struct event_info *infos, size_t *pos, const char *content, enum event_info_type type) {
 	if (content) {

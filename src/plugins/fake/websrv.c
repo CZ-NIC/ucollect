@@ -69,7 +69,46 @@ static void do_close(struct context *context, struct conn_data *conn, bool error
 	conn_closed(context, conn->tag, error, conn->close_reason);
 }
 
-static bool line_handle(struct conn_data *data) {
+static void response_send(struct conn_data *conn, const char *response) {
+	size_t len = strlen(response);
+	while (*response) {
+		ssize_t sent = send(conn->fd, response, len, MSG_NOSIGNAL);
+		if (sent == -1) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+				continue;
+			ulog(LLOG_DEBUG, "HTTP send error: %s\n", strerror(errno));
+			conn->close_reason = strerror(errno);
+			return;
+		}
+		response += sent;
+		len -= sent;
+	}
+}
+
+static const char *response_malformed =
+"HTTP/1.1 400 Bad Request\r\n"
+"Content-Type: text/html; charset=UTF-8\r\n"
+"Content-Encoding: UTF-8\r\n"
+"Content-Length: 141\r\n"
+"\r\n"
+"<html>\r\n"
+"<head><title>400 Bad Request</title></head>\r\n"
+"<body><h1>400 Bad Request</h1><p>I couldn't understand you, sorry.</p></body>\r\n"
+"</html>\r\n";
+
+static const char *response_unauth =
+"HTTP/1.1 401 Unauthorized\r\n"
+"Content-Type: text/html; charset=UTF-8\r\n"
+"Content-Encoding: UTF-8\r\n"
+"Content-Length: 164\r\n"
+"WWW-Authenticate: Basic realm=\"Admin interface\"\r\n"
+"\r\n"
+"<html>\r\n"
+"<head><title>401 Unauthorized</title></head>\r\n"
+"<body><h1>401 Unauthorized</h1><p>You need to provide the correct username and password.</p></body>\r\n"
+"</html>\r\n";
+
+static bool line_handle(struct context *context, struct conn_data *data) {
 	// Terminate the line (there must be at least 1 byte empty by the check at char_handle)
 	sanity(data->line - data->line_data < LINE_MAX, "Not enough space for http line terminator\n");
 	*data->line = '\0';
@@ -81,7 +120,7 @@ static bool line_handle(struct conn_data *data) {
 			if (!colon) {
 				data->error = true;
 				data->close_reason = "Malformed header";
-				// TODO: Send the refusal
+				response_send(data, response_malformed);
 				return false;
 			}
 			// Terminate the header name
@@ -100,7 +139,7 @@ static bool line_handle(struct conn_data *data) {
 			conn_log_attempt(context, data->tag, data->username, data->password, data->method, data->host, data->url);
 			// Erase all the strings
 			*data->username = *data->password = *data->host = *data->method = *data->url = '\0';
-			// TODO: Send the reply
+			response_send(data, response_unauth);
 			// As we don't parse any possible request body, we just terminate the connection to make it easier for us. That is legal.
 			data->close_reason = "Completed";
 			return false;
@@ -111,7 +150,7 @@ static bool line_handle(struct conn_data *data) {
 		if (!space) {
 			data->error = true;
 			data->close_reason = "Missing URL";
-			// TODO: Send the refusal
+			response_send(data, response_malformed);
 			return false;
 		}
 		*space = '\0';
@@ -123,7 +162,7 @@ static bool line_handle(struct conn_data *data) {
 		if (!space) {
 			data->error = true;
 			data->close_reason = "Missing protocol";
-			// TODO: Send the refusal
+			response_send(data, response_malformed);
 			return false;
 		}
 		*space = '\0';
@@ -134,14 +173,14 @@ static bool line_handle(struct conn_data *data) {
 	return true;
 }
 
-static bool char_handle(struct context *context __attribute__((unused)), struct fd_tag *tag __attribute__((unused)), struct conn_data *conn, uint8_t ch) {
+static bool char_handle(struct context *context, struct fd_tag *tag __attribute__((unused)), struct conn_data *conn, uint8_t ch) {
 	switch (ch) {
 		case '\r':
 			// We simply ignore CR and wait for LF (we don't validate they go after each other)
 			break;
 		case '\n':
 			// LF came ‒ handle the whole accumulated line
-			return line_handle(conn);
+			return line_handle(context, conn);
 		default:
 			// Just accumulate the data of the line
 			if (conn->line && conn->line - conn->line_data + 1 < LINE_MAX)
