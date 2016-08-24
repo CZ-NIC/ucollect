@@ -19,6 +19,7 @@
 
 #include "websrv.h"
 #include "main.h"
+#include "base64.h"
 
 #include "../../core/mem_pool.h"
 #include "../../core/util.h"
@@ -128,11 +129,32 @@ static bool line_handle(struct context *context, struct conn_data *data) {
 			// Find where the header data begins
 			while (*colon == ' ' || *colon == '\t')
 				colon ++;
-			if (strcasecmp(l, "Host")) {
+			if (strcasecmp(l, "Host") == 0) {
 				strncpy(data->host, colon, MAX_HEADER);
 				data->host[MAX_HEADER - 1] = '\0';
-			} else if (strcasecmp(l, "Authorization")) {
-				// TODO: Extract the username and password
+			} else if (strcasecmp(l, "Authorization") == 0) {
+				char *space = index(colon, ' ');
+				if (!space) {
+					data->error = true;
+					data->close_reason = "Malformed auth";
+					response_send(data, response_malformed);
+					return false;
+				}
+				// Decode the base64. Don't worry about that space, it's invalid char and will be skipped
+				base64_decode_inplace((uint8_t *)space);
+				char *colon = index(space, ':');
+				if (!colon) {
+					data->error = true;
+					data->close_reason = "Malformed auth";
+					response_send(data, response_malformed);
+					return false;
+				}
+				*colon = '\0';
+				strncpy(data->username, space, MAX_HEADER);
+				data->username[MAX_HEADER - 1] = '\0';
+				colon ++;
+				strncpy(data->password, colon, MAX_HEADER);
+				data->password[MAX_HEADER - 1] = '\0';
 			}
 		} else {
 			// Empty line. OK, let's roll. Log the attempt, send a reply.
