@@ -409,7 +409,7 @@ CREATE TABLE fwup_addresses (
 );
 
 CREATE TYPE fake_log_type AS ENUM ('connect', 'disconnect', 'lost', 'extra', 'timeout', 'login');
-CREATE TYPE fake_server AS ENUM ('telnet', 'ssh_honey');
+CREATE TYPE fake_server AS ENUM ('telnet', 'ssh_honey', 'http');
 CREATE TABLE fake_server_names (
 	name TEXT NOT NULL,
 	code CHAR NOT NULL,
@@ -418,7 +418,7 @@ CREATE TABLE fake_server_names (
 	UNIQUE(code),
 	UNIQUE(type)
 );
-INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet'), ('SSH honeypot', 'S', 'ssh_honey');
+INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet'), ('SSH honeypot', 'S', 'ssh_honey'), ('http', 'H', 'http');
 CREATE TABLE fake_logs (
 	id BIGINT PRIMARY KEY,
 	client INT NOT NULL,
@@ -431,6 +431,9 @@ CREATE TABLE fake_logs (
 	name BYTEA,
 	password BYTEA,
 	reason TEXT,
+	method BYTEA,
+	host BYTEA,
+	uri BYTEA,
 	FOREIGN KEY (client) REFERENCES clients(id),
 	CHECK(server != 'ssh_honey')
 );
@@ -442,9 +445,38 @@ CREATE TABLE fake_blacklist_scores (
 	score BIGINT NOT NULL,
 	UNIQUE(server, event)
 );
+
+CREATE TABLE ssh_sessions (
+	id INT NOT NULL PRIMARY KEY,
+	long_id CHAR(32) NOT NULL,
+	client_id INT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+	end_time TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+	login BYTEA NOT NULL,
+	password BYTEA NOT NULL,
+	remote INET NOT NULL,
+	remote_port INTEGER NOT NULL,
+	local INET NOT NULL,
+	CHECK(remote_port > 0),
+	CHECK(remote_port <= 65535)
+);
+CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
+ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
+CREATE INDEX ssh_sessions_long_id_idx ON ssh_sessions (long_id);
+
+CREATE TABLE ssh_commands (
+	id SERIAL PRIMARY KEY,
+	session_id INTEGER NOT NULL REFERENCES ssh_sessions(id) ON DELETE CASCADE,
+	ts TIMESTAMP WITH TIME ZONE NOT NULL,
+	success BOOLEAN NOT NULL,
+	command BYTEA NOT NULL,
+	archived BOOL NOT NULL DEFAULT false
+);
 INSERT INTO fake_blacklist_scores (server, event, score) VALUES
 	('telnet', 'connect', 4),
-	('telnet', 'login', 20);
+	('telnet', 'login', 20),
+	('http', 'connect', 10),
+	('http', 'login', 10);
 CREATE TYPE blacklist_mode AS ENUM ('soft', 'hard');
 CREATE TABLE fake_blacklist_limits (
 	id BIGINT PRIMARY KEY,
@@ -455,7 +487,6 @@ CREATE TABLE fake_blacklist_limits (
 );
 CREATE SEQUENCE fake_blacklist_limits_ids OWNED BY fake_blacklist_limits.id;
 ALTER TABLE fake_blacklist_limits ALTER COLUMN id SET DEFAULT NEXTVAL('fake_blacklist_limits_ids');
-CREATE INDEX fake_blacklist_limit_sc_idx ON fake_blacklist_limits (server, client_pass);
 CREATE INDEX fake_blacklist_limit_s_idx ON fake_blacklist_limits (server);
 INSERT INTO fake_blacklist_limits (server, clients, score, mode) VALUES
 	('telnet', 4, 500, 'hard'),
@@ -604,33 +635,6 @@ CREATE TABLE refused (
 );
 CREATE SEQUENCE refused_ids OWNED BY refused.id;
 ALTER TABLE refused ALTER COLUMN id SET DEFAULT NEXTVAL('refused_ids');
-
-CREATE TABLE ssh_sessions (
-	id INT NOT NULL PRIMARY KEY,
-	long_id CHAR(32) NOT NULL,
-	client_id INT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-	start_time TIMESTAMP WITH TIME ZONE NOT NULL,
-	end_time TIMESTAMP WITH TIME ZONE DEFAULT NULL,
-	login BYTEA NOT NULL,
-	password BYTEA NOT NULL,
-	remote INET NOT NULL,
-	remote_port INTEGER NOT NULL,
-	local INET NOT NULL,
-	CHECK(remote_port > 0),
-	CHECK(remote_port <= 65535)
-);
-CREATE SEQUENCE ssh_session_ids OWNED BY ssh_sessions.id;
-ALTER TABLE ssh_sessions ALTER COLUMN id SET DEFAULT NEXTVAL('ssh_session_ids');
-CREATE INDEX ssh_sessions_long_id_idx ON ssh_sessions (long_id);
-
-CREATE TABLE ssh_commands (
-	id SERIAL PRIMARY KEY,
-	session_id INTEGER NOT NULL REFERENCES ssh_sessions(id) ON DELETE CASCADE,
-	ts TIMESTAMP WITH TIME ZONE NOT NULL,
-	success BOOLEAN NOT NULL,
-	command BYTEA NOT NULL,
-	archived BOOL NOT NULL DEFAULT false
-);
 
 GRANT SELECT (id, name) ON clients TO $DBUPDATER;
 GRANT SELECT ON activity_types TO $DBUPDATER;
