@@ -29,6 +29,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <inttypes.h>
+#include <assert.h>
 
 /*
  * Single event in the log.
@@ -175,13 +176,15 @@ enum log_send_status log_event(struct context *context, struct log *log, char se
 		rem_address += sizeof mapped_prefix;
 		loc_address += sizeof mapped_prefix;
 	}
-	size_t info_count = 0;
+	size_t info_count = 0, info_max = 0;
 	size_t expected_size = sizeof(struct event_header);
 	expected_size += 2 * addr_len;
 	if (info)
-		for (struct event_info *i = info; i->type != EI_LAST; i ++)
+		for (struct event_info *i = info; i->type != EI_LAST; i ++) {
 			if (log->log_credentials || (i->type != EI_NAME && i->type != EI_PASSWORD))
 					info_count ++;
+			info_max ++;
+		}
 	struct log_event *event = mem_pool_alloc(log->pool, sizeof *event + info_count * sizeof event->extra_info[0]);
 	uint8_t *addr_cp = mem_pool_alloc(log->pool, 2 * addr_len);
 	memcpy(addr_cp, rem_address, addr_len);
@@ -197,16 +200,18 @@ enum log_send_status log_event(struct context *context, struct log *log, char se
 		.type = type,
 		.info_count = info_count
 	};
-	for (size_t i = 0; i < info_count; i ++) {
+	size_t info_pos = 0;
+	for (size_t i = 0; i < info_max; i ++) {
 		if (!log->log_credentials && (info[i].type == EI_NAME || info[i].type == EI_PASSWORD))
 			// Skip the login credentials if we shouldn't log them
 			continue;
-		event->extra_info[i] = (struct event_info) {
+		event->extra_info[info_pos ++] = (struct event_info) {
 			.type = info[i].type,
 			.content = mem_pool_strdup(log->pool, info[i].content)
 		};
 		expected_size += 5 + strlen(info[i].content); // +4 for length, +1 for the info flags/type.
 	}
+	assert(event->info_count == info_pos);
 	log_insert_after(log, event, log->tail);
 	log->expected_serialized_size += expected_size;
 	bool attempts_reached = false;

@@ -44,6 +44,8 @@ struct conn_data {
 	char username[MAX_HEADER];
 	char password[MAX_HEADER];
 	bool error;
+	bool has_host;
+	bool has_auth;
 	struct fd_tag *tag;
 };
 
@@ -132,6 +134,7 @@ static bool line_handle(struct context *context, struct conn_data *data) {
 			if (strcasecmp(l, "Host") == 0) {
 				strncpy(data->host, colon, MAX_HEADER);
 				data->host[MAX_HEADER - 1] = '\0';
+				data->has_host = true;
 			} else if (strcasecmp(l, "Authorization") == 0) {
 				char *space = index(colon, ' ');
 				if (!space) {
@@ -155,12 +158,14 @@ static bool line_handle(struct context *context, struct conn_data *data) {
 				colon ++;
 				strncpy(data->password, colon, MAX_HEADER);
 				data->password[MAX_HEADER - 1] = '\0';
+				data->has_auth = true;
 			}
 		} else {
 			// Empty line. OK, let's roll. Log the attempt, send a reply.
-			conn_log_attempt(context, data->tag, data->username, data->password, data->method, data->host, data->url);
+			conn_log_attempt(context, data->tag, data->has_auth ? data->username : NULL, data->has_auth ? data->password : NULL, data->method, data->has_host ? data->host : NULL, data->url);
 			// Erase all the strings
 			*data->username = *data->password = *data->host = *data->method = *data->url = '\0';
+			data->has_auth = data->has_host = false;
 			response_send(data, response_unauth);
 			// As we don't parse any possible request body, we just terminate the connection to make it easier for us. That is legal.
 			data->close_reason = "Completed";
