@@ -26,6 +26,7 @@ import database
 import socket
 import re
 import diff_addr_store
+import timers
 
 logger = logging.getLogger(name='flow')
 token_re = re.compile('\(?\s*(.*?)\s*([,\(\)])(.*)')
@@ -224,6 +225,19 @@ class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 		plugin.Plugin.__init__(self, plugins)
 		self.__top_filter_cache = {}
 		diff_addr_store.DiffAddrStore.__init__(self, logger, "flow", "flow_filters", "filter")
+		self.__delayed_config = set()
+		self.__delayed_conf_timer = timers.timer(self.__delayed_config_send, 120)
+
+	# A workaround. Currently, clients sometime need to recreate their local
+	# data structures, so they ask for configuration. However, the configuration ID
+	# is the same, so they throw the config out and then ask again. There's a fix, but
+	# until it is propagated we at least rate-limit the configurations.
+	def __delayed_config_send(self):
+		delayed = self.__delayed_config
+		self.__delayed_config = set()
+		for client in delayed:
+			# Simulate client asking for the config now
+			self.message_from_client('C', client)
 
 	def _broadcast_config(self):
 		self.__top_filter_cache = {}
@@ -254,7 +268,11 @@ class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 
 	def message_from_client(self, message, client):
 		if message[0] == 'C':
+			if client in self.__delayed_config:
+				logger.info('Delaying config for %s', client)
+				return
 			logger.debug('Sending config to %s', client)
+			self.__delayed_config.add(client)
 			if self.version(client) < 2:
 				self.send(self.__build_config(''), client)
 			else:
@@ -270,3 +288,7 @@ class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 
 	def name(self):
 		return 'Flow'
+
+	def client_connected(self, client):
+		# Just make sure a reconnected client can get its config right away, without waiting for rate limits
+		self.__delayed_config.discard(client.cid())
