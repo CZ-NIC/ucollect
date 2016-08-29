@@ -258,6 +258,8 @@ static void handle_filter_action(struct context *context, enum diff_store_action
 			break;
 		case DIFF_STORE_CONFIG_RELOAD:
 			uplink_plugin_send_message(context, "C", 1);
+			// Make sure we consider the config different and reload it once it comes.
+			context->user_data->conf_id = 0;
 			break;
 		case DIFF_STORE_INCREMENTAL:
 		case DIFF_STORE_FULL: {
