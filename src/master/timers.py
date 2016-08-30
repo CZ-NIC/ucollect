@@ -19,6 +19,7 @@
 
 from twisted.internet.task import LoopingCall
 import logging
+import traceback
 
 logger = logging.getLogger(name='timers')
 
@@ -27,7 +28,7 @@ def timer(callback, time, startnow=False):
 		try:
 			callback()
 		except Exception as e:
-			logger.error("Exception in timer call: %s", e)
+			logger.error("Exception in timer call: %s", traceback.format_exc())
 	result = LoopingCall(protected)
 	result.start(time, startnow)
 	return result

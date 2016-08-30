@@ -237,7 +237,11 @@ class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 		self.__delayed_config = set()
 		for client in delayed:
 			# Simulate client asking for the config now
-			self.message_from_client('C', client)
+			try:
+				self.message_from_client('C', client)
+			except Exception:
+				# The client might have disappeared since
+				pass
 
 	def _broadcast_config(self):
 		self.__top_filter_cache = {}
