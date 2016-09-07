@@ -96,7 +96,7 @@ static bool send_all(struct conn_data *conn, const uint8_t *data, size_t amount)
 	while (amount) {
 		ssize_t sent = send(conn->fd, data, amount, MSG_NOSIGNAL);
 		if (sent == -1) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
+			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 				continue;
 			ulog(LLOG_DEBUG, "Telnet send error: %s\n", strerror(errno));
 			if (!conn->close_reason)
@@ -195,7 +195,7 @@ static bool process_line(struct context *context, struct fd_tag *tag, struct con
 			conn->denial_timeout = loop_timeout_add(context->loop, denial_timeout, context, conn, send_denial);
 			sanity(conn->line, "Missing line buffer for password\n");
 			*conn->line = '\0';
-			conn_log_attempt(context, tag, conn->username, conn->password);
+			conn_log_attempt(context, tag, conn->username, conn->password, NULL, NULL, NULL);
 			conn->line = conn->line_base = NULL;
 			break;
 		case WAIT_DENIAL:

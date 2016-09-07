@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2016 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,24 +17,18 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#ifndef UCOLLECT_TELNET_MAIN_H
-#define UCOLLECT_TELNET_MAIN_H
+#ifndef UCOLLECT_FAKE_WEBSRV_H
+#define UCOLLECT_FAKE_WEBSRV_H
 
-#include <stdbool.h>
+struct context;
+struct mem_pool;
 
-struct context *context;
-struct fd_tag *tag;
+struct server_data; // Not used here at all. No need to coordinate through central data structure
+struct conn_data;
+struct fd_tag;
 
-/*
- * Report that the connection was closed by either side.
- *
- * The error indicates if it was in some error (no matter what) or
- * if it was clean shutdown.
- */
-void conn_closed(struct context *context, struct fd_tag *tag, bool error, const char *reason);
-/*
- * Log that the other side attemted to authenticate or use the service in some way.
- */
-void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password, const char *method, const char *host, const char *uri);
+struct conn_data *http_conn_alloc(struct context *context, struct fd_tag *tag, struct mem_pool *pool, struct server_data *server);
+void http_conn_set_fd(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn, int fd);
+void http_data(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn);
 
 #endif

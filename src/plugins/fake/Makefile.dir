@@ -1,4 +1,4 @@
 LIBRARIES += src/plugins/fake/libplugin_fake
-libplugin_fake_MODULES := main server log telnet
+libplugin_fake_MODULES := main server log telnet websrv base64
 DOCS += src/plugins/fake/fake_firewall \
 	src/plugins/fake/fake

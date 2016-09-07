@@ -10,6 +10,7 @@ REDIR_OFFSET="$(uci -q get ucollect.@fakes[0].redir_offset || echo 1369)"
 # that everything that is disabled appears at least twice and then take only the unique lines.
 PORTS=`(
 	echo '23tcp'
+	echo '80tcp'
 	uci -q -d '
 ' get ucollect.@fakes[0].disable
 	uci -q -d '

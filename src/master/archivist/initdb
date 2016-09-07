@@ -324,7 +324,7 @@ CREATE TABLE refused_addrs (
 );
 CREATE INDEX ON refused_addrs(since);
 
-CREATE TYPE fake_server AS ENUM ('telnet');
+CREATE TYPE fake_server AS ENUM ('telnet', 'http');
 CREATE TABLE fake_attackers (
 	date DATE NOT NULL,
 	server fake_server NOT NULL,

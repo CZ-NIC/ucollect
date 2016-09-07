@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2016 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,24 +17,24 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#ifndef UCOLLECT_TELNET_MAIN_H
-#define UCOLLECT_TELNET_MAIN_H
+#ifndef UCOLLECT_FAKE_BASE64_H
+#define UCOLLECT_FAKE_BASE64_H
 
-#include <stdbool.h>
-
-struct context *context;
-struct fd_tag *tag;
+#include <stdint.h>
+#include <stdlib.h>
 
 /*
- * Report that the connection was closed by either side.
+ * Decode the buffer from base64 to normal data. The data are overwritten.
+ * The input is NULL-terminated string and it returns the size of decoded
+ * data. The output is NULL-terminated for convenience (however, the output
+ * size does not include this NULL-terminator and the data may contain
+ * other NULL-bytes).
  *
- * The error indicates if it was in some error (no matter what) or
- * if it was clean shutdown.
+ * Note that the base64 decoded data are never larger than the encoded
+ * equivalent, so it's OK to reuse that buffer.
+ *
+ * Any invalid characters are ignored.
  */
-void conn_closed(struct context *context, struct fd_tag *tag, bool error, const char *reason);
-/*
- * Log that the other side attemted to authenticate or use the service in some way.
- */
-void conn_log_attempt(struct context *context, struct fd_tag *tag, const char *username, const char *password, const char *method, const char *host, const char *uri);
+size_t base64_decode_inplace(uint8_t *buffer) __attribute__((nonnull));
 
 #endif
