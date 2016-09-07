@@ -492,6 +492,9 @@ INSERT INTO fake_blacklist_limits (server, clients, score, mode) VALUES
 	('telnet', 4, 500, 'hard'),
 	('telnet', 3, 300, 'soft'),
 	('telnet', 2, 1000, 'soft'),
+	('http', 4, 500, 'hard'),
+	('http', 3, 300, 'soft'),
+	('http', 2, 1000, 'soft'),
 	('ssh_honey', 3, 300, 'soft'),
 	('ssh_honey', 4, 500, 'hard');
 CREATE OR REPLACE VIEW fake_blacklist_cache_fill AS SELECT
