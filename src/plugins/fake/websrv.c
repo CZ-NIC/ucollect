@@ -120,12 +120,15 @@ static bool line_handle(struct context *context, struct conn_data *data) {
 		if (*l) {
 			// We've read the first line. This is some kind of header.
 			char *colon = index(l, ':');
-			if (!colon) {
-				data->error = true;
-				data->close_reason = "Malformed header";
-				response_send(data, response_malformed);
-				return false;
-			}
+			// Just a common snippet of code to report protocol violation
+#define MALF(REASON) do { \
+	data->error = true; \
+	data->close_reason = (REASON); \
+	response_send(data, response_malformed); \
+	return false; \
+} while (0)
+			if (!colon)
+				MALF("Malformed header");
 			// Terminate the header name
 			*(colon ++) = '\0';
 			// Find where the header data begins
@@ -137,21 +140,13 @@ static bool line_handle(struct context *context, struct conn_data *data) {
 				data->has_host = true;
 			} else if (strcasecmp(l, "Authorization") == 0) {
 				char *space = index(colon, ' ');
-				if (!space) {
-					data->error = true;
-					data->close_reason = "Malformed auth";
-					response_send(data, response_malformed);
-					return false;
-				}
+				if (!space)
+					MALF("Malformed auth");
 				// Decode the base64. Don't worry about that space, it's invalid char and will be skipped
 				base64_decode_inplace((uint8_t *)space);
 				char *colon = index(space, ':');
-				if (!colon) {
-					data->error = true;
-					data->close_reason = "Malformed auth";
-					response_send(data, response_malformed);
-					return false;
-				}
+				if (!colon)
+					MALF("Malformed auth");
 				*colon = '\0';
 				strncpy(data->username, space, MAX_HEADER);
 				data->username[MAX_HEADER - 1] = '\0';
@@ -174,24 +169,16 @@ static bool line_handle(struct context *context, struct conn_data *data) {
 	} else {
 		// The first line. Split it into: GET URL HTTP/1.1
 		char *space = index(l, ' ');
-		if (!space) {
-			data->error = true;
-			data->close_reason = "Missing URL";
-			response_send(data, response_malformed);
-			return false;
-		}
+		if (!space)
+			MALF("Missing URL");
 		*space = '\0';
 		strncpy(data->method, l, MAX_HEADER);
 		data->method[MAX_HEADER - 1] = '\0';
 		// There must be at least that NULL byte we put there at the beginning of this function, so it's OK
 		l = space + 1;
 		space = index(l, ' ');
-		if (!space) {
-			data->error = true;
-			data->close_reason = "Missing protocol";
-			response_send(data, response_malformed);
-			return false;
-		}
+		if (!space)
+			MALF("Missing protocol");
 		*space = '\0';
 		strncpy(data->url, l, MAX_HEADER);
 		data->url[MAX_HEADER - 1] = '\0';
