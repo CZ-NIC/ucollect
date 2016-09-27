@@ -7,6 +7,8 @@ BEGIN;
 
 DROP VIEW IF EXISTS fake_bad_connections;
 DROP VIEW IF EXISTS fake_bad_connections_telnet;
+DROP VIEW IF EXISTS fake_bad_connections_telnet_alt;
+DROP VIEW IF EXISTS fake_bad_connections_http;
 DROP VIEW IF EXISTS fake_bad_connections_ssh_honey;
 DROP VIEW IF EXISTS fake_blacklist;
 DROP VIEW IF EXISTS fake_blacklist_remotes;
@@ -409,7 +411,7 @@ CREATE TABLE fwup_addresses (
 );
 
 CREATE TYPE fake_log_type AS ENUM ('connect', 'disconnect', 'lost', 'extra', 'timeout', 'login');
-CREATE TYPE fake_server AS ENUM ('telnet', 'ssh_honey', 'http');
+CREATE TYPE fake_server AS ENUM ('telnet', 'ssh_honey', 'http', 'telnet_alt');
 CREATE TABLE fake_server_names (
 	name TEXT NOT NULL,
 	code CHAR NOT NULL,
@@ -418,7 +420,7 @@ CREATE TABLE fake_server_names (
 	UNIQUE(code),
 	UNIQUE(type)
 );
-INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet'), ('SSH honeypot', 'S', 'ssh_honey'), ('http', 'H', 'http');
+INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet'), ('SSH honeypot', 'S', 'ssh_honey'), ('http', 'H', 'http'), ('telnet alternative', 't', 'telnet_alt');
 CREATE TABLE fake_logs (
 	id BIGINT PRIMARY KEY,
 	client INT NOT NULL,
@@ -475,6 +477,8 @@ CREATE TABLE ssh_commands (
 INSERT INTO fake_blacklist_scores (server, event, score) VALUES
 	('telnet', 'connect', 4),
 	('telnet', 'login', 20),
+	('telnet_alt', 'connect', 4),
+	('telnet_alt', 'login', 20),
 	('http', 'connect', 10),
 	('http', 'login', 10);
 CREATE TYPE blacklist_mode AS ENUM ('soft', 'hard');
@@ -492,6 +496,9 @@ INSERT INTO fake_blacklist_limits (server, clients, score, mode) VALUES
 	('telnet', 4, 500, 'hard'),
 	('telnet', 3, 300, 'soft'),
 	('telnet', 2, 1000, 'soft'),
+	('telnet_alt', 4, 500, 'hard'),
+	('telnet_alt', 3, 300, 'soft'),
+	('telnet_alt', 2, 1000, 'soft'),
 	('http', 4, 500, 'hard'),
 	('http', 3, 300, 'soft'),
 	('http', 2, 1000, 'soft'),
@@ -611,7 +618,61 @@ ORDER BY
 	fake_logs.remote,
 	local,
 	MIN(timestamp);
-CREATE OR REPLACE VIEW fake_bad_connections AS (SELECT * FROM fake_bad_connections_telnet) UNION (SELECT * FROM fake_bad_connections_ssh_honey);
+CREATE OR REPLACE VIEW fake_bad_connections_telnet_alt AS SELECT
+	fake_logs.server,
+	fake_logs.remote,
+	remote_port,
+	local,
+	2323 AS local_port,
+	MIN(timestamp) AS start_time_utc,
+	MAX(timestamp) AS end_time_utc,
+	SUM((event = 'login')::INTEGER) AS login_attempts,
+	MIN(clients) AS clients_total
+FROM
+	fake_logs
+	JOIN fake_blacklist ON fake_logs.remote = fake_blacklist.remote
+WHERE
+	fake_logs.server = 'telnet_alt'
+	AND fake_blacklist.server = 'telnet_alt'
+	AND fake_blacklist.mode = 'hard'
+	AND remote_port IS NOT NULL
+GROUP BY
+	fake_logs.server,
+	fake_logs.remote,
+	remote_port,
+	local
+ORDER BY
+	fake_logs.remote,
+	local,
+	MIN(timestamp);
+CREATE OR REPLACE VIEW fake_bad_connections_http AS SELECT
+	fake_logs.server,
+	fake_logs.remote,
+	remote_port,
+	local,
+	80 AS local_port,
+	MIN(timestamp) AS start_time_utc,
+	MAX(timestamp) AS end_time_utc,
+	SUM((event = 'login')::INTEGER) AS login_attempts,
+	MIN(clients) AS clients_total
+FROM
+	fake_logs
+	JOIN fake_blacklist ON fake_logs.remote = fake_blacklist.remote
+WHERE
+	fake_logs.server = 'http'
+	AND fake_blacklist.server = 'http'
+	AND fake_blacklist.mode = 'hard'
+	AND remote_port IS NOT NULL
+GROUP BY
+	fake_logs.server,
+	fake_logs.remote,
+	remote_port,
+	local
+ORDER BY
+	fake_logs.remote,
+	local,
+	MIN(timestamp);
+CREATE OR REPLACE VIEW fake_bad_connections AS (SELECT * FROM fake_bad_connections_telnet) UNION (SELECT * FROM fake_bad_connections_telnet_alt) UNION (SELECT * FROM fake_bad_connections_http) UNION (SELECT * FROM fake_bad_connections_ssh_honey);
 
 CREATE TABLE spoof (
 	id BIGINT PRIMARY KEY,

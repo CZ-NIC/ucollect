@@ -135,6 +135,9 @@ plugin. There are, however, additional options:
  `telnet_port`::
    The port on which the plugin listens on the telnet protocol. If it
    is set to 0, listening to telnet protocol is disabled.
+ `telnet_alt_port`::
+   Another port on which the plugin listens on the telnet protocol. If it
+   is set to 0, listening to telnet protocol is disabled.
  `http_port`::
    The port on which the plugin listens on the http protocol. If it is
    set to 0, it gets disabled.

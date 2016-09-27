@@ -11,6 +11,7 @@ REDIR_OFFSET="$(uci -q get ucollect.@fakes[0].redir_offset || echo 1369)"
 PORTS=`(
 	echo '23tcp'
 	echo '80tcp'
+	echo '2323tcp'
 	uci -q -d '
 ' get ucollect.@fakes[0].disable
 	uci -q -d '

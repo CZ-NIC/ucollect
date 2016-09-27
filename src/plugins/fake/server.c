@@ -40,6 +40,17 @@ const struct server_desc server_descs_intern[] = {
 		.max_conn = 20,
 		.conn_timeout = 30 * SECOND
 	},
+	{	// An alternative telnet port
+		.name = "telnet_alt",
+		.code = 't',
+		.sock_type = SOCK_STREAM,
+		.default_port = 2323,
+		.conn_alloc_cb = telnet_conn_alloc,
+		.conn_set_fd_cb = telnet_conn_set_fd,
+		.server_ready_cb = telnet_data,
+		.max_conn = 20,
+		.conn_timeout = 30 * SECOND
+	},
 	{
 		.name = "http",
 		.code = 'H',
