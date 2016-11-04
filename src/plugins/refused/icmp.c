@@ -75,7 +75,6 @@ char nak_parse(const struct packet_info *packet, size_t *addr_len, const uint8_t
 	}
 	if (data_len < sizeof *header + ip_len + 8)
 		return '\0'; // We were promised to have 8 bytes of the TCP header, but they are not here
-	data_len -= sizeof *header + ip_len;
 	const struct ports *ports = (const struct ports *)(header->iphdr + ip_len);
 	*loc_port = ntohs(ports->source);
 	*dest_port = ntohs(ports->destination);

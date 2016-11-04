@@ -416,7 +416,6 @@ void init(struct context *context) {
 	context->user_data->windows[init++] = init_window(context->permanent_pool, 5000, 2, common_start_timestamp);
 	context->user_data->windows[init++] = init_window(context->permanent_pool, 10000, 2, common_start_timestamp);
 
-	init = 0;
 	for (size_t i = 0; i < 1000; i += 250) {
 		context->user_data->in_buckets[init] = init_bucket(i);
 		context->user_data->out_buckets[init] = init_bucket(i);

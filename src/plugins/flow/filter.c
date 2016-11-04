@@ -182,6 +182,7 @@ static void parse_many_subs(struct mem_pool *pool, struct filter *dest, const st
 }
 
 struct trie_data {
+	// cppcheck-suppress unusedStructMember
 	int dummy; // Just to prevent warning about empty struct
 };
 

@@ -430,9 +430,10 @@ static bool parse_option(struct mem_pool *temp_pool, const char *cfg_line, struc
 	if (!parse_address(line, addr, family))
 		return false;
 
-	*prefix = atoi(pos);
-	if (*prefix <= 0 || *prefix > ((*family == 4) ? 32 : 128))
+	int result = atoi(pos);
+	if (result <= 0 || result > ((*family == 4) ? 32 : 128))
 		return false;
+	*prefix = result;
 
 	return true;
 }
