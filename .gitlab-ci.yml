@@ -1,0 +1,14 @@
+image: sairon/gl-ci-turris-testing
+
+stages:
+  - test
+
+before_script:
+  - git submodule init
+  - git submodule update
+
+test:
+  stage: test
+
+  script:
+    - nice make -j8 cppcheck
