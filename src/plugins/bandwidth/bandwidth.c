@@ -103,8 +103,11 @@ static struct window init_window(struct mem_pool *pool, uint64_t length, size_t 
 	memset(frames, 0, mem_size);
 
 	return (struct window) {
+		// cppcheck-suppress commaSeparatedReturn Cppcheck is just being confused
 		.len = length,
+		// cppcheck-suppress commaSeparatedReturn
 		.cnt = count,
+		// cppcheck-suppress commaSeparatedReturn
 		.timestamp = delayed_timestamp(current_time, length, count),
 		.frames = frames
 	};

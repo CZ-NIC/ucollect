@@ -139,6 +139,7 @@ const uint8_t *finish_ping(struct context *context, struct task_data *data, uint
 		while (words[i][j] && strcmp("END", (char *)words[i][j]) != 0) {
 			unsigned index;
 			double time;
+			// cppcheck-suppress invalidscanf There's nothing invalid about this one and bugs in „some versions of libc“ doesn't bother us.
 			if (sscanf((char *)words[i][j], "%u:%lf", &index, &time) != 2)
 				FAIL("O", "Time format error");
 			if (index >= data->targets[i].ping_count)

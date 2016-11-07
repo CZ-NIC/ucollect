@@ -97,6 +97,7 @@ static bool set_exists(struct context *context, const char *name) {
 		while (!eof) {
 			char *new = mem_pool_alloc(context->temp_pool, block);
 			block *= 2;
+			// cppcheck-suppress nullPointer if output is null, pos is 0 and reading 0 bytes from there is legal
 			memcpy(new, output, pos);
 			output = new;
 			ssize_t res = read(pipes[0], output + pos, block - pos - 1);

@@ -41,6 +41,7 @@ enum selector {
 	LOW_PORT,
 	SYN_FLAG, FIN_FLAG, SYN_ACK_FLAG, ACK_FLAG, PUSH_FLAG,
 	SERVER, V6TUNNEL,
+	// cppcheck-suppress variableHidingEnum No variable here, cppcheck is being confused
 	MAX
 };
 
