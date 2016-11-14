@@ -77,16 +77,26 @@ my $fname;
 sub incident_init($) {
 	my ($name) = @_;
 	my ($sec, $min, $hour, $day, $mon, $year) = localtime();
+	$year += 1900;
+	$mon += 1;
 	$fname = "$year-$mon-$day-$name.csv";
 	open $ifile, '>', "$fname.part" or die "Couldn't write $fname.part: $!\n";
 }
 
+my @incidents;
+
 sub incident($$$$) {
 	my ($remote, $date, $count, $name) = @_;
-	print $ifile "$remote,$date,$count,$name\n";
+	push @incidents, [$remote, $date, $count, $name];
+}
+
+sub incident_flush() {
+	print $ifile (join ',', @$_), "\n" for @incidents;
+	@incidents = ();
 }
 
 sub incident_finish() {
+	incident_flush;
 	close $ifile;
 	rename "$fname.part", $fname;
 }
@@ -186,6 +196,7 @@ if (fork == 0) {
 			$count ++;
 			if ($count % 100000 == 0) {
 				$destination->commit;
+				incident_flush;
 			}
 			$store_packet->execute(@data);
 			my ($rule_id, $time, $direction, $remote_port, $remote_address, $local_port, $protocol, $count, $tcp_flags) = @data;
