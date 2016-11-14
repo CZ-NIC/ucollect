@@ -70,6 +70,27 @@ $source->commit;
 undef $destination;
 undef $source;
 
+# Export incidents for the amihacked site (this way we can do the same exports as go into the archive)
+my $ifile;
+my $fname;
+
+sub incident_init($) {
+	my ($name) = @_;
+	my ($sec, $min, $hour, $day, $mon, $year) = localtime();
+	$fname = "$year-$mon-$day-$name.csv";
+	open $ifile, '>', "$fname.part" or die "Couldn't write $fname.part: $!\n";
+}
+
+sub incident($$$$) {
+	my ($remote, $date, $count, $name) = @_;
+	print $ifile "$remote,$date,$count,$name\n";
+}
+
+sub incident_finish() {
+	close $ifile;
+	rename "$fname.part", $fname;
+}
+
 if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
@@ -127,6 +148,9 @@ if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
 
+	# The ports that are included in „firewall“ category. If they change, the whole export needs to be redone from archive, if we just update it here, the history won't match correctly.
+	my %interesting_ports = map { $_ => 1 } (22, 2222, 8822, 22222, 23, 445, 1433, 3306, 5432, 161, 1723, 2083, 3389, 3390, 5631, 5900, 5901, 5902, 5903, 5060, 5061, 1080, 3128, 8088, 8118, 9064, 21320, 137, 128, 139, 1900, 53413, 9333, 5000, 5001, 80, 443, 8080, 8081);
+
 	# We get the maximum time of a packet in the destination and
 	# read the packets in the source from that time on. But we don't
 	# do it until the current time, but only some time before the maximum.
@@ -136,6 +160,7 @@ if (fork == 0) {
 	my ($loc_max) = $source->selectrow_array("SELECT MAX(time) - INTERVAL '3 hours' FROM router_loggedpacket");
 	my ($rem_max) = $destination->selectrow_array('SELECT COALESCE(MAX(time), TO_TIMESTAMP(0)) FROM firewall_packets');
 	tprint "Going to store firewall logs between $rem_max and $loc_max\n";
+	incident_init 'firewall';
 	# Get the packets. Each packet may have multiple resulting lines,
 	# for multiple groups it is in. Prefilter the groups, we are not
 	# interested in the random ones. We still have the 'all' group
@@ -143,7 +168,7 @@ if (fork == 0) {
 	# (we could solve it by some kind of outer join, but the condition
 	# at the WHERE part would get complicated, handling NULL columns).
 	my $get_packets = $source->prepare("
-			SELECT router_loggedpacket.id, group_members.in_group, router_loggedpacket.rule_id, router_loggedpacket.time, router_loggedpacket.direction, router_loggedpacket.remote_port, router_loggedpacket.remote_address, router_loggedpacket.local_port, router_loggedpacket.protocol, router_loggedpacket.count, router_loggedpacket.tcp_flags FROM router_loggedpacket
+			SELECT router_loggedpacket.id, group_members.in_group, DATE(router_loggedpacket.time), router_loggedpacket.rule_id, router_loggedpacket.time, router_loggedpacket.direction, router_loggedpacket.remote_port, router_loggedpacket.remote_address, router_loggedpacket.local_port, router_loggedpacket.protocol, router_loggedpacket.count, router_loggedpacket.tcp_flags FROM router_loggedpacket
 			JOIN router_router ON router_loggedpacket.router_id = router_router.id
 			JOIN group_members ON router_router.client_id = group_members.client
 			JOIN groups ON group_members.in_group = groups.id
@@ -156,13 +181,19 @@ if (fork == 0) {
 	my $packet_group = $destination->prepare('INSERT INTO firewall_groups (packet, for_group) VALUES (?, ?)');
 	my ($last_id, $id_dest);
 	my $count = 0;
-	while (my ($id, $group, @data) = $get_packets->fetchrow_array) {
+	while (my ($id, $group, $date, @data) = $get_packets->fetchrow_array) {
 		if ($last_id != $id) {
 			$count ++;
 			if ($count % 100000 == 0) {
 				$destination->commit;
 			}
 			$store_packet->execute(@data);
+			my ($rule_id, $time, $direction, $remote_port, $remote_address, $local_port, $protocol, $count, $tcp_flags) = @data;
+			if (($direction eq 'I') && (($protocol eq 'UDP') || (($protocol eq 'TCP') && (($tcp_flags & 18) == 2)))) {
+				# The incidents are only about incoming connections (SYN and not FIN) or UDP packets
+				incident $remote_address, $date, $count, 'firewall_all';
+				incident $remote_address, $date, $count, 'firewall' if $interesting_ports{$local_port};
+			}
 			$last_id = $id;
 			$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
 		}
@@ -173,6 +204,7 @@ if (fork == 0) {
 	tprint "Stored $count packets\n";
 	$destination->commit;
 	$source->commit;
+	incident_finish;
 	exit;
 }
 
@@ -446,8 +478,9 @@ if (fork == 0) {
 if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
+	incident_init 'ssh';
 	my %sessions;
-	my $get_commands = $source->prepare('SELECT ssh_commands.id, start_time, end_time, login, password, remote, remote_port, ts, success, command FROM ssh_commands JOIN ssh_sessions ON ssh_commands.session_id = ssh_sessions.id WHERE NOT archived');
+	my $get_commands = $source->prepare('SELECT ssh_commands.id, start_time, end_time, login, password, remote, remote_port, ts, success, command, DATE(start_time) FROM ssh_commands JOIN ssh_sessions ON ssh_commands.session_id = ssh_sessions.id WHERE NOT archived');
 	my $mark_command = $source->prepare('UPDATE ssh_commands SET archived = TRUE WHERE id = ?');
 	my $store_command = $destination->prepare('INSERT INTO ssh_commands (session, timestamp, success, command) VALUES (?, ?, ?, ?)');
 	# Make sure the params are considered the correct type.
@@ -465,7 +498,7 @@ if (fork == 0) {
 	$get_commands->execute;
 	my $count_commands = 0;
 	my $count_sessions = 0;
-	while (my ($id, $start, $end, $login, $password, $remote, $remote_port, $time, $success, $command) = $get_commands->fetchrow_array) {
+	while (my ($id, $start, $end, $login, $password, $remote, $remote_port, $time, $success, $command, $date) = $get_commands->fetchrow_array) {
 		my $sid = $sessions{$start}->{$login}->{$password};
 		if (not defined $sid) {
 			$get_session->execute($start, $login, $password);
@@ -476,6 +509,7 @@ if (fork == 0) {
 				$store_session->execute($start, $end, $login, $password, $remote, $remote_port);
 				($sid) = $store_session->fetchrow_array;
 				$count_sessions ++;
+				incident $remote, $date, 1, 'ssh';
 			}
 			$sessions{$start}->{$login}->{$password} = $sid;
 		}
@@ -485,6 +519,7 @@ if (fork == 0) {
 	}
 	$destination->commit;
 	$source->commit;
+	incident_finish;
 	tprint "Archived $count_sessions SSH sessions and $count_commands commands\n";
 	exit;
 }
@@ -492,16 +527,19 @@ if (fork == 0) {
 if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
+	incident_init 'telnet';
 	my ($max_date) = $destination->selectrow_array("SELECT DATE(COALESCE(MAX(date), TO_TIMESTAMP(0))) FROM fake_attackers");
 	$destination->do("DELETE FROM fake_attackers WHERE date >= ?", undef, $max_date);
 	my $get_attackers = $source->prepare("SELECT DATE(timestamp), server, remote, COUNT(CASE WHEN event = 'login' THEN true END), COUNT(CASE WHEN event = 'connect' THEN true END) FROM fake_logs WHERE DATE(timestamp) >= ? GROUP BY remote, server, DATE(timestamp)");
 	$get_attackers->execute($max_date);
 	my $put_attacker = $destination->prepare("INSERT INTO fake_attackers (date, server, remote, attempt_count, connect_count) VALUES (?, ?, ?, ?, ?)");
 	my $attackers = -1;
-	$put_attacker->execute_for_fetch(sub {
+	while (my @data = $get_attackers->fetchrow_array) {
 		$attackers ++;
-		return $get_attackers->fetchrow_arrayref;
-	});
+		my ($date, $server, $remote, $attempt_count) = @data;
+		incident $remote, $date, $attempt_count, $server;
+		$put_attacker->execute(@data);
+	}
 	tprint "Archived $attackers fake attacker stats\n";
 	$destination->do("DELETE FROM fake_passwords WHERE timestamp >= ?", undef, $max_date);
 	my $get_passwords = $source->prepare("SELECT timestamp, server, remote, name, password, remote_port FROM fake_logs WHERE name IS NOT NULL AND password IS NOT NULL AND event = 'login' AND timestamp >= ?");
@@ -531,6 +569,7 @@ if (fork == 0) {
 	tprint "Archived $activity_count fake server activity statistics\n";
 	$destination->commit;
 	$source->commit;
+	incident_finish;
 	exit;
 }
 
