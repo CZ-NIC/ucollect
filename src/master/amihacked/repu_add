@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# Add incidents incrementally, from all the present csv files.
+
+set -e
+
+DIR=$(dirname "$0")
+
+FILES=$(ls *.csv)
+cat $FILES | LC_ALL=C sort -S 2G | "$DIR/jsonize.pl" | "$DIR/to_db.pl" -d "$HOME/archivist.ini"
+rm $FILES
