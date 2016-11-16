@@ -56,7 +56,7 @@ const struct server_desc server_descs_intern[] = {
 		.code = 'H',
 		.sock_type = SOCK_STREAM,
 		.default_port = 80,
-		// No server-scope data, so skip server_alloc and server_set_fd
+		.server_alloc_cb = alloc_websrv,
 		.conn_alloc_cb = http_conn_alloc,
 		.conn_set_fd_cb = http_conn_set_fd,
 		.server_ready_cb = http_data,
