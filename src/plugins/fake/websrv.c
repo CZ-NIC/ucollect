@@ -53,6 +53,18 @@ static const char *response_unauth =
 "<body><h1>401 Unauthorized</h1><p>You need to provide the correct username and password.</p></body>\r\n"
 "</html>\r\n";
 
+static const char *response_proxy_unauth =
+"HTTP/1.1 407 Proxy Authentication Required\r\n"
+"Content-Type: text/html; charset=UTF-8\r\n"
+"Content-Encoding: UTF-8\r\n"
+"Content-Length: 198\r\n"
+"Proxy-Authenticate: Basic\r\n"
+"\r\n"
+"<html>\r\n"
+"<head><title>407 Proxy Authentication Required</title></head>\r\n"
+"<body><h1>407 Proxy Authentication Required</h1><p>You need to provide the correct username and password.</p></body>\r\n"
+"</html>\r\n";
+
 /*
  * As we use this code for both http server and http proxy, we
  * put some parameters here to be used to influence which one.
@@ -69,6 +81,16 @@ struct server_data *alloc_websrv(struct context *context __attribute__((unused))
 		.malformed = response_malformed,
 		.unauth = response_unauth,
 		.auth_header = "Authorization"
+	};
+	return result;
+}
+
+struct server_data *alloc_proxy(struct context *context __attribute__((unused)), struct fd_tag *tag __attribute__((unused)), struct mem_pool *pool, const struct server_desc *desc __attribute__((unused))) {
+	struct server_data *result = mem_pool_alloc(pool, sizeof *result);
+	*result = (struct server_data) {
+		.malformed = response_malformed,
+		.unauth = response_proxy_unauth,
+		.auth_header = "Proxy-Authorization"
 	};
 	return result;
 }

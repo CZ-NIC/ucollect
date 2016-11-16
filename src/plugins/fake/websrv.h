@@ -29,6 +29,7 @@ struct fd_tag;
 struct server_desc;
 
 struct server_data *alloc_websrv(struct context *context, struct fd_tag *tag, struct mem_pool *pool, const struct server_desc *desc);
+struct server_data *alloc_proxy(struct context *context, struct fd_tag *tag, struct mem_pool *pool, const struct server_desc *desc);
 struct conn_data *http_conn_alloc(struct context *context, struct fd_tag *tag, struct mem_pool *pool, struct server_data *server);
 void http_conn_set_fd(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn, int fd);
 void http_data(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn);

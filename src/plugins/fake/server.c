@@ -64,6 +64,42 @@ const struct server_desc server_descs_intern[] = {
 		.conn_timeout = 30 * SECOND
 	},
 	{
+		.name = "squid_http_proxy",
+		.code = 'P',
+		.sock_type = SOCK_STREAM,
+		.default_port = 3128,
+		.server_alloc_cb = alloc_proxy,
+		.conn_alloc_cb = http_conn_alloc,
+		.conn_set_fd_cb = http_conn_set_fd,
+		.server_ready_cb = http_data,
+		.max_conn = 20,
+		.conn_timeout = 30 * SECOND
+	},
+	{
+		.name = "http_proxy",
+		.code = 'P',
+		.sock_type = SOCK_STREAM,
+		.default_port = 8080,
+		.server_alloc_cb = alloc_proxy,
+		.conn_alloc_cb = http_conn_alloc,
+		.conn_set_fd_cb = http_conn_set_fd,
+		.server_ready_cb = http_data,
+		.max_conn = 20,
+		.conn_timeout = 30 * SECOND
+	},
+	{
+		.name = "polipo_http_proxy",
+		.code = 'P',
+		.sock_type = SOCK_STREAM,
+		.default_port = 8123,
+		.server_alloc_cb = alloc_proxy,
+		.conn_alloc_cb = http_conn_alloc,
+		.conn_set_fd_cb = http_conn_set_fd,
+		.server_ready_cb = http_data,
+		.max_conn = 20,
+		.conn_timeout = 30 * SECOND
+	},
+	{
 		.name = NULL
 	}
 };
