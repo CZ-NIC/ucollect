@@ -77,7 +77,7 @@ const struct server_desc server_descs_intern[] = {
 	},
 	{
 		.name = "http_proxy",
-		.code = 'P',
+		.code = 'h',
 		.sock_type = SOCK_STREAM,
 		.default_port = 8080,
 		.server_alloc_cb = alloc_proxy,
@@ -89,7 +89,7 @@ const struct server_desc server_descs_intern[] = {
 	},
 	{
 		.name = "polipo_http_proxy",
-		.code = 'P',
+		.code = 'p',
 		.sock_type = SOCK_STREAM,
 		.default_port = 8123,
 		.server_alloc_cb = alloc_proxy,
