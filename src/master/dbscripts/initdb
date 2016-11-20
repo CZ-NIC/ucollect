@@ -411,7 +411,7 @@ CREATE TABLE fwup_addresses (
 );
 
 CREATE TYPE fake_log_type AS ENUM ('connect', 'disconnect', 'lost', 'extra', 'timeout', 'login');
-CREATE TYPE fake_server AS ENUM ('telnet', 'ssh_honey', 'http', 'telnet_alt');
+CREATE TYPE fake_server AS ENUM ('telnet', 'ssh_honey', 'http', 'telnet_alt', 'squid_http_proxy', 'http_proxy', 'polipo_http_proxy');
 CREATE TABLE fake_server_names (
 	name TEXT NOT NULL,
 	code CHAR NOT NULL,
@@ -420,7 +420,14 @@ CREATE TABLE fake_server_names (
 	UNIQUE(code),
 	UNIQUE(type)
 );
-INSERT INTO fake_server_names (name, code, type) VALUES ('telnet', 'T', 'telnet'), ('SSH honeypot', 'S', 'ssh_honey'), ('http', 'H', 'http'), ('telnet alternative', 't', 'telnet_alt');
+INSERT INTO fake_server_names (name, code, type) VALUES
+	('telnet', 'T', 'telnet'),
+	('SSH honeypot', 'S', 'ssh_honey'),
+	('http', 'H', 'http'),
+	('telnet alternative', 't', 'telnet_alt'),
+	('Squid HTTP proxy', 'P', 'squid_http_proxy'),
+	('HTTP proxy/HTTP alt', 'h', 'http_proxy'),
+	('Polipo HTTP proxy', 'p', 'polipo_http_proxy');
 CREATE TABLE fake_logs (
 	id BIGINT PRIMARY KEY,
 	client INT NOT NULL,
@@ -480,7 +487,13 @@ INSERT INTO fake_blacklist_scores (server, event, score) VALUES
 	('telnet_alt', 'connect', 4),
 	('telnet_alt', 'login', 20),
 	('http', 'connect', 10),
-	('http', 'login', 10);
+	('http', 'login', 10),
+	('squid_http_proxy', 'connect', 10),
+	('squid_http_proxy', 'login', 10),
+	('http_proxy', 'connect', 10),
+	('http_proxy', 'login', 10),
+	('polipo_http_proxy', 'connect', 10),
+	('polipo_http_proxy', 'login', 10);
 CREATE TYPE blacklist_mode AS ENUM ('soft', 'hard');
 CREATE TABLE fake_blacklist_limits (
 	id BIGINT PRIMARY KEY,
