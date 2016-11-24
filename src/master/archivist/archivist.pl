@@ -200,7 +200,7 @@ if (fork == 0) {
 			}
 			$store_packet->execute(@data);
 			my ($rule_id, $time, $direction, $remote_port, $remote_address, $local_port, $protocol, $count, $tcp_flags) = @data;
-			if (($direction eq 'I') && (($protocol eq 'UDP') || (($protocol eq 'TCP') && (($tcp_flags & 18) == 2)))) {
+			if (($count > 0) && ($direction eq 'I') && (($protocol eq 'UDP') || (($protocol eq 'TCP') && (($tcp_flags & 18) == 2)))) {
 				# The incidents are only about incoming connections (SYN and not FIN) or UDP packets
 				incident $remote_address, $date, $count, 'firewall_all';
 				incident $remote_address, $date, $count, 'firewall' if $interesting_ports{$local_port};
@@ -548,7 +548,7 @@ if (fork == 0) {
 	while (my @data = $get_attackers->fetchrow_array) {
 		$attackers ++;
 		my ($date, $server, $remote, $attempt_count) = @data;
-		incident $remote, $date, $attempt_count, $server;
+		incident $remote, $date, $attempt_count, $server if $attempt_count > 0;
 		$put_attacker->execute(@data);
 	}
 	tprint "Archived $attackers fake attacker stats\n";
