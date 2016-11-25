@@ -76,7 +76,7 @@ function precache(db_path, ml_mac, ml_dns)
 					macdb:lookup(data[DD_SRC]);
 				end
 				if ml_dns then
-					if not data[DD_RESOLVED] then
+					if data[DD_RESOLVED] == CACHE_EMPTY_NAME then
 						changed = true;
 						local ptr = ptrdb:lookup(data[DD_DST]);
 						data[DD_RESOLVED] = ptr or CACHE_EMPTY_NAME;
