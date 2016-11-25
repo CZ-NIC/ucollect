@@ -1,12 +1,7 @@
 #!/bin/sh
 
-# Run the bzip2 for decompression and pbzip2 for compression.
+# Run the pbzip2 compression or decompression, with -1
 
 PROG=pbzip2
-for p in "$@" ; do
-	if [ "$p" = "-d" ] ; then
-		PROG=bzip2
-	fi
-done
 
 exec "$PROG" -1 "$@"
