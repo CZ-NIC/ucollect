@@ -9,11 +9,11 @@
 # * kind of attack
 #
 # The produced lines contain the IP address and JSON description. The
-# json object is indexed by date and then by the kind of attack. This
+# json object is indexed by the kind of attack and the date. This
 # holds the count of attacks on the day.
 #
 # eg:
-#  192.0.2.1	{"2015-08-10": {"telnet": 5}}
+#  192.0.2.1	{"telnet": {"2015-10-05": 5}}
 #
 # All IPv6 attackers are aggregated into their /64 ranges as well, in addition
 # to individual records.
@@ -40,11 +40,11 @@ while (<>) {
 		flush;
 		$last_ip = $ip;
 	}
-	$object->{$date}->{$kind} += $cnt;
+	$object->{$kind}->{$date} += $cnt;
 	if ($ip->version() == 6) {
 		my $net = NetAddr::IP->new($ip->canon(), 64)->network();
 		# Make sure it is stringified
-		$nets{$net->canon()}->{$date}->{$kind} += $cnt;
+		$nets{$net->canon()}->{$kind}->{$date} += $cnt;
 	}
 }
 

@@ -50,10 +50,10 @@ while (<>) {
 		my $json_previous = decode_json $previous;
 		my $json_data = decode_json $data;
 		# Sum them together, fieldwise
-		while (my ($date, $date_data) = each %$json_data) {
-			while (my ($kind, $cnt) = each %$date_data) {
+		while (my ($kind, $kind_data) = each %$json_data) {
+			while (my ($date, $cnt) = each %$kind_data) {
 				# If the field is not there yet, it gets created (including all the necessary levels above it)
-				$json_previous->{$date}->{$kind} += $cnt;
+				$json_previous->{$kind}->{$date} += $cnt;
 			}
 		}
 		# Store the new value
