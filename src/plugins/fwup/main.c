@@ -97,6 +97,7 @@ static bool set_exists(struct context *context, const char *name) {
 		while (!eof) {
 			char *new = mem_pool_alloc(context->temp_pool, block);
 			block *= 2;
+			// cppcheck-suppress nullPointer if output is null, pos is 0 and reading 0 bytes from there is legal
 			memcpy(new, output, pos);
 			output = new;
 			ssize_t res = read(pipes[0], output + pos, block - pos - 1);
@@ -168,6 +169,7 @@ static void addr_cmd(struct diff_addr_store *store, const char *cmd, const uint8
 	if (proto) {
 		memcpy(proto, "tcp", 3);
 		enqueue(set->context, set->context->user_data->queue, composed);
+		// cppcheck-suppress redundantCopy ‒ that's not redundant copy, it points inside the composed data which is used
 		memcpy(proto, "udp", 3);
 		enqueue(set->context, set->context->user_data->queue, composed);
 	} else {
@@ -223,7 +225,7 @@ static bool set_parse(struct mem_pool *pool, struct set *target, const uint8_t *
 	uint32_t max_size;
 	uint32_t hash_size;
 	uplink_parse(data, length, "scuu",
-			&name, NULL, pool, "set name in FWUp config",
+			&name, (size_t *)NULL, pool, "set name in FWUp config",
 			&t, "set type in FWUp config",
 			&max_size, "max size of set in FWUp config",
 			&hash_size, "hash size of set in FWUp config");
@@ -447,7 +449,7 @@ static void version_received(struct context *context, const uint8_t *data, size_
 	char *name;
 	uint32_t epoch, version;
 	uplink_parse(&data, &length, "suu",
-			&name, NULL, context->temp_pool, "version IPSet name",
+			&name, (size_t *)NULL, context->temp_pool, "version IPSet name",
 			&epoch, "version epoch",
 			&version, "version");
 	if (length)
@@ -474,7 +476,7 @@ static void diff_received(struct context *context, const uint8_t *data, size_t l
 	bool full;
 	uint32_t epoch, from = 0, to;
 	uplink_parse(&data, &length, "sbu",
-			&name, NULL, context->temp_pool, "diff IPset",
+			&name, (size_t *)NULL, context->temp_pool, "diff IPset",
 			&full, "diff fullness flag",
 			&epoch, "diff epoch");
 	if (!full)

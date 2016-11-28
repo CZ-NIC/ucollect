@@ -72,6 +72,7 @@ struct mem_pool *mem_pool_create(const char *name) {
 void *mem_pool_alloc(struct mem_pool *pool, size_t size) {
 	struct pool_chunk *chunk = malloc(sizeof *chunk + size + sizeof(uint32_t));
 	chunk->canary = POOL_CANARY_BEGIN;
+	// cppcheck-suppress uninitStructMember The data is not initialized, but we are allocation routine, it's up to the caller
 	*(uint32_t *) (chunk->data + size) = POOL_CANARY_END;
 	chunk->length = size;
 	pool_insert_after(pool, chunk, NULL);
@@ -306,6 +307,7 @@ static struct mem_pool **pools;
 size_t pool_count;
 
 static void store(struct mem_pool *pool) {
+	// cppcheck-suppress memleakOnRealloc ‒ if it returns NULL, we crash anyway
 	pools = realloc(pools, (++ pool_count) * sizeof *pools);
 	pools[pool_count - 1] = pool;
 	pool->pool_index = pool_count - 1;
@@ -316,6 +318,7 @@ static void drop(struct mem_pool *pool) {
 	assert(pool == pools[pool->pool_index]);
 	pools[pool->pool_index] = pools[pool_count - 1];
 	pools[pool->pool_index]->pool_index = pool->pool_index;
+	// cppcheck-suppress memleakOnRealloc ‒ if it returns NULL, we crash anyway
 	pools = realloc(pools, (-- pool_count) * sizeof *pools);
 }
 
@@ -345,7 +348,7 @@ char *mem_pool_printf(struct mem_pool *pool, const char *format, ...) {
 char *mem_pool_hex(struct mem_pool *pool, const uint8_t *data, size_t size) {
 	char *result = mem_pool_alloc(pool, 3*size);
 	for (size_t i = 0; i < size; i ++)
-		sprintf(result + 3*i, "%.2hhX%c", data[i], (i+1) % 4 ? ':' : ' ');
+		sprintf(result + 3*i, "%.2hhX%c", data[i], ((i+1) % 4) ? ':' : ' ');
 	result[size ? 3*size-1 : 0] = '\0';
 	return result;
 }

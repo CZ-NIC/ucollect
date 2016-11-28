@@ -103,8 +103,11 @@ static struct window init_window(struct mem_pool *pool, uint64_t length, size_t 
 	memset(frames, 0, mem_size);
 
 	return (struct window) {
+		// cppcheck-suppress commaSeparatedReturn Cppcheck is just being confused
 		.len = length,
+		// cppcheck-suppress commaSeparatedReturn
 		.cnt = count,
+		// cppcheck-suppress commaSeparatedReturn
 		.timestamp = delayed_timestamp(current_time, length, count),
 		.frames = frames
 	};
@@ -416,7 +419,6 @@ void init(struct context *context) {
 	context->user_data->windows[init++] = init_window(context->permanent_pool, 5000, 2, common_start_timestamp);
 	context->user_data->windows[init++] = init_window(context->permanent_pool, 10000, 2, common_start_timestamp);
 
-	init = 0;
 	for (size_t i = 0; i < 1000; i += 250) {
 		context->user_data->in_buckets[init] = init_bucket(i);
 		context->user_data->out_buckets[init] = init_bucket(i);
