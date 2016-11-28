@@ -30,6 +30,71 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+static const char *response_malformed =
+"HTTP/1.1 400 Bad Request\r\n"
+"Content-Type: text/html; charset=UTF-8\r\n"
+"Content-Encoding: UTF-8\r\n"
+"Content-Length: 141\r\n"
+"\r\n"
+"<html>\r\n"
+"<head><title>400 Bad Request</title></head>\r\n"
+"<body><h1>400 Bad Request</h1><p>I couldn't understand you, sorry.</p></body>\r\n"
+"</html>\r\n";
+
+static const char *response_unauth =
+"HTTP/1.1 401 Unauthorized\r\n"
+"Content-Type: text/html; charset=UTF-8\r\n"
+"Content-Encoding: UTF-8\r\n"
+"Content-Length: 164\r\n"
+"WWW-Authenticate: Basic realm=\"Admin interface\"\r\n"
+"\r\n"
+"<html>\r\n"
+"<head><title>401 Unauthorized</title></head>\r\n"
+"<body><h1>401 Unauthorized</h1><p>You need to provide the correct username and password.</p></body>\r\n"
+"</html>\r\n";
+
+static const char *response_proxy_unauth =
+"HTTP/1.1 407 Proxy Authentication Required\r\n"
+"Content-Type: text/html; charset=UTF-8\r\n"
+"Content-Encoding: UTF-8\r\n"
+"Content-Length: 198\r\n"
+"Proxy-Authenticate: Basic\r\n"
+"\r\n"
+"<html>\r\n"
+"<head><title>407 Proxy Authentication Required</title></head>\r\n"
+"<body><h1>407 Proxy Authentication Required</h1><p>You need to provide the correct username and password.</p></body>\r\n"
+"</html>\r\n";
+
+/*
+ * As we use this code for both http server and http proxy, we
+ * put some parameters here to be used to influence which one.
+ */
+struct server_data {
+	const char *malformed;
+	const char *unauth;
+	const char *auth_header;
+};
+
+struct server_data *alloc_websrv(struct context *context __attribute__((unused)), struct fd_tag *tag __attribute__((unused)), struct mem_pool *pool, const struct server_desc *desc __attribute__((unused))) {
+	struct server_data *result = mem_pool_alloc(pool, sizeof *result);
+	*result = (struct server_data) {
+		.malformed = response_malformed,
+		.unauth = response_unauth,
+		.auth_header = "Authorization"
+	};
+	return result;
+}
+
+struct server_data *alloc_proxy(struct context *context __attribute__((unused)), struct fd_tag *tag __attribute__((unused)), struct mem_pool *pool, const struct server_desc *desc __attribute__((unused))) {
+	struct server_data *result = mem_pool_alloc(pool, sizeof *result);
+	*result = (struct server_data) {
+		.malformed = response_malformed,
+		.unauth = response_proxy_unauth,
+		.auth_header = "Proxy-Authorization"
+	};
+	return result;
+}
+
 #define LINE_MAX 512
 #define MAX_HEADER 256
 
@@ -88,30 +153,7 @@ static void response_send(struct conn_data *conn, const char *response) {
 	}
 }
 
-static const char *response_malformed =
-"HTTP/1.1 400 Bad Request\r\n"
-"Content-Type: text/html; charset=UTF-8\r\n"
-"Content-Encoding: UTF-8\r\n"
-"Content-Length: 141\r\n"
-"\r\n"
-"<html>\r\n"
-"<head><title>400 Bad Request</title></head>\r\n"
-"<body><h1>400 Bad Request</h1><p>I couldn't understand you, sorry.</p></body>\r\n"
-"</html>\r\n";
-
-static const char *response_unauth =
-"HTTP/1.1 401 Unauthorized\r\n"
-"Content-Type: text/html; charset=UTF-8\r\n"
-"Content-Encoding: UTF-8\r\n"
-"Content-Length: 164\r\n"
-"WWW-Authenticate: Basic realm=\"Admin interface\"\r\n"
-"\r\n"
-"<html>\r\n"
-"<head><title>401 Unauthorized</title></head>\r\n"
-"<body><h1>401 Unauthorized</h1><p>You need to provide the correct username and password.</p></body>\r\n"
-"</html>\r\n";
-
-static bool line_handle(struct context *context, struct conn_data *data) {
+static bool line_handle(struct context *context, struct conn_data *data, struct server_data *server) {
 	// Terminate the line (there must be at least 1 byte empty by the check at char_handle)
 	sanity(data->line - data->line_data < LINE_MAX, "Not enough space for http line terminator\n");
 	*data->line = '\0';
@@ -124,7 +166,7 @@ static bool line_handle(struct context *context, struct conn_data *data) {
 #define MALF(REASON) do { \
 	data->error = true; \
 	data->close_reason = (REASON); \
-	response_send(data, response_malformed); \
+	response_send(data, server->malformed); \
 	return false; \
 } while (0)
 			if (!colon)
@@ -138,7 +180,7 @@ static bool line_handle(struct context *context, struct conn_data *data) {
 				strncpy(data->host, colon, MAX_HEADER);
 				data->host[MAX_HEADER - 1] = '\0';
 				data->has_host = true;
-			} else if (strcasecmp(l, "Authorization") == 0) {
+			} else if (strcasecmp(l, server->auth_header) == 0) {
 				char *space = index(colon, ' ');
 				if (!space)
 					MALF("Malformed auth");
@@ -161,7 +203,7 @@ static bool line_handle(struct context *context, struct conn_data *data) {
 			// Erase all the strings
 			*data->username = *data->password = *data->host = *data->method = *data->url = '\0';
 			data->has_auth = data->has_host = false;
-			response_send(data, response_unauth);
+			response_send(data, server->unauth);
 			// As we don't parse any possible request body, we just terminate the connection to make it easier for us. That is legal.
 			data->close_reason = "Completed";
 			return false;
@@ -187,14 +229,14 @@ static bool line_handle(struct context *context, struct conn_data *data) {
 	return true;
 }
 
-static bool char_handle(struct context *context, struct fd_tag *tag __attribute__((unused)), struct conn_data *conn, uint8_t ch) {
+static bool char_handle(struct context *context, struct conn_data *conn, struct server_data *server, uint8_t ch) {
 	switch (ch) {
 		case '\r':
 			// We simply ignore CR and wait for LF (we don't validate they go after each other)
 			break;
 		case '\n':
 			// LF came ‒ handle the whole accumulated line
-			return line_handle(context, conn);
+			return line_handle(context, conn, server);
 		default:
 			// Just accumulate the data of the line
 			if (conn->line && conn->line - conn->line_data + 1 < LINE_MAX)
@@ -204,7 +246,7 @@ static bool char_handle(struct context *context, struct fd_tag *tag __attribute_
 	return true;
 }
 
-void http_data(struct context *context, struct fd_tag *tag, struct server_data *server __attribute__((unused)), struct conn_data *conn) {
+void http_data(struct context *context, struct fd_tag *tag, struct server_data *server, struct conn_data *conn) {
 	const size_t block = 1024;
 	void *buffer = mem_pool_alloc(context->temp_pool, block);
 	ssize_t amount = recv(conn->fd, buffer, block, MSG_DONTWAIT);
@@ -231,7 +273,7 @@ void http_data(struct context *context, struct fd_tag *tag, struct server_data *
 	ulog(LLOG_DEBUG, "Http data on connection %p/%p/%d: %s\n", (void *)conn, (void *)tag, conn->fd, mem_pool_hex(context->temp_pool, buffer, amount));
 	const uint8_t *data = buffer;
 	for (ssize_t i = 0; i < amount; i ++)
-		if (!char_handle(context, tag, conn, data[i])) {
+		if (!char_handle(context, conn, server, data[i])) {
 			do_close(context, conn, conn->error);
 			return;
 		}

@@ -12,6 +12,9 @@ PORTS=`(
 	echo '23tcp'
 	echo '80tcp'
 	echo '2323tcp'
+	echo '3128tcp'
+	echo '8080tcp'
+	echo '8123tcp'
 	uci -q -d '
 ' get ucollect.@fakes[0].disable
 	uci -q -d '
