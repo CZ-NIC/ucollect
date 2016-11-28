@@ -30,7 +30,7 @@ while [ "$1" ] ; do
 	fi
 	mkdir -p "$DIR"
 	cd "$DIR"
-	echo | openssl s_client -connect "$HOST":"$PORT" $PARAMS -showcerts -status >out 2>/dev/null
+	echo | openssl s_client -servername "$HOST" -connect "$HOST":"$PORT" $PARAMS -showcerts -status >out 2>/dev/null
 	awk -v c=-1 '/-----BEGIN CERTIFICATE-----/{inc=1;c++} inc {print > (c ".pem")}' <out
 	grep '^SSL-Session:' -A 20 <out >session
 	echo '-----BEGIN HOST-----'
