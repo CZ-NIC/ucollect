@@ -6,9 +6,7 @@ psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
 BEGIN;
 
 DROP VIEW IF EXISTS fake_bad_connections;
-DROP VIEW IF EXISTS fake_bad_connections_telnet;
-DROP VIEW IF EXISTS fake_bad_connections_telnet_alt;
-DROP VIEW IF EXISTS fake_bad_connections_http;
+DROP VIEW IF EXISTS fake_bad_connections_any;
 DROP VIEW IF EXISTS fake_bad_connections_ssh_honey;
 DROP VIEW IF EXISTS fake_blacklist;
 DROP VIEW IF EXISTS fake_blacklist_remotes;
