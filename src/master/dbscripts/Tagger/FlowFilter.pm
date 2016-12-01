@@ -103,11 +103,13 @@ sub perform($$) {
 		994,	# ircs
 		995,	# pop3s
 		1443,	# mssql
+		2323,	# telnet-alt
 		3306,	# mysql
 		3389,	# rdp
 		5060,	# sip
 		5432,	# postgres
 		5900,	# vnc
+		7547,	# TR-069 (ISP remote control)
 		8767,	# teamspeak
 	);
 	my $ports = 'P(' . (join ',', @interesting_remote_ports) . ')';
