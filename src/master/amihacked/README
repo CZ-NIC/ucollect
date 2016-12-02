@@ -1,0 +1,14 @@
+This directory holds the script to provide data to the amihacked website. It is
+just that ‒ providing the data. The frontend lives elsewhere.
+
+There are three script entry-points:
+* export_repu: This is to be run on the archive.turris.cz machine. It generates
+  exports of the whole history, in the form of several .csv.bz2 files.
+* repu_init: This one fills the initial data into a database. It expects to be
+  run in a directory with the .csv.bz2 files from the above script. The
+  database must already exist and the home directory should contain a db.ini file.
+* repu_add: This one adds data incrementaly, from files created by the
+  archivist.pl. It expects the information to connect to the db in
+  archivist.ini in the home directory.
+
+The other scripts are helpers and are not to be called directly.

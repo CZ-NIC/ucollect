@@ -1,0 +1,16 @@
+#!/bin/sh
+
+set -e
+
+q() {
+	CMD="$1"
+	NAME="$2"
+	psql -q -d turris -1 -c "$CMD" | ./compact.pl | pbzip2 -5 >"$NAME".csv.bz2
+	echo "Done $NAME on $(date +%X)" >&2
+}
+
+q "COPY (select remote, date(start_time), count(1) as attempt_count, 'ssh' from ssh_sessions where remote is not null group by date(start_time), remote) to STDOUT with CSV;" "ssh" &
+q "COPY (select remote, date, attempt_count, server from fake_attackers where attempt_count > 0) to STDOUT with CSV;" "telnet" &
+q "COPY (select addr_rem as remote, date(time) as date, count, 'firewall' from firewall_packets where direction = 'I' and ((protocol = 'TCP' AND tcp_flags & 18 = 2) OR protocol = 'UDP') and port_loc in (22, 2222, 8822, 22222, 23, 445, 1433, 3306, 5432, 161, 1723, 2083, 3389, 3390, 5631, 5900, 5901, 5902, 5903, 5060, 5061, 1080, 3128, 8088, 8118, 9064, 21320, 137, 128, 139, 1900, 53413, 9333, 5000, 5001, 80, 443, 8080, 8081) AND count > 0) to STDOUT with CSV;" "firewall" &
+q "COPY (select addr_rem as remote, date(time) as date, count, 'firewall_all' from firewall_packets where direction = 'I' and ((protocol = 'TCP' AND tcp_flags & 18 = 2) OR protocol = 'UDP') AND count > 0) to STDOUT with CSV;" "firewall_all" &
+wait
