@@ -1,4 +1,4 @@
-image: sairon/gl-ci-turris-testing
+image: gl-ci-turris-testing
 
 stages:
   - test
