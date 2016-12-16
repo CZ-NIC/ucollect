@@ -1,0 +1,7 @@
+[package]
+name = "process"
+version = "0.1.0"
+authors = ["Michal 'vorner' Vaner <michal.vaner@nic.cz>"]
+
+[dependencies]
+csv = "0.14"
