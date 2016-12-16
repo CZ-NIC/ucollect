@@ -6,3 +6,4 @@ authors = ["Michal 'vorner' Vaner <michal.vaner@nic.cz>"]
 [dependencies]
 csv = "0.14"
 regex = "0.1"
+scoped-pool = "1"
