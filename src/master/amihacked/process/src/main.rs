@@ -21,11 +21,14 @@
 extern crate csv;
 extern crate regex;
 extern crate scoped_pool;
+extern crate serde_json;
+extern crate rustc_serialize;
 
 use std::process::*;
 use std::sync::*;
 use std::collections::{HashMap,HashSet};
 use std::io::Write;
+use std::net::IpAddr;
 use regex::Regex;
 
 /**
@@ -46,7 +49,7 @@ impl SplitOutput {
     }
     /// Write some data into the file.
     fn process(&mut self, data: &[String]) {
-        write!(self.compressor.stdin.as_mut().unwrap(), "{},{},{},{}\n", data[0], data[1], data[2], data[3]).expect("Write error");
+        writeln!(self.compressor.stdin.as_mut().unwrap(), "{},{},{},{}", data[0], data[1], data[2], data[3]).expect("Write error");
     }
 }
 
@@ -92,21 +95,78 @@ fn split_one(outputs: &Splitter, prefix: &Regex, unzip: &mut Child) {
 fn split(pool: &scoped_pool::Pool) -> HashSet<String> {
     let outputs: Splitter = RwLock::new(HashMap::new());
     let prefix = Regex::new(r"^(.[^.:]?)").unwrap();
-    pool.scoped(|scope|{
+    pool.scoped(|scope| {
         for arg in std::env::args().skip(1) {
             let outputs = &outputs;
             let prefix = &prefix;
             scope.execute(move || {
                 let mut unzip = Command::new("/usr/bin/pbzip2").arg("-dc").arg(arg).stdout(Stdio::piped()).spawn().expect("Failed to start unzip");
                 split_one(outputs, prefix, &mut unzip);
-                unzip.wait().unwrap();
+                unzip.wait().expect("Failed to wait for unzip");
             });
         }
     });
     outputs.into_inner().unwrap().into_iter().map(|(k, _)| k).collect()
 }
 
+#[derive(RustcDecodable)]
+struct Record {
+    ip: String,
+    date: String,
+    cnt: u32,
+    kind: String
+}
+
+type ResultSum = HashMap<String, HashMap<String, u32>>;
+
+fn json_output(sum: &mut ResultSum, last: &mut Option<IpAddr>) {
+    if let Some(ip) = *last {
+        println!("{} {}", ip, serde_json::to_string(&sum).unwrap());
+        *sum = HashMap::new();
+    }
+}
+
+fn ip_allow(ip: &IpAddr) -> bool {
+    match *ip {
+        IpAddr::V4(ref a) => !(a.is_private() || a.is_loopback() || a.is_broadcast() || a.is_multicast() || a.is_unspecified() || a.is_documentation() || a.is_link_local()),
+        IpAddr::V6(ref a) => !(a.is_unspecified() || a.is_loopback() || a.is_multicast())
+    }
+}
+
+fn aggregate(sort: &mut Child) {
+    let mut last: Option<IpAddr> = None;
+    let mut output = sort.stdout.as_mut().unwrap();
+    let mut reader = csv::Reader::from_reader(&mut output).has_headers(false);
+    let mut sum: ResultSum = HashMap::new();
+    for row in reader.decode() {
+        let row: Record = row.unwrap();
+        let ip: IpAddr = row.ip.parse().unwrap();
+        if !ip_allow(&ip) {
+            continue;
+        }
+        if Some(ip) != last {
+            json_output(&mut sum, &mut last);
+        }
+        last = Some(ip);
+        *sum.entry(row.kind).or_insert_with(HashMap::new).entry(row.date).or_insert(0) += row.cnt;
+    }
+    json_output(&mut sum, &mut last);
+}
+
+fn jsonize(pool: &scoped_pool::Pool, prefixes: &HashSet<String>) {
+    pool.scoped(|scope| {
+        for prefix in prefixes {
+            scope.execute(move || {
+                let mut sort = Command::new("/bin/sh").arg("-c").arg(format!("gunzip -cd {}.csv.gz | sort -S 1G -T .", prefix)).env("LC_ALL", "C").stdout(Stdio::piped()).spawn().expect("Failed to run sort");
+                aggregate(&mut sort);
+                sort.wait().expect("Failed to wait for sort");
+            });
+        }
+    });
+}
+
 fn main() {
     let pool = scoped_pool::Pool::new(6);
-    split(&pool);
+    let prefixes = split(&pool);
+    jsonize(&pool, &prefixes);
 }

@@ -7,3 +7,5 @@ authors = ["Michal 'vorner' Vaner <michal.vaner@nic.cz>"]
 csv = "0.14"
 regex = "0.1"
 scoped-pool = "1"
+serde_json = "0.8"
+rustc-serialize = "0.3"
