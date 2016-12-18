@@ -119,9 +119,38 @@ struct Record {
 
 type ResultSum = HashMap<String, HashMap<String, u32>>;
 
-fn json_output(sum: &mut ResultSum, last: &mut Option<IpAddr>) {
+struct MultiBuf {
+    buffer: Vec<String>
+}
+
+impl MultiBuf {
+    fn new() -> MultiBuf {
+        MultiBuf { buffer: Vec::with_capacity(1024) }
+    }
+    fn flush(&mut self) {
+        let stdout = std::io::stdout();
+        let mut lock = stdout.lock();
+        for s in self.buffer.drain(0..) {
+            writeln!(lock, "{}", s).unwrap();
+        }
+    }
+    fn write(&mut self, data: String) {
+        if self.buffer.len() == self.buffer.capacity() {
+            self.flush();
+        }
+        self.buffer.push(data);
+    }
+}
+
+impl Drop for MultiBuf {
+    fn drop(&mut self) {
+        self.flush();
+    }
+}
+
+fn json_output(buf: &mut MultiBuf, sum: &mut ResultSum, last: &mut Option<IpAddr>) {
     if let Some(ip) = *last {
-        println!("{} {}", ip, serde_json::to_string(&sum).unwrap());
+        buf.write(format!("{} {}", ip, serde_json::to_string(&sum).unwrap()));
         *sum = HashMap::new();
     }
 }
@@ -138,6 +167,7 @@ fn aggregate(sort: &mut Child) {
     let mut output = sort.stdout.as_mut().unwrap();
     let mut reader = csv::Reader::from_reader(&mut output).has_headers(false);
     let mut sum: ResultSum = HashMap::new();
+    let mut buf = MultiBuf::new();
     for row in reader.decode() {
         let row: Record = row.unwrap();
         let ip: IpAddr = row.ip.parse().unwrap();
@@ -145,12 +175,12 @@ fn aggregate(sort: &mut Child) {
             continue;
         }
         if Some(ip) != last {
-            json_output(&mut sum, &mut last);
+            json_output(&mut buf, &mut sum, &mut last);
         }
         last = Some(ip);
         *sum.entry(row.kind).or_insert_with(HashMap::new).entry(row.date).or_insert(0) += row.cnt;
     }
-    json_output(&mut sum, &mut last);
+    json_output(&mut buf, &mut sum, &mut last);
 }
 
 fn jsonize(pool: &scoped_pool::Pool, prefixes: &HashSet<String>) {
