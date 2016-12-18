@@ -3,19 +3,21 @@
  *
  * ```text
  * 1.2.3.4,2016-02-02,3,ssh
- * 192.0.2.1,2016-12-02,1,telnet
+ * 1.2.3.4,2016-12-02,1,telnet
  * ...
  * ```
  *
- * It splits these files into same format of CSV files, but
- * by the fist two letters of the IP address (ignoring the dot
- * in case of single-digit octet). The goal is a kind of
- * load-balancing the data into files, but making sure the same
- * IP addresses are together in the same file.
+ * It produces (on stdout) pairs of IP JSON, describing aggregated events from the IP addresses.
+ * There's at most one line per IP address.
  *
- * As it is a small utility for rare manual run, most errors
- * simply panic through unwrap() or expect(). We would terminate
- * the program anyway.
+ * The lines look like this:
+ *
+ * ```text
+ * 1.2.3.4 {"telnet":{"2016:12:01":1},"ssh":{"2016-02-02":3}}
+ * ```
+ *
+ * It does so by first splitting it into multiple files (by the string prefix of the IP address, to
+ * load balance it a bit), sorting each file and then aggregatting consequitive items.
  */
 
 extern crate csv;
@@ -27,16 +29,51 @@ extern crate rustc_serialize;
 use std::process::*;
 use std::sync::*;
 use std::collections::{HashMap,HashSet};
-use std::io::Write;
+use std::io::{Write,BufWriter};
 use std::net::IpAddr;
 use regex::Regex;
+
+/**
+ * This is the inner part of SplitOutput.
+ *
+ * It holds the actual command that gets waited on and implements the
+ * Write trait. This is just an implementation trick to make it possible
+ * to wrap something inside BufWriter.
+ */
+struct SplitOutputInner {
+    child: Child
+}
+
+impl SplitOutputInner {
+    /// Create the new compressor with the given file prefix
+    fn new(name: &str) -> SplitOutputInner {
+        SplitOutputInner { child: Command::new("/bin/sh").arg("-c").arg(format!("gzip -1 >{}.csv.gz", name)).stdin(Stdio::piped()).spawn().expect("Failed to start gzip") }
+    }
+}
+
+impl Drop for SplitOutputInner {
+    /// Make sure all is written and the command terminated before we exit
+    fn drop(&mut self) {
+        self.child.wait().expect("Output wait error");
+    }
+}
+
+/// A write implementation, so we can wrap this into the buffer writer.
+impl Write for SplitOutputInner {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.child.stdin.as_mut().unwrap().write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.child.stdin.as_mut().unwrap().flush()
+    }
+}
 
 /**
  * Object representing output writer into a file. It compresses
  * the data as it goes.
  */
 struct SplitOutput {
-    compressor: Child
+    output: BufWriter<SplitOutputInner>
 }
 
 impl SplitOutput {
@@ -45,18 +82,11 @@ impl SplitOutput {
      * prefix of the file.
      */
     fn new(name: &str) -> SplitOutput {
-        SplitOutput { compressor: Command::new("/bin/sh").arg("-c").arg(format!("gzip >{}.csv.gz", name)).stdin(Stdio::piped()).spawn().expect("Failed to start gzip") }
+        SplitOutput { output: BufWriter::with_capacity(2048, SplitOutputInner::new(name)) }
     }
     /// Write some data into the file.
     fn process(&mut self, data: &[String]) {
-        writeln!(self.compressor.stdin.as_mut().unwrap(), "{},{},{},{}", data[0], data[1], data[2], data[3]).expect("Write error");
-    }
-}
-
-impl Drop for SplitOutput {
-    /// Make sure we wait for everything before we finish up.
-    fn drop(&mut self) {
-        self.compressor.wait().expect("Output wait error");
+        writeln!(self.output, "{},{},{},{}", data[0], data[1], data[2], data[3]).expect("Write error");
     }
 }
 
@@ -100,7 +130,7 @@ fn split(pool: &scoped_pool::Pool) -> HashSet<String> {
             let outputs = &outputs;
             let prefix = &prefix;
             scope.execute(move || {
-                let mut unzip = Command::new("/usr/bin/pbzip2").arg("-dc").arg(arg).stdout(Stdio::piped()).spawn().expect("Failed to start unzip");
+                let mut unzip = Command::new("/bin/bzip2").arg("-dc").arg(arg).stdout(Stdio::piped()).spawn().expect("Failed to start unzip");
                 split_one(outputs, prefix, &mut unzip);
                 unzip.wait().expect("Failed to wait for unzip");
             });
@@ -109,6 +139,7 @@ fn split(pool: &scoped_pool::Pool) -> HashSet<String> {
     outputs.into_inner().unwrap().into_iter().map(|(k, _)| k).collect()
 }
 
+/// A record in the CSV input
 #[derive(RustcDecodable)]
 struct Record {
     ip: String,
@@ -117,8 +148,13 @@ struct Record {
     kind: String
 }
 
+/// The summed up incidents per IP address.
 type ResultSum = HashMap<String, HashMap<String, u32>>;
 
+/**
+ * A buffer that'll lock when writing the output to stdout (since there'll be many in multiple
+ * threads).
+ */
 struct MultiBuf {
     buffer: Vec<String>
 }
@@ -129,9 +165,10 @@ impl MultiBuf {
     }
     fn flush(&mut self) {
         let stdout = std::io::stdout();
-        let mut lock = stdout.lock();
+        let lock = stdout.lock();
+        let mut writer = BufWriter::with_capacity(1024 * 1024, lock);
         for s in self.buffer.drain(0..) {
-            writeln!(lock, "{}", s).unwrap();
+            writeln!(writer, "{}", s).unwrap();
         }
     }
     fn write(&mut self, data: String) {
@@ -148,6 +185,7 @@ impl Drop for MultiBuf {
     }
 }
 
+/// If there's something for the previous IP, output it as IP JSON pair and reset the result
 fn json_output(buf: &mut MultiBuf, sum: &mut ResultSum, last: &mut Option<IpAddr>) {
     if let Some(ip) = *last {
         buf.write(format!("{} {}", ip, serde_json::to_string(&sum).unwrap()));
@@ -155,13 +193,19 @@ fn json_output(buf: &mut MultiBuf, sum: &mut ResultSum, last: &mut Option<IpAddr
     }
 }
 
+/// Is this IP allowed? Disallows bunch of private, loopback, multicast and other strange addresses
 fn ip_allow(ip: &IpAddr) -> bool {
+    // We would love to use ip.is_global, but that one is marked as unstable :-(
     match *ip {
         IpAddr::V4(ref a) => !(a.is_private() || a.is_loopback() || a.is_broadcast() || a.is_multicast() || a.is_unspecified() || a.is_documentation() || a.is_link_local()),
         IpAddr::V6(ref a) => !(a.is_unspecified() || a.is_loopback() || a.is_multicast())
     }
 }
 
+/**
+ * Go through the sorted output from the child, aggregate the things belonging to the same IP and
+ * output the JSONs.
+ */
 fn aggregate(sort: &mut Child) {
     let mut last: Option<IpAddr> = None;
     let mut output = sort.stdout.as_mut().unwrap();
@@ -183,6 +227,10 @@ fn aggregate(sort: &mut Child) {
     json_output(&mut buf, &mut sum, &mut last);
 }
 
+/**
+ * Go through the content of all the files with given prefixes, process them
+ * and produce aggregated JSONs.
+ */
 fn jsonize(pool: &scoped_pool::Pool, prefixes: &HashSet<String>) {
     pool.scoped(|scope| {
         for prefix in prefixes {
