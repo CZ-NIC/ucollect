@@ -159,7 +159,7 @@ if (fork == 0) {
 	my $destination = connect_db 'destination';
 
 	# The ports that are included in „firewall“ category. If they change, the whole export needs to be redone from archive, if we just update it here, the history won't match correctly.
-	my %interesting_ports = map { $_ => 1 } (22, 2222, 8822, 22222, 23, 445, 1433, 3306, 5432, 161, 1723, 2083, 3389, 3390, 5631, 5900, 5901, 5902, 5903, 5060, 5061, 1080, 3128, 8088, 8118, 9064, 21320, 137, 128, 139, 1900, 53413, 9333, 5000, 5001, 80, 443, 8080, 8081);
+	my %interesting_ports = map { $_ => 1 } (22, 2222, 8822, 22222, 23, 2323, 445, 1433, 3306, 5432, 7547, 161, 1723, 2083, 3389, 3390, 5631, 5900, 5901, 5902, 5903, 5060, 5061, 1080, 3128, 8088, 8118, 9064, 21320, 137, 128, 139, 1900, 53413, 9333, 5000, 5001, 80, 443, 8080, 8081);
 
 	# We get the maximum time of a packet in the destination and
 	# read the packets in the source from that time on. But we don't
