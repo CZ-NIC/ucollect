@@ -29,7 +29,7 @@ extern crate rustc_serialize;
 use std::process::*;
 use std::sync::*;
 use std::collections::{HashMap,HashSet};
-use std::io::{Write,BufWriter};
+use std::io::{Write,BufWriter,BufReader};
 use std::net::IpAddr;
 use regex::Regex;
 
@@ -95,8 +95,8 @@ type Splitter = RwLock<HashMap<String, Mutex<SplitOutput>>>;
 
 /// Split one input file (possibly in parallel with others)
 fn split_one(outputs: &Splitter, prefix: &Regex, unzip: &mut Child) {
-    let mut output = unzip.stdout.as_mut().unwrap();
-    let mut reader = csv::Reader::from_reader(&mut output).has_headers(false);
+    let output = unzip.stdout.as_mut().unwrap();
+    let mut reader = csv::Reader::from_reader(BufReader::with_capacity(4 * 1024 * 1024, output)).has_headers(false);
     for row in reader.records() {
         let row = row.unwrap();
         let iprefix = prefix.captures(&row[0]).expect("Doesn't match").at(1).unwrap();
@@ -130,7 +130,7 @@ fn split(pool: &scoped_pool::Pool) -> HashSet<String> {
             let outputs = &outputs;
             let prefix = &prefix;
             scope.execute(move || {
-                let mut unzip = Command::new("/bin/bzip2").arg("-dc").arg(arg).stdout(Stdio::piped()).spawn().expect("Failed to start unzip");
+                let mut unzip = Command::new("/bin/sh").arg("-c").arg(format!("bzip2 -dc <\"{}\" | (bigbuffer 128 || cat)", arg)).stdout(Stdio::piped()).spawn().expect("Failed to start unzip");
                 split_one(outputs, prefix, &mut unzip);
                 unzip.wait().expect("Failed to wait for unzip");
             });
@@ -208,8 +208,8 @@ fn ip_allow(ip: &IpAddr) -> bool {
  */
 fn aggregate(sort: &mut Child) {
     let mut last: Option<IpAddr> = None;
-    let mut output = sort.stdout.as_mut().unwrap();
-    let mut reader = csv::Reader::from_reader(&mut output).has_headers(false);
+    let output = sort.stdout.as_mut().unwrap();
+    let mut reader = csv::Reader::from_reader(BufReader::new(output)).has_headers(false);
     let mut sum: ResultSum = HashMap::new();
     let mut buf = MultiBuf::new();
     for row in reader.decode() {
