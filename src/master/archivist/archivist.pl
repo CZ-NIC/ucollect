@@ -202,7 +202,6 @@ if (fork == 0) {
 			my ($rule_id, $time, $direction, $remote_port, $remote_address, $local_port, $protocol, $count, $tcp_flags) = @data;
 			if (($count > 0) && ($direction eq 'I') && (($protocol eq 'UDP') || (($protocol eq 'TCP') && (($tcp_flags & 18) == 2)))) {
 				# The incidents are only about incoming connections (SYN and not FIN) or UDP packets
-				incident $remote_address, $date, $count, 'firewall_all';
 				incident $remote_address, $date, $count, 'firewall' if $interesting_ports{$local_port};
 			}
 			$last_id = $id;
