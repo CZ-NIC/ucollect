@@ -46,8 +46,12 @@ Receiver::Receiver() {
 	keyFile.open(QIODevice::ReadOnly);
 	QSslKey key(&keyFile, QSsl::Rsa);
 	assert(!key.isNull());
+	QFile caFile(QCoreApplication::arguments()[3]);
+	caFile.open(QIODevice::ReadOnly);
+	QSslCertificate ca(&caFile);
+	assert(!ca.isNull());
 	config.setProtocol(QSsl::SecureProtocols);
-	config.setCaCertificates(QList<QSslCertificate>() << cert);
+	config.setCaCertificates(QList<QSslCertificate>() << cert << ca);
 	config.setLocalCertificate(cert);
 	config.setPrivateKey(key);
 }
@@ -110,7 +114,7 @@ Connection::Connection(int sock, QSslConfiguration &config) :
 	connect(&local, SIGNAL(error(QLocalSocket::LocalSocketError)), SLOT(error(QLocalSocket::LocalSocketError)));
 	connect(&local, SIGNAL(connected()), SLOT(connectedLocal()));
 	connect(&local, SIGNAL(bytesWritten(qint64)), SLOT(tryWriteLocal()));
-	local.connectToServer(QCoreApplication::arguments()[4]);
+	local.connectToServer(QCoreApplication::arguments()[5]);
 	touch();
 }
 
@@ -324,10 +328,10 @@ int main(int argc, char *argv[]) {
 	struct sockaddr_in6 addr;
 	memset(&addr, 0, sizeof addr);
 	addr.sin6_family = AF_INET6;
-	addr.sin6_port = htons(QCoreApplication::arguments()[3].toInt());
+	addr.sin6_port = htons(QCoreApplication::arguments()[4].toInt());
 	c(bind(sock, static_cast<sockaddr *>(static_cast<void *>(&addr)), sizeof addr), "bind");
 	c(listen(sock, 50), "listen");
-	if (QCoreApplication::arguments().count() == 6 && QCoreApplication::arguments().at(5) == "compress") {
+	if (QCoreApplication::arguments().count() == 7 && QCoreApplication::arguments().at(6) == "compress") {
 		Connection::enableCompression = true;
 	}
 	for (int *sig = sigs; *sig; sig ++) {
