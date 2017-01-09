@@ -1,29 +1,14 @@
 #!/bin/sh
 
-# Import the data into database. It does it all compressed during the way
-# (because there's a lot of data) and uses many cores during the processing.
+# Import the data into database.
 
 set -e
 
 DIR=$(dirname "$0")
 
-(
-	pbzip2 -d < telnet.csv.bz2
-	pbzip2 -d < ssh.csv.bz2
-	pbzip2 -d < firewall.csv.bz2
-	pbzip2 -d < firewall_all.csv.bz2
-) | LC_ALL=C sort --compress-prog="$DIR/bzchoose" -T . -S 4G | "$DIR/split.pl"
-cat >Makefile <<ENDMAKE
-INPUTS:=\$(wildcard split/*.csv.gz)
-OUTPUTS:=\$(patsubst %.csv.gz,%.json.gz,\$(INPUTS))
+if [ '!' -x "$DIR/process/target/release/process" ] ; then
+	echo "Please compile and provide the process executable"
+	exit 1
+fi
 
-all: \$(OUTPUTS)
-%.json.gz: %.csv.gz
-	gunzip -c < \$< | "$DIR/jsonize.pl" | gzip -1 >\$@
-ENDMAKE
-
-make -j12
-
-for i in split/*.json.gz ; do
-	gunzip <"$i"
-done | "$DIR/to_db.pl" -i -d "$HOME/db.ini"
+"$DIR/process/target/release/process" telnet.csv.bz2 ssh.csv.bz2 firewall.csv.bz2 | "$DIR/to_db.pl" -i -d "$HOME/db.ini"

@@ -6,8 +6,11 @@ set -e
 
 DIR=$(dirname "$0")
 
+if [ '!' -x "$DIR/process/target/release/process" ] ; then
+	echo "Please compile and provide the process executable"
+	exit 1
+fi
+
 FILES=$(ls *.csv)
-cat $FILES | LC_ALL=C sort -S 2G -T . >sorted
-"$DIR/jsonize.pl" <sorted >jsonized
-"$DIR/to_db.pl" -d "$HOME/archivist.ini" <jsonized
-rm $FILES sorted jsonized
+"$DIR/process/target/release/process" $FILES | "$DIR/to_db.pl" -d "$HOME/db.ini"
+rm $FILES
