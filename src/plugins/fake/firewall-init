@@ -5,6 +5,7 @@ PORT_OK="$(uci -q get ucollect.@fakes[0].mark_port_ok || echo 0x40000/$MARK_MASK
 ADDR_OK="$(uci -q get ucollect.@fakes[0].mark_addr_ok || echo 0x80000/$MARK_MASK)"
 REDIR="$(uci -q get ucollect.@fakes[0].mark_redir || echo 0xC0000/$MARK_MASK)"
 REDIR_OFFSET="$(uci -q get ucollect.@fakes[0].redir_offset || echo 1369)"
+WAN_IFACE="$(ubus -S call network.interface.wan status | sed -ne 's/.*"l3_device":"\([^"]*\).*/\1/p')"
 
 # Get the list of ports and remove the ones that are disabled. We remove them by making sure
 # that everything that is disabled appears at least twice and then take only the unique lines.
@@ -41,6 +42,8 @@ initialize() {
 	# We do some marking of packets in the mangle table. That's where the decision is made.
 	ADD="$COMMAND -t mangle -A ucollect_fake_new"
 	$ADD -j MARK --set-mark "0/$MARK_MASK"
+	# Ignore anything that is not coming from the outside
+	$ADD '!' -i "$WAN_IFACE" -j RETURN
 	# First, mark packets with the correct ports and ignore the rest
 	for P in $PORTS ; do
 		PORT=$(echo $P | sed -e 's/...$//')
