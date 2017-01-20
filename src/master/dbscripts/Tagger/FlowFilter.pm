@@ -1,11 +1,12 @@
 package Tagger::FlowFilter;
 use common::sense;
 use AddrStoreBuild qw($cfg addr_store_content);
+use FindBin;
 
 sub perform($$) {
 	my ($dbh, $blacklist) = @_;
 	# Read the IPset rules and extract addresses
-	open my $ipsets, '-|', 'wget', 'https://api.turris.cz/firewall/turris-ipsets', '-q', '-O', '-' or die "Couldn't download ip set rules: $!\n";
+	open my $ipsets, '-|', 'wget', 'https://api.turris.cz/firewall/turris-ipsets', '-q', "--ca-certificate=${FindBin::Bin}/../ca.pem", '-O', '-' or die "Couldn't download ip set rules: $!\n";
 	my %data;
 	my %ranges;
 	while (<$ipsets>) {
