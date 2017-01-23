@@ -11,4 +11,4 @@ if [ '!' -x "$DIR/process/target/release/process" ] ; then
 	exit 1
 fi
 
-"$DIR/process/target/release/process" telnet.csv.bz2 ssh.csv.bz2 firewall.csv.bz2 | "$DIR/to_db.pl" -i -d "$HOME/db.ini"
+"$DIR/process/target/release/process" telnet.csv.bz2 ssh.csv.bz2 | "$DIR/to_db.pl" -i -d "$HOME/db.ini"
