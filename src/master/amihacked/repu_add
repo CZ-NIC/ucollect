@@ -12,5 +12,5 @@ if [ '!' -x "$DIR/process/target/release/process" ] ; then
 fi
 
 FILES=$(ls *.csv)
-"$DIR/process/target/release/process" $FILES | "$DIR/to_db.pl" -d "$HOME/db.ini"
+"$DIR/process/target/release/process" $FILES | "$DIR/to_db.pl" -d "$HOME/archivist.ini"
 rm $FILES
