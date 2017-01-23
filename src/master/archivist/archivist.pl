@@ -159,7 +159,6 @@ if (fork == 0) {
 	my $destination = connect_db 'destination';
 
 	# The ports that are included in „firewall“ category. If they change, the whole export needs to be redone from archive, if we just update it here, the history won't match correctly.
-	my %interesting_ports = map { $_ => 1 } (22, 2222, 8822, 22222, 23, 2323, 445, 1433, 3306, 5432, 7547, 161, 1723, 2083, 3389, 3390, 5631, 5900, 5901, 5902, 5903, 5060, 5061, 1080, 3128, 8088, 8118, 9064, 21320, 137, 128, 139, 1900, 53413, 9333, 5000, 5001, 80, 443, 8080, 8081);
 
 	# We get the maximum time of a packet in the destination and
 	# read the packets in the source from that time on. But we don't
@@ -170,7 +169,6 @@ if (fork == 0) {
 	my ($loc_max) = $source->selectrow_array("SELECT MAX(time) - INTERVAL '3 hours' FROM router_loggedpacket");
 	my ($rem_max) = $destination->selectrow_array('SELECT COALESCE(MAX(time), TO_TIMESTAMP(0)) FROM firewall_packets');
 	tprint "Going to store firewall logs between $rem_max and $loc_max\n";
-	incident_init 'firewall';
 	# Get the packets. Each packet may have multiple resulting lines,
 	# for multiple groups it is in. Prefilter the groups, we are not
 	# interested in the random ones. We still have the 'all' group
@@ -196,14 +194,9 @@ if (fork == 0) {
 			$count ++;
 			if ($count % 100000 == 0) {
 				$destination->commit;
-				incident_flush;
 			}
 			$store_packet->execute(@data);
 			my ($rule_id, $time, $direction, $remote_port, $remote_address, $local_port, $protocol, $count, $tcp_flags) = @data;
-			if (($count > 0) && ($direction eq 'I') && (($protocol eq 'UDP') || (($protocol eq 'TCP') && (($tcp_flags & 18) == 2)))) {
-				# The incidents are only about incoming connections (SYN and not FIN) or UDP packets
-				incident $remote_address, $date, $count, 'firewall' if $interesting_ports{$local_port};
-			}
 			$last_id = $id;
 			$id_dest = $destination->last_insert_id(undef, undef, 'firewall_packets', undef);
 		}
@@ -214,7 +207,6 @@ if (fork == 0) {
 	tprint "Stored $count packets\n";
 	$destination->commit;
 	$source->commit;
-	incident_finish;
 	exit;
 }
 
