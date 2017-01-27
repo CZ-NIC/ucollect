@@ -255,13 +255,13 @@ class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 	def _broadcast_config(self):
 		self.__top_filter_cache = {}
 		self.broadcast(self.__build_config(''), lambda version: version < 2)
-		self.broadcast(self.__build_config('-diff'), lambda version: version >= 2, lambda client: int(client, 16) >= int('0000000A00000000', 16))
+		self.broadcast(self.__build_config('-diff'), lambda version: version >= 2, lambda client: client and (int(client, 16) >= int('0000000900000000', 16)))
 		for a in self._addresses:
 			self._broadcast_version(a, self._addresses[a][0], self._addresses[a][1])
-		self.broadcast(self.__build_config('-blue'), lambda client: int(client, 16) < int('0000000A00000000', 16))
+		self.broadcast(self.__build_config('-blue'), lambda client: client and (int(client, 16) < int('0000000900000000', 16)))
 
 	def _broadcast_version(self, name, epoch, version):
-		self.broadcast(self.__build_filter_version(name, epoch, version), lambda version: version >= 2, lambda client: int(client, 16) >= int('0000000A00000000', 16))
+		self.broadcast(self.__build_filter_version(name, epoch, version), lambda version: version >= 2)
 
 	def __build_filter_version(self, name, epoch, version):
 		return 'U' + struct.pack('!I' + str(len(name)) + 'sII', len(name), name, epoch, version)
@@ -289,8 +289,10 @@ class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 				return
 			logger.debug('Sending config to %s', client)
 			self.__delayed_config[client] = False # We know about the client, but it hasn't asked twice yet.
-			if int(client, 16) < int('0000000A00000000', 16):
+			if int(client, 16) < int('0000000900000000', 16):
 				self.send(self.__build_config('-blue'), client)
+				for a in self._addresses:
+					self.send(self.__build_filter_version(a, self._addresses[a][0], self._addresses[a][1]), client)
 			elif self.version(client) < 2:
 				self.send(self.__build_config(''), client)
 			else:
