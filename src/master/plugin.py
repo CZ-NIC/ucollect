@@ -71,13 +71,13 @@ class Plugin:
 		"""
 		pass
 
-	def broadcast(self, message, version_check=None, client_check=None):
+	def broadcast(self, message, version_check=None):
 		"""
 		Broadcast a message from this plugin to all the connected
 		clients.
 		"""
 		logger.trace('Broadcasting message to all clients: %s', repr(message))
-		self.__plugins.broadcast(self.__routed_message(message), self.name(), version_check, client_check)
+		self.__plugins.broadcast(self.__routed_message(message), self.name(), version_check)
 
 	def send(self, message, to):
 		"""
@@ -195,15 +195,12 @@ class Plugins:
 		else:
 			logger.debug('Not removing client ' + cid)
 
-	def broadcast(self, message, from_plugin, version_check=None, client_check=None):
+	def broadcast(self, message, from_plugin, version_check=None):
 		"""
 		Send a message to all the connected clients who has the given plugin, optionally with a version check.
 		"""
-		for client in self.__clients:
-			c = self.__clients[client]
+		for c in self.__clients.values():
 			if c.has_plugin(from_plugin):
-				if client_check and not client_check(client):
-					continue
 				if version_check is None or version_check(c.plugin_version(from_plugin)):
 					c.sendString(message)
 				else:
