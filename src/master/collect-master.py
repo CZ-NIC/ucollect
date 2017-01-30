@@ -32,7 +32,7 @@ import activity
 import importlib
 import os
 
-reactor.suggestThreadPoolSize(18) # Too much seems to have trouble with locking :-(
+reactor.suggestThreadPoolSize(4) # Too much seems to have trouble with locking :-(
 severity = master_config.get('log_severity')
 if severity == 'TRACE':
 	severity = log_extra.TRACE_LEVEL
