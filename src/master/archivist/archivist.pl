@@ -308,6 +308,9 @@ if (fork == 0) {
 	my $avg_cnt = 0;
 	while (my ($timestamp, $client, $in_time, $in_bytes, $out_time, $out_bytes) = $get_avg->fetchrow_array) {
 		$_ = sum @$_ for ($in_time, $out_time, $in_bytes, $out_bytes);
+		# Skip empty records (How do they get into the data in the first place?)
+		next unless $in_time;
+		next unless $out_time;
 		$store_avg->execute($timestamp, $client, int($in_bytes / $in_time), int($out_bytes / $out_time));
 		$avg_cnt ++;
 	}
