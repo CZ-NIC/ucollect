@@ -2,14 +2,15 @@ Ucollect
 ========
 
 Ucollect is small daemon for collecting and analyzing network data. It is
-written in C (with some unusual conventions about memory allocation) and
-provides plugins for doing the actuall analyzis.
+written in C (with some unusual conventions about memory allocation, see the
+relevant documentation) and provides plugins for doing the actuall analyzes.
 
-The repository also contains the server port (in srv/master) and various
+The repository also contains the server part (in srv/master) and various
 support utilities.
 
-To build, type `make`. You may need to supply some dependencies (guess from
-possible compiler errors).
+To build, fist initiialize git submodules (`git submodule init && git submodule
+update`) and then type `make`. You may need to supply some dependencies (guess
+from possible compiler errors).
 
 For further documentation, look into `docs` subdirectory (after you built it)
 or into .txt files scattered in the source tree.
