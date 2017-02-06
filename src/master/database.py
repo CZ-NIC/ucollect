@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013-2017 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -34,6 +34,7 @@ class __CursorContext:
 		self.__connection = connection
 		self.__depth = 0
 		self.reuse()
+		self.__start_time = None
 
 	def reuse(self):
 		self._cursor = self.__connection.cursor()
@@ -41,6 +42,7 @@ class __CursorContext:
 	def __enter__(self):
 		if not self.__depth:
 			logger.debug('Entering transaction %s', self)
+			self.__start_time = time.time()
 		self.__depth += 1
 		return self._cursor
 
@@ -48,6 +50,10 @@ class __CursorContext:
 		self.__depth -= 1
 		if self.__depth:
 			return # Didn't exit all the contexts yet
+		duration = time.time() - self.__start_time
+		if duration > 10:
+			logger.warn('The transaction took a long time (%s seconds): %s', duration, traceback.format_stack())
+		self.__start_time = None
 		if exc_type:
 			logger.error('Rollback of transaction %s:%s/%s/%s', self, exc_type, exc_val, traceback.format_tb(exc_tb))
 			self.__connection.rollback()
