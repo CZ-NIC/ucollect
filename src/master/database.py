@@ -22,7 +22,11 @@ import logging
 import threading
 import traceback
 import time
+import datetime
 from master_config import get
+
+CACHE_TIME = 600 # We cache the database calibration for 10 minutes
+LONG_TRANSACTION_TRESHOLD = 10 # Transactions here should not take longer than 10 seconds, we warn for longer
 
 logger = logging.getLogger(name='database')
 
@@ -51,7 +55,7 @@ class __CursorContext:
 		if self.__depth:
 			return # Didn't exit all the contexts yet
 		duration = time.time() - self.__start_time
-		if duration > 10:
+		if duration > LONG_TRANSACTION_TRESHOLD:
 			logger.warn('The transaction took a long time (%s seconds): %s', duration, traceback.format_stack())
 		self.__start_time = None
 		if exc_type:
@@ -118,12 +122,22 @@ __time_update = 0
 __time_db = 0
 
 def now():
+	"""
+	Return the current database timestamp.
+
+	To minimise the number of accesses to the database (because it can be blocking
+	and it is on a different server), we cache the result for some time and adjust
+	it by local clock. We re-request the database timestamp from time to time, so
+	the database stays the authoritative source of time.
+	"""
 	global __time_update
 	global __time_db
 	t = time.time()
-	if __time_update + 2 < t:
+	diff = t - __time_update
+	if diff > CACHE_TIME: # More than 10 minutes since the last update, request a new one
 		__time_update = t
+		diff = 0 # We request it now, so it is in sync
 		with transaction() as t:
 			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
 			(__time_db,) = t.fetchone()
-	return __time_db
+	return __time_db + datetime.timedelta(seconds=diff)
