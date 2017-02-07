@@ -102,7 +102,7 @@ fn split_one(outputs: &Splitter, prefix: &Regex, unzip: &mut Child) {
     let mut reader = csv::Reader::from_reader(BufReader::with_capacity(4 * 1024 * 1024, output)).has_headers(false);
     for row in reader.records() {
         let row = row.unwrap();
-        let iprefix = prefix.captures(&row[0]).expect("Doesn't match").at(1).unwrap();
+        let iprefix = prefix.captures(&row[0]).expect("Doesn't match").get(1).unwrap().as_str();
         /*
          * First try to get an already existing opened file. If it is not there (rare),
          * drop the read lock, acquire a new write one and check again (someone might have
