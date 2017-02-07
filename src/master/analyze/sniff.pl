@@ -71,6 +71,10 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$db;host=$host;port=$port", $user, $passwd
 		'^FACEBOOK-INC$' => 'Facebook',
 		'^TFBNET\d+$' => 'Facebook',
 		'^IAD1$' => 'Facebook',
+		'^THEFA-\d+$' => 'Facebook',
+		'^IAD2$' => 'Facebook',
+		'^HKG\d+$' => 'Facebook',
+		'^PEO\d+$' => 'Facebook',
 	);
 
 	my $count = keys %reports;
