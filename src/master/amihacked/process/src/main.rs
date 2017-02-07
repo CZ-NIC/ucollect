@@ -138,7 +138,7 @@ fn split(pool: &scoped_pool::Pool) -> FnvHashSet<String> {
                 } else {
                     "cat"
                 };
-                let mut unzip = Command::new("/bin/sh").arg("-c").arg(format!("{} <\"{}\" | (bigbuffer 128 || cat)", cmd, arg)).stdout(Stdio::piped()).spawn().expect("Failed to start unzip");
+                let mut unzip = Command::new("/bin/sh").arg("-c").arg(format!("{} <\"{}\"", cmd, arg)).stdout(Stdio::piped()).spawn().expect("Failed to start unzip");
                 split_one(outputs, prefix, &mut unzip);
                 unzip.wait().expect("Failed to wait for unzip");
             });
