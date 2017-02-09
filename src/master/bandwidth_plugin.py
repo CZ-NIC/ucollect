@@ -32,49 +32,8 @@ logger = logging.getLogger(name='bandwidth')
 PROTO_ITEMS_PER_WINDOW = 3
 PROTO_ITEMS_PER_BUCKET = 5
 
-BUCKETS_CNT_PROTO2 = 37
-BUCKET_MAP_PROTO2 = {
-	1: 0,
-	2: 1,
-	3: 2,
-	4: 3,
-	5: 4,
-	6: 5,
-	7: 6,
-	8: 7,
-	9: 8,
-	10: 9,
-	11: 10,
-	12: 11,
-	13: 12,
-	14: 13,
-	15: 14,
-	16: 15,
-	17: 16,
-	18: 17,
-	19: 18,
-	20: 19,
-	30: 20,
-	40: 21,
-	50: 22,
-	60: 23,
-	70: 24,
-	80: 25,
-	90: 26,
-	100: 27,
-	200: 28,
-	300: 29,
-	400: 30,
-	500: 31,
-	600: 32,
-	700: 33,
-	800: 34,
-	900: 35,
-	1000: 36
-}
-
-BUCKETS_CNT_PROTO3 = 40
-BUCKET_MAP_PROTO3 = {
+BUCKETS_CNT = 40
+BUCKET_MAP = {
 	250: 0,
 	500: 1,
 	750: 2,
@@ -170,16 +129,6 @@ def store_bandwidth(data, now):
 				continue
 
 			try:
-				## Choose data structures according to protocol version
-				BUCKET_MAP = None
-				BUCKETS_CNT = None
-				if cldata.version <= 2:
-					BUCKET_MAP = BUCKET_MAP_PROTO2
-					BUCKETS_CNT = BUCKETS_CNT_PROTO2
-				elif cldata.version >= 3:
-					BUCKET_MAP = BUCKET_MAP_PROTO3
-					BUCKETS_CNT = BUCKETS_CNT_PROTO3
-
 				in_time = [0] * BUCKETS_CNT
 				in_bytes = [0] * BUCKETS_CNT
 				out_time = [0] * BUCKETS_CNT

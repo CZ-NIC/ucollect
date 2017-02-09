@@ -1,0 +1,5 @@
+#!/bin/sh
+
+set -ex
+
+docker run -it --rm -e http_proxy="$http_proxy" -p 5432:5432 turris/ucollect-test-backend:latest

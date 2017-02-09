@@ -1,3 +1,8 @@
 CREATE DATABASE ucollect;
 CREATE USER ucollect WITH PASSWORD '12345';
 GRANT ALL ON DATABASE ucollect TO ucollect;
+CREATE USER cleaner;
+CREATE USER updater;
+CREATE USER jenkins;
+CREATE USER archivist;
+CREATE USER authenticator;
