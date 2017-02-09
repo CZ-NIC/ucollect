@@ -32,49 +32,8 @@ logger = logging.getLogger(name='bandwidth')
 PROTO_ITEMS_PER_WINDOW = 3
 PROTO_ITEMS_PER_BUCKET = 5
 
-BUCKETS_CNT_PROTO2 = 37
-BUCKET_MAP_PROTO2 = {
-	1: 0,
-	2: 1,
-	3: 2,
-	4: 3,
-	5: 4,
-	6: 5,
-	7: 6,
-	8: 7,
-	9: 8,
-	10: 9,
-	11: 10,
-	12: 11,
-	13: 12,
-	14: 13,
-	15: 14,
-	16: 15,
-	17: 16,
-	18: 17,
-	19: 18,
-	20: 19,
-	30: 20,
-	40: 21,
-	50: 22,
-	60: 23,
-	70: 24,
-	80: 25,
-	90: 26,
-	100: 27,
-	200: 28,
-	300: 29,
-	400: 30,
-	500: 31,
-	600: 32,
-	700: 33,
-	800: 34,
-	900: 35,
-	1000: 36
-}
-
-BUCKETS_CNT_PROTO3 = 40
-BUCKET_MAP_PROTO3 = {
+BUCKETS_CNT = 40
+BUCKET_MAP = {
 	250: 0,
 	500: 1,
 	750: 2,
@@ -170,16 +129,6 @@ def store_bandwidth(data, now):
 				continue
 
 			try:
-				## Choose data structures according to protocol version
-				BUCKET_MAP = None
-				BUCKETS_CNT = None
-				if cldata.version <= 2:
-					BUCKET_MAP = BUCKET_MAP_PROTO2
-					BUCKETS_CNT = BUCKETS_CNT_PROTO2
-				elif cldata.version >= 3:
-					BUCKET_MAP = BUCKET_MAP_PROTO3
-					BUCKETS_CNT = BUCKETS_CNT_PROTO3
-
 				in_time = [0] * BUCKETS_CNT
 				in_bytes = [0] * BUCKETS_CNT
 				out_time = [0] * BUCKETS_CNT
@@ -301,40 +250,28 @@ class BandwidthPlugin(plugin.Plugin):
 			return
 		self.__data[client].timestamp_dbg = timestamp
 
-		if self.version(client) <= 1:
-			int_count -= 1
-			data = data[1:]
-			windows = int_count / PROTO_ITEMS_PER_WINDOW
-			for i in range(0, windows):
-				self.__data[client].add_window(
-					data[i*PROTO_ITEMS_PER_WINDOW],
-					data[i*PROTO_ITEMS_PER_WINDOW+1],
-					data[i*PROTO_ITEMS_PER_WINDOW+2]
-				)
+		win_cnt = data[1]
+		buckets_cnt_pos = 2 + PROTO_ITEMS_PER_WINDOW * win_cnt
+		data_windows = data[2:buckets_cnt_pos]
+		buckets_cnt = data[buckets_cnt_pos]
+		data_buckets = data[(buckets_cnt_pos+1):]
 
-		elif self.version(client) >= 2:
-			win_cnt = data[1]
-			buckets_cnt_pos = 2 + PROTO_ITEMS_PER_WINDOW * win_cnt
-			data_windows = data[2:buckets_cnt_pos]
-			buckets_cnt = data[buckets_cnt_pos]
-			data_buckets = data[(buckets_cnt_pos+1):]
+		# Get data from message
+		for i in range(0, win_cnt):
+			self.__data[client].add_window(
+				data_windows[i*PROTO_ITEMS_PER_WINDOW],
+				data_windows[i*PROTO_ITEMS_PER_WINDOW+1],
+				data_windows[i*PROTO_ITEMS_PER_WINDOW+2]
+			)
 
-			# Get data from message
-			for i in range(0, win_cnt):
-				self.__data[client].add_window(
-					data_windows[i*PROTO_ITEMS_PER_WINDOW],
-					data_windows[i*PROTO_ITEMS_PER_WINDOW+1],
-					data_windows[i*PROTO_ITEMS_PER_WINDOW+2]
-				)
-
-			for i in range(0, buckets_cnt):
-				self.__data[client].add_bucket(
-					data_buckets[i*PROTO_ITEMS_PER_BUCKET],
-					data_buckets[i*PROTO_ITEMS_PER_BUCKET+1],
-					data_buckets[i*PROTO_ITEMS_PER_BUCKET+2],
-					data_buckets[i*PROTO_ITEMS_PER_BUCKET+3],
-					data_buckets[i*PROTO_ITEMS_PER_BUCKET+4]
-				)
+		for i in range(0, buckets_cnt):
+			self.__data[client].add_bucket(
+				data_buckets[i*PROTO_ITEMS_PER_BUCKET],
+				data_buckets[i*PROTO_ITEMS_PER_BUCKET+1],
+				data_buckets[i*PROTO_ITEMS_PER_BUCKET+2],
+				data_buckets[i*PROTO_ITEMS_PER_BUCKET+3],
+				data_buckets[i*PROTO_ITEMS_PER_BUCKET+4]
+			)
 
 		# Log client's activity
 		activity.log_activity(client, "bandwidth")
