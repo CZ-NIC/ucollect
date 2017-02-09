@@ -129,61 +129,47 @@ def store_bandwidth(data, now):
 				continue
 
 			try:
-				in_time = [0] * BUCKETS_CNT
-				in_bytes = [0] * BUCKETS_CNT
-				out_time = [0] * BUCKETS_CNT
-				out_bytes = [0] * BUCKETS_CNT
-
-				for bucket in cldata.buckets.itervalues():
-					pos = BUCKET_MAP[bucket.bucket]
-					in_time[pos] = bucket.in_time
-					in_bytes[pos] = bucket.in_bytes
-					out_time[pos] = bucket.out_time
-					out_bytes[pos] = bucket.out_bytes
-
 				t.execute("""SELECT client, timestamp, in_time, in_bytes, out_time, out_bytes
 				FROM bandwidth_stats
 				JOIN clients ON bandwidth_stats.client = clients.id
 				WHERE name = %s AND timestamp = date_trunc('hour', %s)
 				""", (client, now))
 				result = t.fetchone()
-				if result == None:
+				# Use the current data or provide a blank new set.
+				if result:
+					in_time = result[2]
+					in_bytes = result[3]
+					out_time = result[4]
+					out_bytes = result[5]
+				else:
 					in_time = [0] * BUCKETS_CNT
 					in_bytes = [0] * BUCKETS_CNT
 					out_time = [0] * BUCKETS_CNT
 					out_bytes = [0] * BUCKETS_CNT
 
-					for bucket in cldata.buckets.itervalues():
-						pos = BUCKET_MAP[bucket.bucket]
-						in_time[pos] = bucket.in_time
-						in_bytes[pos] = bucket.in_bytes
-						out_time[pos] = bucket.out_time
-						out_bytes[pos] = bucket.out_bytes
+				# Update it with the data we just received
+				for bucket in cldata.buckets.itervalues():
+					pos = BUCKET_MAP[bucket.bucket]
+					in_time[pos] += bucket.in_time
+					in_bytes[pos] += bucket.in_bytes
+					out_time[pos] += bucket.out_time
+					out_bytes[pos] += bucket.out_bytes
 
-					t.execute("""INSERT INTO bandwidth_stats (client, timestamp, in_time, in_bytes, out_time, out_bytes)
-					SELECT clients.id AS client, date_trunc('hour', %s) as timestamp, %s, %s, %s, %s
-					FROM clients
-					WHERE name = %s
-					""", (now, in_time, in_bytes, out_time, out_bytes, client))
-				else:
+				# Store it (depending on if we had a previous value, insert or update)
+				if result:
 					client_id = result[0]
 					timestamp = result[1]
-					in_time = result[2]
-					in_bytes = result[3]
-					out_time = result[4]
-					out_bytes = result[5]
-
-					for bucket in cldata.buckets.itervalues():
-						pos = BUCKET_MAP[bucket.bucket]
-						in_time[pos] += bucket.in_time
-						in_bytes[pos] += bucket.in_bytes
-						out_time[pos] += bucket.out_time
-						out_bytes[pos] += bucket.out_bytes
 
 					t.execute("""UPDATE bandwidth_stats
 					SET in_time = %s, in_bytes = %s, out_time = %s, out_bytes = %s
 					WHERE client = %s AND timestamp = %s
 					""", (in_time, in_bytes, out_time, out_bytes, client_id, timestamp))
+				else:
+					t.execute("""INSERT INTO bandwidth_stats (client, timestamp, in_time, in_bytes, out_time, out_bytes)
+					SELECT clients.id AS client, date_trunc('hour', %s) as timestamp, %s, %s, %s, %s
+					FROM clients
+					WHERE name = %s
+					""", (now, in_time, in_bytes, out_time, out_bytes, client))
 
 			except KeyError:
 				# Some clients send invalid data (bucket with index 0). While we need to solve that, we at least don't want to kill data for all the clients in such a case.
