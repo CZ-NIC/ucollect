@@ -23,6 +23,7 @@ import threading
 import traceback
 import time
 import datetime
+import monotonic
 from master_config import get
 
 CACHE_TIME = 600 # We cache the database calibration for 10 minutes
@@ -46,7 +47,7 @@ class __CursorContext:
 	def __enter__(self):
 		if not self.__depth:
 			logger.debug('Entering transaction %s', self)
-			self.__start_time = time.time()
+			self.__start_time = monotonic.monotonic()
 		self.__depth += 1
 		return self._cursor
 
@@ -54,7 +55,7 @@ class __CursorContext:
 		self.__depth -= 1
 		if self.__depth:
 			return # Didn't exit all the contexts yet
-		duration = time.time() - self.__start_time
+		duration = monotonic.monotonic() - self.__start_time
 		if duration > LONG_TRANSACTION_TRESHOLD:
 			logger.warn('The transaction took a long time (%s seconds): %s', duration, traceback.format_stack())
 		self.__start_time = None
@@ -132,7 +133,7 @@ def now():
 	"""
 	global __time_update
 	global __time_db
-	t = time.time()
+	t = monotonic.monotonic()
 	diff = t - __time_update
 	if diff > CACHE_TIME: # More than 10 minutes since the last update, request a new one
 		__time_update = t
