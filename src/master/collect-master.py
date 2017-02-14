@@ -33,7 +33,7 @@ import importlib
 import os
 
 # If we have too many background threads, the GIL slows down the
-# main thread and cleants start dropping because we are not able
+# main thread and clients start dropping because we are not able
 # to keep up with pings.
 reactor.suggestThreadPoolSize(3)
 severity = master_config.get('log_severity')
