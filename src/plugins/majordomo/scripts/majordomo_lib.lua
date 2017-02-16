@@ -37,6 +37,19 @@ KW_OTHER_PORT = "all"
 
 
 --[[
+	The library that parse UCI config... doesn't parse it?
+]]
+function true_or_false(v)
+	if v == "1" or v == "yes" or v == "on" or v == "true" or v == "enabled" then
+		return true
+	elseif v == "0" or v == "no" or v == "off" or v == "false" or v == "disabled" then
+		return false
+	else
+		return nil
+	end
+end
+
+--[[
 	Get configuration from corresponding UCI file
 ]]
 function majordomo_get_configuration()
@@ -50,7 +63,7 @@ function majordomo_get_configuration()
 	majordomocfg:foreach("majordomo", "db", function(s) if s[".type"] == "db" and s.max_items_per_client then max_items_per_client=tonumber(s.max_items_per_client); return false; end return true; end);
 	majordomocfg:foreach("majordomo", "lookup", function(s) if s[".type"] == "lookup" and s.make_lookup_dns then make_lookup_dns=s.make_lookup_dns; return false; end return true; end);
 
-	return db_path, true, make_lookup_dns, max_items_per_client;
+	return db_path, true, true_or_false(make_lookup_dns), max_items_per_client;
 end
 
 --[[
