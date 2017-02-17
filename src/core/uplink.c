@@ -915,15 +915,11 @@ struct uplink *uplink_create(struct loop *loop) {
 		.inc_buffer_size = COMPRESSION_BUFFSIZE
 
 	};
-        result->zstrm_send.zalloc = Z_NULL;
-        result->zstrm_send.zfree = Z_NULL;
-        result->zstrm_send.opaque = Z_NULL;
+
+        //fields zalloc, zfree and opaque that are required to be set before calling deflateInit (resp. inflateInit) were set to zero (Z_NULL) by the initializer above
         if (deflateInit(&(result->zstrm_send), COMPRESSION_LEVEL) != Z_OK)
 		die("Could not initialize zlib (compression stream)\n");
-        result->zstrm_recv.zalloc = Z_NULL;
-        result->zstrm_recv.zfree = Z_NULL;
-        result->zstrm_recv.opaque = Z_NULL;
-        result->zstrm_recv.avail_in = 0;
+        //for zstrm_recv it's also necessary to set zstrm_recv.avail_in to 0, this was done by the initializer as well
 	if (inflateInit(&(result->zstrm_recv)) != Z_OK)
 		die("Could not initialize zlib (decompression stream)\n");
 	loop_uplink_set(loop, result);
