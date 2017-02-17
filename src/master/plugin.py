@@ -136,6 +136,7 @@ class Plugins:
 		del self.__plugins[name]
 		if self.__activations[name]:
 			# TODO:
+			# I'm not sure if the TODO and warning is still needed here. If the plugin will be unregistered, all messages for this plugin will be ignored and nothing too bad (like KeyError) will happen.
 			logger.warn('Plugin %s still has %s active clients. This situation is not handled yet.', name, len(self.__activations[name]))
 		del self.__activations[name]
 
@@ -145,6 +146,9 @@ class Plugins:
 		"""
 		cid = client.cid()
 		logger.debug("Activate plugin %s in client %s", plugin, cid)
+		if plugin not in self.__activations:
+                    logger.warn('Tried to activate unknown plugin %s (requested by client %s), ignoring', plugin, cid)
+                    return
 		if cid in self.__activations[plugin]:
 			logger.warn("Plugin %s already active in client %s", plugin, cid)
 			return
@@ -227,6 +231,9 @@ class Plugins:
 		of client too.
 		"""
 		# TODO: The plugin of that name might not exist (#2705)
+		if name not in self.__plugins:
+                    logger.warn('Unknown plugin %s in message from client %s, ignoring', name, client)
+                    return
 		self.__plugins[name].message_from_client(message, client)
 
 	def plugin_version(self, plugin, client):
