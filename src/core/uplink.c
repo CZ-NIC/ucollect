@@ -905,31 +905,27 @@ struct uplink *uplink_create(struct loop *loop) {
 	ulog(LLOG_INFO, "Creating uplink\n");
 	struct mem_pool *permanent_pool = loop_permanent_pool(loop);
 	struct uplink *result = mem_pool_alloc(permanent_pool, sizeof *result);
-	z_stream strm_compress;
-	strm_compress.zalloc = Z_NULL;
-	strm_compress.zfree = Z_NULL;
-	strm_compress.opaque = Z_NULL;
-	if (deflateInit(&strm_compress, COMPRESSION_LEVEL) != Z_OK)
-		die("Could not initialize zlib (compression stream)\n");
-	z_stream strm_decompress;
-	strm_decompress.zalloc = Z_NULL;
-	strm_decompress.zfree = Z_NULL;
-	strm_decompress.opaque = Z_NULL;
-	strm_decompress.avail_in = 0;
-	if (inflateInit(&strm_decompress) != Z_OK)
-		die("Could not initialize zlib (decompression stream)\n");
 	unsigned char *incoming_buffer = mem_pool_alloc(permanent_pool, COMPRESSION_BUFFSIZE);
 	*result = (struct uplink) {
 		.uplink_read = uplink_read,
 		.loop = loop,
 		.buffer_pool = loop_pool_create(loop, NULL, mem_pool_printf(loop_temp_pool(loop), "Buffer pool for uplink")),
 		.fd = -1,
-		.zstrm_send = strm_compress,
-		.zstrm_recv = strm_decompress,
 		.inc_buffer = incoming_buffer,
 		.inc_buffer_size = COMPRESSION_BUFFSIZE
 
 	};
+        result->zstrm_send.zalloc = Z_NULL;
+        result->zstrm_send.zfree = Z_NULL;
+        result->zstrm_send.opaque = Z_NULL;
+        if (deflateInit(&(result->zstrm_send), COMPRESSION_LEVEL) != Z_OK)
+		die("Could not initialize zlib (compression stream)\n");
+        result->zstrm_recv.zalloc = Z_NULL;
+        result->zstrm_recv.zfree = Z_NULL;
+        result->zstrm_recv.opaque = Z_NULL;
+        result->zstrm_recv.avail_in = 0;
+	if (inflateInit(&(result->zstrm_recv)) != Z_OK)
+		die("Could not initialize zlib (decompression stream)\n");
 	loop_uplink_set(loop, result);
 	return result;
 }
