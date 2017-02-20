@@ -412,32 +412,33 @@ void init(struct context *context) {
 	// Windows settings
 	// Parameter count should be number that windows_count*window_length is at least 1 second
 	// WARNING: Minimal value of windows_count is 2!
-	size_t init = 0;
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 500, 12, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 1000, 6, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 2000, 3, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 5000, 2, common_start_timestamp);
-	context->user_data->windows[init++] = init_window(context->permanent_pool, 10000, 2, common_start_timestamp);
+	size_t init_windows = 0;
+	context->user_data->windows[init_windows++] = init_window(context->permanent_pool, 500, 12, common_start_timestamp);
+	context->user_data->windows[init_windows++] = init_window(context->permanent_pool, 1000, 6, common_start_timestamp);
+	context->user_data->windows[init_windows++] = init_window(context->permanent_pool, 2000, 3, common_start_timestamp);
+	context->user_data->windows[init_windows++] = init_window(context->permanent_pool, 5000, 2, common_start_timestamp);
+	context->user_data->windows[init_windows++] = init_window(context->permanent_pool, 10000, 2, common_start_timestamp);
 
+	size_t init_buckets = 0;
 	for (size_t i = 0; i < 1000; i += 250) {
-		context->user_data->in_buckets[init] = init_bucket(i);
-		context->user_data->out_buckets[init] = init_bucket(i);
-		init++;
+		context->user_data->in_buckets[init_buckets] = init_bucket(i);
+		context->user_data->out_buckets[init_buckets] = init_bucket(i);
+		init_buckets++;
 	}
 	for (size_t i = 1000; i <= 20000; i += 1000) {
-		context->user_data->in_buckets[init] = init_bucket(i);
-		context->user_data->out_buckets[init] = init_bucket(i);
-		init++;
+		context->user_data->in_buckets[init_buckets] = init_bucket(i);
+		context->user_data->out_buckets[init_buckets] = init_bucket(i);
+		init_buckets++;
 	}
 	for (size_t i = 30000; i <= 100000; i += 10000) {
-		context->user_data->in_buckets[init] = init_bucket(i);
-		context->user_data->out_buckets[init] = init_bucket(i);
-		init++;
+		context->user_data->in_buckets[init_buckets] = init_bucket(i);
+		context->user_data->out_buckets[init_buckets] = init_bucket(i);
+		init_buckets++;
 	}
 	for (size_t i = 200000; i <= 1000000; i += 100000) {
-		context->user_data->in_buckets[init] = init_bucket(i);
-		context->user_data->out_buckets[init] = init_bucket(i);
-		init++;
+		context->user_data->in_buckets[init_buckets] = init_bucket(i);
+		context->user_data->out_buckets[init_buckets] = init_bucket(i);
+		init_buckets++;
 	}
 }
 
