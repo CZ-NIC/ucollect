@@ -15,6 +15,7 @@ DROP VIEW IF EXISTS fake_blacklist_concat;
 DROP VIEW IF EXISTS fake_blacklist_uncached;
 DROP VIEW IF EXISTS plugin_activity;
 DROP VIEW IF EXISTS fake_blacklist_cache_fill;
+DROP VIEW IF EXISTS ssh_blacklist_scores;
 DROP TABLE IF EXISTS fake_blacklist_cache;
 DROP TABLE IF EXISTS fwup_addresses;
 DROP TABLE IF EXISTS fwup_sets;
