@@ -35,7 +35,7 @@ import os
 # If we have too many background threads, the GIL slows down the
 # main thread and cleants start dropping because we are not able
 # to keep up with pings.
-reactor.suggestThreadPoolSize(3)
+reactor.suggestThreadPoolSize(5)
 severity = master_config.get('log_severity')
 if severity == 'TRACE':
 	severity = log_extra.TRACE_LEVEL

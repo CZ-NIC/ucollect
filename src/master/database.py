@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013,2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013-2017 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -22,7 +22,12 @@ import logging
 import threading
 import traceback
 import time
+import datetime
+import monotonic
 from master_config import get
+
+CACHE_TIME = 600 # We cache the database calibration for 10 minutes
+LONG_TRANSACTION_TRESHOLD = 10 # Transactions here should not take longer than 10 seconds, we warn for longer
 
 logger = logging.getLogger(name='database')
 
@@ -34,6 +39,7 @@ class __CursorContext:
 		self.__connection = connection
 		self.__depth = 0
 		self.reuse()
+		self.__start_time = None
 
 	def reuse(self):
 		self._cursor = self.__connection.cursor()
@@ -41,6 +47,7 @@ class __CursorContext:
 	def __enter__(self):
 		if not self.__depth:
 			logger.debug('Entering transaction %s', self)
+			self.__start_time = monotonic.monotonic()
 		self.__depth += 1
 		return self._cursor
 
@@ -48,6 +55,10 @@ class __CursorContext:
 		self.__depth -= 1
 		if self.__depth:
 			return # Didn't exit all the contexts yet
+		duration = monotonic.monotonic() - self.__start_time
+		if duration > LONG_TRANSACTION_TRESHOLD:
+			logger.warn('The transaction took a long time (%s seconds): %s', duration, traceback.format_stack())
+		self.__start_time = None
 		if exc_type:
 			logger.error('Rollback of transaction %s:%s/%s/%s', self, exc_type, exc_val, traceback.format_tb(exc_tb))
 			self.__connection.rollback()
@@ -112,12 +123,22 @@ __time_update = 0
 __time_db = 0
 
 def now():
+	"""
+	Return the current database timestamp.
+
+	To minimise the number of accesses to the database (because it can be blocking
+	and it is on a different server), we cache the result for some time and adjust
+	it by local clock. We re-request the database timestamp from time to time, so
+	the database stays the authoritative source of time.
+	"""
 	global __time_update
 	global __time_db
-	t = time.time()
-	if __time_update + 2 < t:
+	t = monotonic.monotonic()
+	diff = t - __time_update
+	if diff > CACHE_TIME: # More than 10 minutes since the last update, request a new one
 		__time_update = t
+		diff = 0 # We request it now, so it is in sync
 		with transaction() as t:
 			t.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'");
 			(__time_db,) = t.fetchone()
-	return __time_db
+	return __time_db + datetime.timedelta(seconds=diff)
