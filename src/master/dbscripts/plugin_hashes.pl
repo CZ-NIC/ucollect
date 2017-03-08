@@ -139,7 +139,7 @@ sub get_pkg($$$) {
 	my ($url, $name, $version) = @_;
 	dbg "Downloading $name/$version $url\n";
 	my $cv = cv_get;
-	http_get $url, tls_ctx => {}, sub {
+	http_get $url, tls_ctx => $tls_ctx, sub {
 		my ($body, $hdrs) = @_;
 		if (defined $body and $hdrs->{Status} == 200) {
 			handle_package $name, $version, $body;
@@ -171,7 +171,7 @@ sub get_index(_) {
 	my ($url) = @_;
 	dbg "Downloading $url\n";
 	my $cv = cv_get;
-	http_get $url, tls_ctx => "high", sub {
+	http_get $url, tls_ctx => $tls_ctx, sub {
 		my ($body, $hdrs) = @_;
 		if (defined $body and $hdrs->{Status} == 200) {
 			dbg "Downloaded index $url\n";
@@ -208,7 +208,7 @@ sub get_list($) {
 	my $full_url = "$base_url/lists/$name";
 	dbg "Downloading list $name from $full_url\n";
 	my $cv = cv_get;
-	http_get $full_url, tls_ctx => "high", sub {
+	http_get $full_url, tls_ctx => $tls_ctx, sub {
 		my ($body, $hdrs) = @_;
 		if (defined $body and $hdrs->{Status} == 200) {
 			dbg "Downloaded list $name\n";
