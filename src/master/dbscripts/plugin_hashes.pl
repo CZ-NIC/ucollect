@@ -121,11 +121,25 @@ sub handle_package($$$) {
 	check_unpack_queue;
 }
 
+my $tls_ctx = {
+	method => "TLSv1_2",
+	verify => 1,
+	# Unfortunately, the library doesn't support SNI yet. So we disable peer name verification
+	# and do so manually in the callback
+	verify_cb => sub {
+		my ($tls, $ref, $cn, $depth, $preverify_ok, $x509_store_ctx, $cert) = @_;
+		# The levels towadrs the root
+		return $preverify_ok if $depth;
+		# The actual client certificate is of turris.cz
+		return AnyEvent::TLS::certname($cert) =~ /CN=turris.cz/;
+	}
+};
+
 sub get_pkg($$$) {
 	my ($url, $name, $version) = @_;
 	dbg "Downloading $name/$version $url\n";
 	my $cv = cv_get;
-	http_get $url, tls_ctx => "high", sub {
+	http_get $url, tls_ctx => {}, sub {
 		my ($body, $hdrs) = @_;
 		if (defined $body and $hdrs->{Status} == 200) {
 			handle_package $name, $version, $body;
@@ -228,6 +242,10 @@ for my $hash (@hashes) {
 print $out "COMMIT;\n";
 close $out;
 
-print $output unless $err;
+if ($err) {
+	print "BROKEN!;"; # A trick to kill the SQL and force it to also fail.
+} else {
+	print $output;
+}
 
 exit $err;
