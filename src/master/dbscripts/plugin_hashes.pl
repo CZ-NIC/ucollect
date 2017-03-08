@@ -243,7 +243,7 @@ print $out "COMMIT;\n";
 close $out;
 
 if ($err) {
-	print "BROKEN!;"; # A trick to kill the SQL and force it to also fail.
+	print "BROKEN!;\n"; # A trick to kill the SQL and force it to also fail.
 } else {
 	print $output;
 }
