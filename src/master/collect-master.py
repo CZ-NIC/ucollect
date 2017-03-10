@@ -19,23 +19,28 @@
 #
 
 from twisted.internet import reactor, protocol
-from twisted.internet.endpoints import UNIXServerEndpoint
+from twisted.internet.endpoints import UNIXServerEndpoint, UNIXClientEndpoint, TCP4ServerEndpoint
 from twisted.internet.error import ReactorNotRunning
 from subprocess import Popen
 import log_extra
 import logging
 import logging.handlers
 from client import ClientFactory
+from coordinator import CoordinatorWorkerFactory
 from plugin import Plugins, pool
+from multiprocessing import Process, Pipe, reduction
 import master_config
+import socket
 import activity
 import importlib
 import os
+import sys
 
 # If we have too many background threads, the GIL slows down the
 # main thread and cleants start dropping because we are not able
 # to keep up with pings.
 reactor.suggestThreadPoolSize(3)
+WorkerProcCnt = 2
 severity = master_config.get('log_severity')
 if severity == 'TRACE':
 	severity = log_extra.TRACE_LEVEL
@@ -57,7 +62,6 @@ for (plugin, config) in master_config.plugins().items():
 	loaded_plugins[plugin] = constructor(plugins, config)
 	logging.info('Loaded plugin %s from %s', loaded_plugins[plugin].name(), plugin)
 # Some configuration, to load the port from?
-endpoint = UNIXServerEndpoint(reactor, './collect-master.sock')
 
 socat = None
 
@@ -66,6 +70,8 @@ class Socat(protocol.ProcessProtocol):
 		global socat
 		socat = self.transport
 		logging.info('Started proxy')
+	def childDataReceived(self, fd, str):
+		logging.info('proxy: %s', str)
 
 	def processEnded(self, status):
 		global socat
@@ -74,25 +80,52 @@ class Socat(protocol.ProcessProtocol):
 			try:
 				reactor.stop()
 				# Don't report lost proxy if we're already terminating
-				logging.fatal('Lost proxy, terminating')
+				logging.fatal('Lost proxy, terminating %s', status)
 			except ReactorNotRunning:
 				pass
 
 	def errReceived(self, data):
 		logging.warn('Proxy complained: %s', data)
+		
+parent, child = Pipe()
 
-# Disable running the uncompressed soxy, it is no longer needed.
-#args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), str(master_config.getint('port')), os.getcwd() + '/collect-master.sock']
-#logging.debug('Starting proxy with: %s', args)
-#reactor.spawnProcess(Socat(), './soxy/soxy', args=args, env=os.environ)
-args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), master_config.get('ca'), str(master_config.getint('port_compression')), os.getcwd() + '/collect-master.sock', 'compress']
-logging.debug('Starting proxy with: %s', args)
-reactor.spawnProcess(Socat(), './soxy/soxy', args=args, env=os.environ)
+def worker(ep,conn):
+	ep = UNIXServerEndpoint(reactor, ep)
+	ep.listen(CoordinatorWorkerFactory(conn, plugins, frozenset(master_config.get('fastpings'))))
+	logging.warn('child born')
+	reactor.run()
+	logging.debug('readers %s',reactor.getReaders())
+	sys.exit(0)
+	
+	
+def main():
 
-endpoint.listen(ClientFactory(plugins, frozenset(master_config.get('fastpings').split())))
-logging.info('Init done')
+	workers=[]
+	#endpoint = UNIXServerEndpoint(reactor, './collect-master.sock')
+	endpoint =  TCP4ServerEndpoint(reactor, 12345)
+	for i in range(WorkerProcCnt):
+		ep = './collect-master-worker-'+str(i)+'.sock'
+		parent, child = Pipe()
+		ch = Process(target=worker, args=(ep,child,))
+		ep = UNIXClientEndpoint(reactor, ep)
+		ch.start()
+		while not ch.pid:
+			time.sleep(.25)
+		workers.append((ch, (parent, child), ep))
+	print workers
 
-reactor.run()
+	args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), master_config.get('ca'), str(master_config.getint('port_compression')), os.getcwd() + '/collect-master.sock', 'compress']
+	logging.debug('Starting proxy with: %s', args)
+	reactor.spawnProcess(Socat(), './soxy/soxy', args=args, env=os.environ)
+	args=['/usr/bin/socat', 'UNIX-LISTEN:'+os.getcwd() + '/collect-master.sock,fork', 'TCP-CONNECT:127.0.0.1:12345']
+	logging.debug('Starting socat with: %s', args)
+	reactor.spawnProcess(Socat(), '/usr/bin/socat', args=args, env=os.environ)
+	endpoint.listen(ClientFactory(plugins, frozenset(master_config.get('fastpings').split()), workers))
+	logging.info('Init done')
+
+	reactor.run()
+	
+main()
 
 logging.info('Finishing up')
 pool.stop()

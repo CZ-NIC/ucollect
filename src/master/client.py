@@ -18,6 +18,7 @@
 #
 
 from twisted.internet import reactor
+from twisted.python.sendmsg import getsockfam
 import twisted.internet.protocol
 import twisted.protocols.basic
 import random
@@ -30,6 +31,8 @@ import time
 import plugin_versions
 import database
 import timers
+from multiprocessing import Process, Pipe, reduction
+from coordinator import CoordinatorMasterFactory
 
 logger = logging.getLogger(name='client')
 sysrand = random.SystemRandom()
@@ -50,7 +53,8 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 
 	It also routes messages to other parts of system.
 	"""
-	def __init__(self, plugins, addr, fastpings):
+	def __init__(self, plugins, addr, fastpings, workers=None, got_from_master=False, cid=None):
+		self.__workers = workers
 		self.__plugins = plugins
 		self.__addr = addr
 		self.__pings_outstanding = 0
@@ -70,6 +74,10 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__plugin_versions = {}
 		self.last_pong = time.time()
 		self.session_id = None
+		if got_from_master:
+			self.__cid=cid
+			self.__connected = True
+			self.__authenticated = True
 
 	def has_plugin(self, plugin_name):
 		return plugin_name in self.__available_plugins
@@ -102,7 +110,10 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			return
 		self.__connected = False
 		if self.__logged_in:
-			logger.info("Connection lost from %s", self.cid())
+			if self.__workers:
+				logger.info("MASTER Connection lost from %s", self.cid())
+			else:
+				logger.info("WORKER Connection lost from %s", self.cid())
 			self.__pinger.stop()
 			self.__plugins.unregister_client(self)
 			now = database.now()
@@ -126,7 +137,10 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__auth_buffer.append(string)
 			return
 		(msg, params) = (string[0], string[1:])
-		logger.trace("Received from %s: %s", self.cid(), repr(string))
+		if self.__workers:
+			logger.trace("MASTER Received from %s: %s", self.cid(), repr(string))
+		else:
+			logger.trace("WORKER Received from %s: %s", self.cid(), repr(string))
 		if not self.__logged_in:
 			def login_failure(msg):
 				logger.warn('Login failure from %s: %s', self.cid(), msg)
@@ -136,6 +150,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 				# reconnects.
 			if msg == 'L':
 				# Client wants to log in.
+				# ONLY MASTER SHOULD RECEIVE (AND HANDLE) THIS COMMAND
 				# Extract parameters.
 				(version, params) = (params[0], params[1:])
 				(cid, params) = extract_string(params)
@@ -156,9 +171,21 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 					self.__wait_auth = False
 					if allowed:
 						self.__authenticated = True
-						# Replay the bufferend messages
+						#hash client ID to number
+						cid_hash=sum([ord(c) for c in self.__cid])
+						#select worker (based on CID hash)
+						worker=cid_hash % len(self.__workers)
+						logger.debug('MASTER Passing client %s (FD %s) to worker %s', self.__cid, self.transport.getHandle().fileno(), worker)
+						#send handle to worker
+						reduction.send_handle(self.__workers[worker][1][0], self.transport.getHandle().fileno(), self.__workers[worker][0].pid)
+						self.transport.stopReading()
+						self.transport.stopWriting()
+						logger.debug('MASTER Removing client %s', self.__cid)
+						# Replay the bufferend messages, pack them (to be sent to worker)
+						buffer=""
 						for message in self.__auth_buffer:
-							self.stringReceived(message)
+							buffer += format_string(message)
+						worker_conn = self.__workers[worker][2].connect(CoordinatorMasterFactory("l"+format_string(self.__cid)+format_string(str(len(self.__auth_buffer)))+buffer))
 					else:
 						login_failure('Incorrect password')
 					self.__auth_buffer = None
@@ -293,7 +320,7 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		if self.__cid:
 			return self.__cid
 		else:
-			return self.__addr.name
+			return self.__addr
 
 	def recheck_versions(self):
 		"""
@@ -308,9 +335,15 @@ class ClientFactory(twisted.internet.protocol.Factory):
 	Just a factory to create the clients. Stores a reference to the
 	plugins and passes them to the client.
 	"""
-	def __init__(self, plugins, fastpings):
+	def __init__(self, plugins, fastpings, workers=None, got_from_master=False, cid=None):
 		self.__plugins = plugins
 		self.__fastpings = fastpings
+		self.__workers = workers
+		self.__got_from_master = got_from_master
+		self.__cid=cid
 
 	def buildProtocol(self, addr):
-		return ClientConn(self.__plugins, addr, self.__fastpings)
+		self.conn=ClientConn(self.__plugins, addr, self.__fastpings, self.__workers, self.__got_from_master, self.__cid)
+		return self.conn
+	def stringReceived(self, msg):
+		self.conn.stringReceived(msg)
