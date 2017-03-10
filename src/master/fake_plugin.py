@@ -26,6 +26,15 @@ import socket
 import protocol
 import database
 import psycopg2
+import zmq
+import msgpack
+
+# FIXME: This actually needs to be global for the whole process and this
+# probably isn't the best place.
+context = zmq.Context()
+# The authentication stuff would go somewhere here
+zsocket = context.socket(zmq.PUSH)
+zsocket.connect('tcp://localhost:9988')
 
 logger = logging.getLogger(name='fake')
 
@@ -37,53 +46,52 @@ families = [{
 	'len': 16,
 	'opt': socket.AF_INET6
 }]
+extras = ['name', 'password', 'reason', 'method', 'uri', 'host']
+servers = {
+	'T': ('telnet', 23),
+	'H': ('http', 80),
+	't': ('telnet_alt', 2323),
+	'P': ('squid_http_proxy', 3128),
+	'p': ('polipo_http_proxy', 8123)
+}
 
-def store_logs(message, client, now, version):
-	values = []
-	count = 0
+def msg_handle(client, message, now):
+	# We parse the messages and send them. Alternatively, we could dump the
+	# whole binary blob into the socket and let it be done by someone else.
+	# But then the server logic and the protocol parsing/serialization
+	# would be split in the middle (we would still need to provide the
+	# config), which doesn't feel right.
 	while message:
-		if version <= 1:
-			(age, type_idx, family_idx, info_count, code) = struct.unpack('!IBBBc', message[:8])
-			rem_port = None
-			message = message[8:]
-		else:
-			(age, type_idx, family_idx, info_count, code, rem_port) = struct.unpack('!IBBBcH', message[:10])
-			message = message[10:]
-		(name, passwd, reason, method, host, uri) = (None, None, None, None, None, None)
-		tp = types[type_idx]
+		(age, type_idx, family_idx, info_count, code, rem_port) = struct.unpack('!IBBBcH', message[:10])
+		message = message[10:]
 		family = families[family_idx]
 		rem_address = socket.inet_ntop(family['opt'], message[:family['len']])
 		message = message[family['len']:]
-		if version <= 1:
-			loc_address = None
-		else:
-			loc_address = socket.inet_ntop(family['opt'], message[:family['len']])
-			message = message[family['len']:]
+		loc_address = socket.inet_ntop(family['opt'], message[:family['len']])
+		message = message[family['len']:]
+		(server, loc_port) = servers[code]
+		record = {
+			'client': client,
+			# TODO: Proper solution is to actually comput now - age
+			# here, but now is in database specific format
+			# (ISO-something). We would do it properly on real
+			# implementation, but let's just send it on in this
+			# hack.
+			'now': str(now),
+			'age': age,
+			'type': types[type_idx],
+			'remote': (rem_address, rem_port),
+			'local': (loc_address, loc_port),
+			'server': server
+		}
 		for i in range(0, info_count):
 			(kind_i,) = struct.unpack('!B', message[0])
 			(content, message) = protocol.extract_string(message[1:])
-			# Twisted gives us the message as a string. The name, password,
-			# method, uri and host columns are bytea in postgres.
-			# This needs to be resolved by a conversion wrapper
-			# (because python seems to use escaping, not bound
-			# params)
-			if kind_i == 0:
-				name = psycopg2.Binary(content)
-			elif kind_i == 1:
-				passwd = psycopg2.Binary(content)
-			elif kind_i == 2:
-				reason = content
-			elif kind_i == 3:
-				method = psycopg2.Binary(content)
-			elif kind_i == 4:
-				uri = psycopg2.Binary(content)
-			elif kind_i == 5:
-				host = psycopg2.Binary(content)
-		values.append((now, age, tp, rem_address, loc_address, rem_port, name, passwd, reason, method, host, uri, client, code))
-		count += 1
-	with database.transaction() as t:
-		t.executemany("INSERT INTO fake_logs (client, timestamp, event, remote, local, remote_port, server, name, password, reason, method, host, uri) SELECT clients.id, %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s, fake_server_names.type, %s, %s, %s, %s, %s, %s FROM clients CROSS JOIN fake_server_names WHERE clients.name = %s AND fake_server_names.code = %s", values)
-	logger.debug("Stored %s fake server log events for client %s", count, client)
+			record[extras[kind_i]] = content
+		# Send the message with a frame stating what is inside
+		logger.debug("Sending.....")
+		zsocket.send_string('data/fake-logs', zmq.SNDMORE)
+		zsocket.send(msgpack.packb(record))
 
 class FakePlugin(plugin.Plugin):
 	def __init__(self, plugins, config):
@@ -96,7 +104,7 @@ class FakePlugin(plugin.Plugin):
 	def message_from_client(self, message, client):
 		if message[0] == 'L':
 			activity.log_activity(client, 'fake')
-			reactor.callInThread(store_logs, message[1:], client, database.now(), self.version(client))
+			msg_handle(client, message[1:], database.now())
 		elif message[0] == 'C':
 			config = struct.pack('!IIIII', *map(lambda name: int(self.__config[name]), ['version', 'max_age', 'max_size', 'max_attempts', 'throttle_holdback']))
 			self.send('C' + config, client)
