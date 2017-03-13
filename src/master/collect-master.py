@@ -114,12 +114,9 @@ def main():
 		workers.append((ch, (parent, child), ep))
 	print workers
 
-	args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), master_config.get('ca'), str(master_config.getint('port_compression')), os.getcwd() + '/collect-master.sock', 'compress']
+	args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), master_config.get('ca'), str(master_config.getint('port_compression')), '127.0.0.1:12345', 'compress']
 	logging.debug('Starting proxy with: %s', args)
 	reactor.spawnProcess(Socat(), './soxy/soxy', args=args, env=os.environ)
-	args=['/usr/bin/socat', 'UNIX-LISTEN:'+os.getcwd() + '/collect-master.sock,fork', 'TCP-CONNECT:127.0.0.1:12345']
-	logging.debug('Starting socat with: %s', args)
-	reactor.spawnProcess(Socat(), '/usr/bin/socat', args=args, env=os.environ)
 	endpoint.listen(ClientFactory(plugins, frozenset(master_config.get('fastpings').split()), workers))
 	logging.info('Init done')
 

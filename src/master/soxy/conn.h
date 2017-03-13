@@ -21,7 +21,7 @@
 #define CONN_H
 
 #include <QSslSocket>
-#include <QLocalSocket>
+#include <QTcpSocket>
 #include <QByteArray>
 #include <QSslConfiguration>
 #include <QTimer>
@@ -38,7 +38,7 @@ public:
 	~Connection();
 private:
 	QSslSocket remote;
-	QLocalSocket local;
+	QTcpSocket local;
 	QTimer timer;
 	QByteArray inBuf, outBuf;
 	unsigned char compressOutBuffer[COMPRESSION_BUFFSIZE];
@@ -50,7 +50,6 @@ private:
 private slots:
 	void incoming();
 	void error(QAbstractSocket::SocketError);
-	void error(QLocalSocket::LocalSocketError);
 	void error(const QList<QSslError> &);
 	void error(const char *);
 	void connectedRemote();

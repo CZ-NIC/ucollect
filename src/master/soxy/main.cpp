@@ -111,10 +111,11 @@ Connection::Connection(int sock, QSslConfiguration &config) :
 	remote.startServerEncryption();
 	connect(&local, SIGNAL(disconnected()), SLOT(deleteLater()));
 	connect(&local, SIGNAL(readyRead()), SLOT(outgoing()));
-	connect(&local, SIGNAL(error(QLocalSocket::LocalSocketError)), SLOT(error(QLocalSocket::LocalSocketError)));
+	connect(&local, SIGNAL(error(QAbstractSocket::SocketError)), SLOT(error(QAbstractSocket::SocketError)));
 	connect(&local, SIGNAL(connected()), SLOT(connectedLocal()));
 	connect(&local, SIGNAL(bytesWritten(qint64)), SLOT(tryWriteLocal()));
-	local.connectToServer(QCoreApplication::arguments()[5]);
+	QStringList conn = QCoreApplication::arguments()[5].split(":");
+	local.connectToHost(conn[0], conn[1].toShort());
 	touch();
 }
 
@@ -158,11 +159,6 @@ void Connection::incoming() {
 
 void Connection::error(QAbstractSocket::SocketError) {
 	fprintf(stderr, "Socket error: %s\n", remote.errorString().toLocal8Bit().data());
-	deleteLater();
-}
-
-void Connection::error(QLocalSocket::LocalSocketError) {
-	fprintf(stderr, "Local socket error: %s\n", local.errorString().toLocal8Bit().data());
 	deleteLater();
 }
 
