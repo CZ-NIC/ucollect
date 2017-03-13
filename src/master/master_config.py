@@ -20,8 +20,8 @@
 import ConfigParser
 import sys
 
-if len(sys.argv) != 2:
-	raise Exception('There must be exactly 1 argument - config file name')
+#if len(sys.argv) != 2:
+	#raise Exception('There must be exactly 1 argument - config file name')
 
 config_data = ConfigParser.RawConfigParser()
 with open(sys.argv[1]) as f:

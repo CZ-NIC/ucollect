@@ -31,7 +31,6 @@ import time
 import plugin_versions
 import database
 import timers
-from multiprocessing import Process, Pipe, reduction
 from coordinator import CoordinatorMasterFactory
 
 logger = logging.getLogger(name='client')
@@ -78,7 +77,8 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__cid=cid
 			self.__connected = True
 			self.__authenticated = True
-
+	def __del__(self):
+		logger.debug("CLIENTCONN DELETED")
 	def has_plugin(self, plugin_name):
 		return plugin_name in self.__available_plugins
 
@@ -176,16 +176,10 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 						#select worker (based on CID hash)
 						worker=cid_hash % len(self.__workers)
 						logger.debug('MASTER Passing client %s (FD %s) to worker %s', self.__cid, self.transport.getHandle().fileno(), worker)
-						#send handle to worker
-						reduction.send_handle(self.__workers[worker][1][0], self.transport.getHandle().fileno(), self.__workers[worker][0].pid)
-						self.transport.stopReading()
-						self.transport.stopWriting()
 						logger.debug('MASTER Removing client %s', self.__cid)
-						# Replay the bufferend messages, pack them (to be sent to worker)
-						buffer=""
-						for message in self.__auth_buffer:
-							buffer += format_string(message)
-						worker_conn = self.__workers[worker][2].connect(CoordinatorMasterFactory("l"+format_string(self.__cid)+format_string(str(len(self.__auth_buffer)))+buffer))
+						self.__workers[worker].passClientHandle(self.__cid, self.__auth_buffer, self.transport.getHandle())
+						self.transport.abortConnection()
+						#self.transport.stopWriting()
 					else:
 						login_failure('Incorrect password')
 					self.__auth_buffer = None

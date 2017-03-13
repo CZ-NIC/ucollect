@@ -18,7 +18,8 @@
 #
 
 from twisted.internet.task import LoopingCall
-from twisted.python.sendmsg import getsockfam
+from socket import SOL_SOCKET, socketpair
+from twisted.python.sendmsg import SCM_RIGHTS, send1msg, recv1msg
 from twisted.internet import reactor
 import twisted.internet.protocol
 import twisted.protocols.basic
@@ -26,8 +27,9 @@ import logging
 import traceback
 import socket
 from protocol import extract_string, format_string
-from multiprocessing import reduction
 import client
+from struct import unpack, pack
+
 
 logger = logging.getLogger(name='timers')
 
@@ -43,62 +45,100 @@ def timer(callback, time, startnow=False):
 
 class CoordinatorWorkerConn(twisted.protocols.basic.Int32StringReceiver):
 	MAX_LENGTH = 1024 ** 3 # A gigabyte should be enough
-	def __init__(self, parent_pipe, plugins, fastpings):
-		self.__parent_pipe = parent_pipe
+	def __init__(self, plugins, fastpings):
 		self.__plugins=plugins
 		self.__fastpings = fastpings
 
 	def connectionMade(self):
+		logger.debug("Connected to master")
 		return
 
 	def connectionLost(self, reason):
+		logger.fatal("Lost connection to master")
+		reactor.stop()
 		return
 
 	def stringReceived(self, string):
-		logger.trace("WORKER Received from MSTER: %s", repr(string))
+		logger.trace("WORKER Received from MASTER: %s", repr(string))
 		(msg, params) = (string[0], string[1:])
 		if msg == 'l':
 			# Passing client from master
-			s = socket.fromfd(reduction.recv_handle(self.__parent_pipe), socket.AF_UNIX, socket.SOCK_STREAM)
+			
+			data, flags, ancillary = recv1msg(3, 1024)
+			s = unpack("i", ancillary[0][2])[0]
 			logging.debug('received socket: %s', s)
 			(cid, params) = extract_string(params)
 			(replay_msgs,params)=extract_string(params)
 			replay_msgs=int(replay_msgs)
 			clientObj=client.ClientFactory(self.__plugins, self.__fastpings, None, True, cid)
-			reactor.adoptStreamConnection(s.fileno(), socket.AF_INET, clientObj)
+			reactor.adoptStreamConnection(s, socket.AF_INET, clientObj)
 			for i in range(replay_msgs):
 				(msg,params)=extract_string(params)
 				clientObj.stringReceived(msg)
-			logger.debug(" WORKER Got client (fd %s) from master: CID %s msgs %s", s.fileno(), cid, replay_msgs)
+			logger.debug(" WORKER Got client (fd %s) from master: CID %s msgs %s", s, cid, replay_msgs)
 			return
 		else:
 			logger.warn("Unknown message from coordinator: %s", msg)
 
 class CoordinatorWorkerFactory(twisted.internet.protocol.Factory):
-	def __init__(self, parent_pipe, plugins, fastpings):
-		self.__parent_pipe=parent_pipe
+	def __init__(self, plugins, fastpings):
 		self.__plugins=plugins
 		self.__fastpings = fastpings
     
 	def buildProtocol(self, addr):
-		return CoordinatorWorkerConn(self.__parent_pipe, self.__plugins, self.__fastpings)
+		return CoordinatorWorkerConn(self.__plugins, self.__fastpings)
 
 class CoordinatorMasterConn(twisted.protocols.basic.Int32StringReceiver):
 	MAX_LENGTH = 1024 ** 3 # A gigabyte should be enough
-	def __init__(self, addr, string):
-		self.__string=string
+	def __init__(self, addr):
+		return
 
 	def connectionMade(self):
-		logger.trace("Connected to worker")
-		self.sendString(self.__string)
+		logger.debug("Connection to worker")
+			
+	def submit(self, string):
+		self.sendString(string)
 
 	def connectionLost(self, reason):
-		logger.trace("Lost connection to worker")
+		logger.fatal("Lost connection to worker")
 
 class CoordinatorMasterFactory(twisted.internet.protocol.Factory):
-	def __init__(self, string):
-		self.__string = string
+	def __init__(self):
+		self.conn = None
 
 	def buildProtocol(self, addr):
-		return CoordinatorMasterConn(addr, self.__string)
+		self.conn = CoordinatorMasterConn(addr)
+		return self.conn
 	
+	
+class Worker():
+	def __init__(self, pipe, sock):
+		self.__pipe = pipe
+		self.__sock = sock
+		self.__queue = []
+		self.__conn = None
+		self.__listen_factory=CoordinatorMasterFactory()
+		self.__sock.listen(self.__listen_factory)
+		
+	def submit(self, string):
+		if not self.__conn:
+			if self.__listen_factory.conn:
+				self.__conn = self.__listen_factory.conn
+				return self.__conn.submit(string)
+			self.__queue.append(string)
+			logger.warn("Tried writing to worker while it's not connected.")
+		else:
+			self.__conn.submit(string)
+		
+	def passClientHandle(self, cid, messages, fd):
+		sent = send1msg(self.__pipe.fileno(), "\x00", 0, [(SOL_SOCKET, SCM_RIGHTS, pack("i", fd.fileno()))])
+		#reduction.send_handle(self.__pipes[0], fd.fileno(), self.__ch.pid)
+		#reactor.removeReader(fd)
+		#reactor.removeWriter(fd)
+		#self.transport.stopReading()
+		#self.transport.stopWriting()
+		# Replay the bufferend messages, pack them (to be sent to worker)
+		buffer=""
+		for message in messages:
+			buffer += format_string(message)
+		worker_conn = self.submit("l"+format_string(cid)+format_string(str(len(messages)))+buffer)
