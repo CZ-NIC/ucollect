@@ -1,7 +1,7 @@
 #!/usr/bin/python2
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013-2017 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -19,21 +19,20 @@
 #
 
 from twisted.internet import reactor, protocol
-from twisted.internet.endpoints import UNIXServerEndpoint, UNIXClientEndpoint, TCP4ServerEndpoint
+from twisted.internet.endpoints import UNIXClientEndpoint
 from twisted.internet.error import ReactorNotRunning
-from subprocess import Popen
 import log_extra
 import logging
 import logging.handlers
 from client import ClientFactory
-from coordinator import CoordinatorWorkerFactory, Worker
+from worker_conn import WorkerConnFactory
 from plugin import Plugins, pool
 import master_config
-import socket
 import activity
 import importlib
 import os
 import sys
+import signal
 
 # If we have too many background threads, the GIL slows down the
 # main thread and cleants start dropping because we are not able
@@ -65,15 +64,21 @@ for (plugin, config) in master_config.plugins().items():
 	logging.info('Loaded plugin %s from %s', loaded_plugins[plugin].name(), plugin)
 
 ep = UNIXClientEndpoint(reactor, sys.argv[2])
-logging.debug('readers %s',reactor.getReaders())
-d=ep.connect(CoordinatorWorkerFactory(plugins, frozenset(master_config.get('fastpings'))))
+d=ep.connect(WorkerConnFactory(plugins, frozenset(master_config.get('fastpings')))) #connect to master
 def cant_connect(failure):
 	logging.fatal("Can't connect to master: %s", failure)
-	reactor.stop()
+	if reactor.running:
+		reactor.stop()
+	else:
+		sys.exit(1)
 d.addErrback(cant_connect)
 reactor.run()
+
 
 logging.info('Finishing up')
 pool.stop()
 activity.shutdown()
 logging.info('Shutdown done')
+#sometimes the program hangs in the end for some unknown reason (probably some (twisted?) threads are still active)
+#alarm should give them some to finnish background task and ensure they won't hang forever
+signal.alarm(15)

@@ -1,7 +1,7 @@
 #!/usr/bin/python2
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013-2017 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -19,30 +19,20 @@
 #
 
 from twisted.internet import reactor, protocol
-from twisted.internet.endpoints import UNIXServerEndpoint, UNIXClientEndpoint, TCP4ServerEndpoint
+from twisted.internet.endpoints import UNIXServerEndpoint, TCP4ServerEndpoint
 from twisted.internet.error import ReactorNotRunning
-from subprocess import Popen
 import log_extra
 import logging
 import logging.handlers
-from client import ClientFactory
-from coordinator import CoordinatorWorkerFactory, Worker
-from plugin import Plugins, pool
+from client_master import ClientMasterFactory
+from worker_conn import WORKER_SOCK_FD
+from master_conn import Worker
 import master_config
 import socket
 import activity
 import importlib
 import os
 import sys
-
-# If we have too many background threads, the GIL slows down the
-# main thread and cleants start dropping because we are not able
-# to keep up with pings.
-reactor.suggestThreadPoolSize(3)
-WorkerProcCnt = 2
-
-if len(sys.argv) != 2:
-	raise Exception('There must be exactly 1 argument - config file name')
 
 severity = master_config.get('log_severity')
 if severity == 'TRACE':
@@ -55,16 +45,6 @@ if log_file != '-':
 	handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=int(master_config.get('log_file_size')), backupCount=int(master_config.get('log_file_count')))
 	handler.setFormatter(logging.Formatter(fmt=master_config.get('log_format')))
 	logging.getLogger().addHandler(handler)
-
-loaded_plugins = {}
-plugins = Plugins()
-for (plugin, config) in master_config.plugins().items():
-	(modulename, classname) = plugin.rsplit('.', 1)
-	module = importlib.import_module(modulename)
-	constructor = getattr(module, classname)
-	loaded_plugins[plugin] = constructor(plugins, config)
-	logging.info('Loaded plugin %s from %s', loaded_plugins[plugin].name(), plugin)
-# Some configuration, to load the port from?
 
 socat = None
 
@@ -96,39 +76,34 @@ class WorkerProtocol(protocol.ProcessProtocol):
 
 	def processEnded(self, status):
 		logging.fatal('worker ended')
-		reactor.stop()
+		try:
+			reactor.stop()
+		except ReactorNotRunning:
+			pass
 
 	def errReceived(self, data):
 		logging.warn('worker complained: %s', data)
-
+	
 workers=[]
-workers_prot= []
-#endpoint = UNIXServerEndpoint(reactor, './collect-master.sock')
-endpoint =  TCP4ServerEndpoint(reactor, 12345)
-for i in range(WorkerProcCnt):
-	worker_sock = './collect-master-worker-'+str(i)+'.sock'
-	parent_sock, child_sock = socket.socketpair()
+endpoint =  TCP4ServerEndpoint(reactor, master_config.getint('port_proxy_master'))
+for i in range(master_config.getint('workers_cnt')):
+	worker_sock = './collect-master-worker-'+str(i)+'.sock' #socket for master - worker communication
+	parent_sock, child_sock = socket.socketpair() # raw socket for sending client's file handles
 	args = ['./collect-worker.py', sys.argv[1], worker_sock]
-	worker_prot=reactor.spawnProcess(WorkerProtocol(), './collect-worker.py', args=args, env=os.environ, childFDs={0:0, 1:1, 2:2, 3: child_sock.fileno() })
-	while not worker_prot.pid:
-		sleep(0.25)
-	ep = UNIXServerEndpoint(reactor, worker_sock)
+	ep = UNIXServerEndpoint(reactor, worker_sock) #master listens on this socket, worker will connect
 	workers.append(Worker(parent_sock, ep))
-print workers
+	reactor.spawnProcess(WorkerProtocol(), './collect-worker.py', args=args, env=os.environ, childFDs={0:0, 1:1, 2:2, WORKER_SOCK_FD: child_sock.fileno() })
 
-args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), master_config.get('ca'), str(master_config.getint('port_compression')), '127.0.0.1:12345', 'compress']
+args = ['./soxy/soxy', master_config.get('cert'), master_config.get('key'), master_config.get('ca'), str(master_config.getint('port_compression')), '127.0.0.1:'+str(master_config.getint('port_proxy_master')), 'compress']
 logging.debug('Starting proxy with: %s', args)
 reactor.spawnProcess(Socat(), './soxy/soxy', args=args, env=os.environ)
-endpoint.listen(ClientFactory(plugins, frozenset(master_config.get('fastpings').split()), workers))
+endpoint.listen(ClientMasterFactory(workers))
 logging.info('Init done')
-
 reactor.run()
 
-for w in workers_prot:
-	w.signalProcess('TERM')
 
 logging.info('Finishing up')
-pool.stop()
+
 if socat:
 	soc = socat
 	socat = None

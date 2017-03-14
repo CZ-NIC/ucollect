@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013-2017 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -20,8 +20,8 @@
 import ConfigParser
 import sys
 
-#if len(sys.argv) != 2:
-	#raise Exception('There must be exactly 1 argument - config file name')
+if len(sys.argv) < 2:
+	raise Exception('No configuration file given!')
 
 config_data = ConfigParser.RawConfigParser()
 with open(sys.argv[1]) as f:

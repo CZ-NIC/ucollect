@@ -1,6 +1,6 @@
 #
 #    Ucollect - small utility for real-time analysis of network data
-#    Copyright (C) 2013-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+#    Copyright (C) 2013-2017 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -18,7 +18,6 @@
 #
 
 from twisted.internet import reactor
-from twisted.python.sendmsg import getsockfam
 import twisted.internet.protocol
 import twisted.protocols.basic
 import random
@@ -26,23 +25,12 @@ import struct
 from protocol import extract_string, format_string
 import logging
 import activity
-import auth
 import time
 import plugin_versions
 import database
 import timers
-from coordinator import CoordinatorMasterFactory
 
 logger = logging.getLogger(name='client')
-sysrand = random.SystemRandom()
-challenge_len = 128 # 128 bits of random should be enough for log-in to protect against replay attacks
-
-with database.transaction() as t:
-	# As we just started, there's no plugin active anywhere.
-	# Mark anything active as no longer active in the history and
-	# flush the active ones.
-	t.execute("INSERT INTO plugin_history (client, name, timestamp, active) SELECT client, name, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', false FROM active_plugins")
-	t.execute("DELETE FROM active_plugins")
 
 class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 	MAX_LENGTH = 1024 ** 3 # A gigabyte should be enough
@@ -51,17 +39,15 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 	sorts the messages, answers pings, times out, etc.
 
 	It also routes messages to other parts of system.
+	
+	This is the protocol without authentication (for worker).
+	Authentication is done by master (in ClientMasterConn in client_master.py).
 	"""
-	def __init__(self, plugins, addr, fastpings, workers=None, got_from_master=False, cid=None):
-		self.__workers = workers
+	def __init__(self, plugins, addr, fastpings, cid, replay):
 		self.__plugins = plugins
 		self.__addr = addr
 		self.__pings_outstanding = 0
 		self.__logged_in = False
-		self.__authenticated = False
-		self.__cid = None
-		self.__auth_buffer = []
-		self.__wait_auth = False
 		self.__fastpings = fastpings
 		self.__proto_version = 0
 		self.__available_plugins = {
@@ -73,12 +59,10 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__plugin_versions = {}
 		self.last_pong = time.time()
 		self.session_id = None
-		if got_from_master:
-			self.__cid=cid
-			self.__connected = True
-			self.__authenticated = True
-	def __del__(self):
-		logger.debug("CLIENTCONN DELETED")
+		self.__cid = cid
+		self.__connected = True
+		self.__replay=replay
+
 	def has_plugin(self, plugin_name):
 		return plugin_name in self.__available_plugins
 
@@ -97,23 +81,16 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.sendString('P')
 
 	def connectionMade(self):
-		# Send challenge for login.
-		self.__challenge = ''
-		for i in range(0, challenge_len / 8):
-			self.__challenge += chr(sysrand.getrandbits(8))
-		self.sendString('C' + self.__challenge)
-		self.__connected = True
-		reactor.callLater(60, self.__check_logged)
+		for m in self.__replay:
+			self.stringReceived(m)
+		self.__replay=[]
 
 	def connectionLost(self, reason):
 		if not self.__connected:
 			return
 		self.__connected = False
 		if self.__logged_in:
-			if self.__workers:
-				logger.info("MASTER Connection lost from %s", self.cid())
-			else:
-				logger.info("WORKER Connection lost from %s", self.cid())
+			logger.info("Connection lost from %s", self.cid())
 			self.__pinger.stop()
 			self.__plugins.unregister_client(self)
 			now = database.now()
@@ -133,89 +110,34 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 			self.__connected = False
 
 	def stringReceived(self, string):
-		if self.__wait_auth:
-			self.__auth_buffer.append(string)
-			return
 		(msg, params) = (string[0], string[1:])
-		if self.__workers:
-			logger.trace("MASTER Received from %s: %s", self.cid(), repr(string))
-		else:
-			logger.trace("WORKER Received from %s: %s", self.cid(), repr(string))
+		logger.trace("Received from %s: %s", self.cid(), repr(string))
 		if not self.__logged_in:
-			def login_failure(msg):
-				logger.warn('Login failure from %s: %s', self.cid(), msg)
-				self.sendString('F')
-				self.__challenge = None # Prevent more attempts
-				# Keep the connection open, but idle. Prevents very fast
-				# reconnects.
-			if msg == 'L':
-				# Client wants to log in.
-				# ONLY MASTER SHOULD RECEIVE (AND HANDLE) THIS COMMAND
-				# Extract parameters.
-				(version, params) = (params[0], params[1:])
-				(cid, params) = extract_string(params)
-				(response, params) = extract_string(params)
-				self.__cid = cid
-				if version == 'O':
-					self.__cid = self.__cid.encode('hex')
-				logger.debug('Client %s sent login info', self.cid())
-				if params != '':
-					login_failure('Protocol violation')
-					return
-				log_info = None
-				if version != 'O':
-					login_failure('Login scheme not implemented')
-					return
-				# A callback once we receive decision if the client is allowed
-				def auth_finished(allowed):
-					self.__wait_auth = False
-					if allowed:
-						self.__authenticated = True
-						#hash client ID to number
-						cid_hash=sum([ord(c) for c in self.__cid])
-						#select worker (based on CID hash)
-						worker=cid_hash % len(self.__workers)
-						logger.debug('MASTER Passing client %s (FD %s) to worker %s', self.__cid, self.transport.getHandle().fileno(), worker)
-						logger.debug('MASTER Removing client %s', self.__cid)
-						self.__workers[worker].passClientHandle(self.__cid, self.__auth_buffer, self.transport.getHandle())
-						self.transport.abortConnection()
-						#self.transport.stopWriting()
+			if msg == 'H':
+				if len(params) >= 1:
+					(self.__proto_version,) = struct.unpack("!B", params[0])
+				if self.__proto_version >= 1:
+					self.__available_plugins = {}
+				if self.__plugins.register_client(self):
+					if self.__proto_version == 1:
+						# Please tell me when there're changes to the allowed plugins
+						plugin_versions.add_client(self)
 					else:
-						login_failure('Incorrect password')
-					self.__auth_buffer = None
-				# Ask the authenticator
-				if self.__challenge:
-					auth.auth(auth_finished, self.__cid, self.__challenge.encode('hex'), response.encode('hex'))
-					self.__wait_auth = True
-			elif msg == 'H':
-				if self.__authenticated:
-					if len(params) >= 1:
-						(self.__proto_version,) = struct.unpack("!B", params[0])
-					if self.__proto_version >= 1:
-						self.__available_plugins = {}
-					if self.__plugins.register_client(self):
-						if self.__proto_version == 0:
-							# Activate all the clients in the old version.
-							# The new protocol handles activation on plugin-by-plugin basis
-							for p in self.__plugins.get_plugins():
-								self.__plugins.activate_client(p, self)
-						else:
-							# Please tell me when there're changes to the allowed plugins
-							plugin_versions.add_client(self)
-						self.__logged_in = True
-						self.__pinger = timers.timer(self.__ping, 45 if self.cid() in self.__fastpings else 120, False)
-						activity.log_activity(self.cid(), "login")
-						logger.info('Client %s logged in', self.cid())
-					else:
+						logger.error("Client %s with unsupported protocol version %s", self.cid(), self.__proto_version)
 						return
+					self.__logged_in = True
+					self.__pinger = timers.timer(self.__ping, 45 if self.cid() in self.__fastpings else 120, False)
+					activity.log_activity(self.cid(), "login")
+					logger.info('Client %s logged in', self.cid())
 				else:
-					login_failure('Asked for session before loging in')
 					return
 			elif msg == 'S':
 				if len(params) != 4:
 					logger.warn("Wrong session ID length on client %s: %s", self.cid(), len(params))
 					return
 				(self.session_id,) = struct.unpack("!I", params)
+			else:
+				logger.warn("Unexpected message from client %s: %s (while not logged in) ", self.cid(), msg)
 			return
 		elif msg == 'P': # Ping. Answer pong.
 			self.sendString('p' + params)
@@ -308,13 +230,9 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 
 	def cid(self):
 		"""
-		The client ID. We use the address until the real client ID is provided by the client.
-		for now, but we may want to use something else.
+		The client ID. Since ClientConn always has CID (passed from master), just return it.
 		"""
-		if self.__cid:
-			return self.__cid
-		else:
-			return self.__addr
+		return self.__cid
 
 	def recheck_versions(self):
 		"""
@@ -329,15 +247,13 @@ class ClientFactory(twisted.internet.protocol.Factory):
 	Just a factory to create the clients. Stores a reference to the
 	plugins and passes them to the client.
 	"""
-	def __init__(self, plugins, fastpings, workers=None, got_from_master=False, cid=None):
+	def __init__(self, plugins, fastpings, cid, replay):
 		self.__plugins = plugins
 		self.__fastpings = fastpings
-		self.__workers = workers
-		self.__got_from_master = got_from_master
 		self.__cid=cid
+		self.__replay=replay
 
 	def buildProtocol(self, addr):
-		self.conn=ClientConn(self.__plugins, addr, self.__fastpings, self.__workers, self.__got_from_master, self.__cid)
-		return self.conn
-	def stringReceived(self, msg):
-		self.conn.stringReceived(msg)
+		conn=ClientConn(self.__plugins, addr, self.__fastpings, self.__cid, self.__replay)
+		self.__replay=[]
+		return conn
