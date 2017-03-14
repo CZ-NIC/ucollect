@@ -145,6 +145,8 @@ class Plugins:
 		"""
 		cid = client.cid()
 		logger.debug("Activate plugin %s in client %s", plugin, cid)
+		if not plugin in self.__activations:
+			return
 		if cid in self.__activations[plugin]:
 			logger.warn("Plugin %s already active in client %s", plugin, cid)
 			return
@@ -157,6 +159,8 @@ class Plugins:
 		"""
 		cid = client.cid()
 		logger.debug("Deactivate plugin %s in client %s", plugin, cid)
+		if not plugin in self.__activations:
+			return
 		if cid not in self.__activations[plugin]:
 			logger.warn("Plugin %s isn't active in client %s to deactivate", plugin, cid)
 			return
@@ -226,7 +230,8 @@ class Plugins:
 		Forward a message to plugin of given name. Pass the name
 		of client too.
 		"""
-		# TODO: The plugin of that name might not exist (#2705)
+		if name not in self.__plugins:
+			return
 		self.__plugins[name].message_from_client(message, client)
 
 	def plugin_version(self, plugin, client):
