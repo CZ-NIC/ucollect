@@ -32,6 +32,7 @@ from protocol import extract_string, format_string
 import client_worker
 from struct import unpack, pack
 import sys
+import timers
 
 #worker's file descriptor no on which worker'll get client's handle (for recvn1msg)
 #this is ugly, but spawnProcess wants directly FD numbers...
@@ -53,6 +54,10 @@ class Worker2GatekeeperConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__fastpings = fastpings
 
 	def connectionMade(self):
+		global master_conn, send_queue
+		master_conn = self
+		for m in send_queue:
+			self.sendString(m)
 		logger.debug("Connected to gatekeeper")
 		return
 
@@ -86,6 +91,11 @@ class Worker2GatekeeperConn(twisted.protocols.basic.Int32StringReceiver):
 			reactor.adoptStreamConnection(s, socket.AF_INET, client_worker.ClientWorkerFactory(self.__plugins, self.__fastpings, cid, replay))
 			logger.debug("Got client (fd %s) from master: CID %s msgs %s", s, cid, replay_msgs)
 			return
+		if msg == 't':
+			# Timer tick notification from master. Just extract id and call requested callback.
+			(id, params) = extract_string(params)
+			logger.debug("Global timer %s tick", id)
+			timers.global_timer_cb(id)
 		else:
 			logger.warn("Unknown message from gatekeeper: %s", msg)
 
@@ -96,3 +106,13 @@ class Worker2GatekeeperConnFactory(twisted.internet.protocol.Factory):
 
 	def buildProtocol(self, addr):
 		return Worker2GatekeeperConn(self.__plugins, self.__fastpings)
+
+master_conn = None
+send_queue=[]
+
+def send_to_master(string):
+	global master_conn
+	if not master_conn:
+		send_queue.append(string)
+	else:
+		master_conn.sendString(string)

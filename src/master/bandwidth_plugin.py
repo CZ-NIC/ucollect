@@ -185,7 +185,7 @@ class BandwidthPlugin(plugin.Plugin):
 		plugin.Plugin.__init__(self, plugins)
 		self.__interval = int(config['interval'])
 		self.__aggregate_delay = int(config['aggregate_delay'])
-		self.__downloader = timers.timer(self.__init_download, self.__interval, False)
+		self.__downloader = timers.global_timer("bandwidth/1", self.__init_download, self.__interval, False)
 		self.__data = {}
 		self.__last = self.__current = int(time.time())
 

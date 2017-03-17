@@ -28,9 +28,11 @@ import traceback
 import socket
 import sys
 from protocol import extract_string, format_string
-from struct import unpack, pack
+import struct
 
 logger = logging.getLogger(name='workerConn')
+
+global_timers={}
 
 class Gatekeeper2WorkerConn(twisted.protocols.basic.Int32StringReceiver):
 	"""
@@ -51,6 +53,31 @@ class Gatekeeper2WorkerConn(twisted.protocols.basic.Int32StringReceiver):
 
 	def stringReceived(self, string):
 		logger.trace("Gatekeeper received from worker: %s", repr(string))
+		(msg, params) = (string[0], string[1:])
+		if msg == 'T':
+			# Request to set globally synchronized timer.
+			# Only the first one with unique id will actually set the timer (start LoopingCall), following ones are just registered.
+			# When LoopingCall calls the callback, notification will be send to all workers that requested this timer.
+			def timer_tick(id):
+				global global_timers
+				try:
+					for w in global_timers[id]:
+						w.sendString("t" + format_string(id))
+				except Exception as e:
+					logger.warn("Exception while handling global timer: %s\n", e)
+			(time, ) = struct.unpack('!L', params[:4])
+			(id, params) = extract_string(params[4:])
+			global global_timers
+			if id in global_timers:
+				global_timers[id].append(self)
+			else:
+				logger.info("Registered new global timer: %s, interval %s", id, time)
+				global_timers[id] = [self]
+				result = LoopingCall(timer_tick, id)
+				result.start(int(time), now=False)
+		else:
+			logger.warn("Unknown message from worker: %s", msg)
+		return
 
 class Gatekeeper2WorkerConnFactory(twisted.internet.protocol.Factory):
 	def __init__(self, worker):
@@ -97,7 +124,7 @@ class Worker():
 		"""
 		Pass (already established) connection with client to worker. Also client CID and buffered messages are send.
 		"""
-		sent = send1msg(self.__pipe.fileno(), "\x00", 0, [(SOL_SOCKET, SCM_RIGHTS, pack("i", fd.fileno()))])
+		sent = send1msg(self.__pipe.fileno(), "\x00", 0, [(SOL_SOCKET, SCM_RIGHTS, struct.pack("i", fd.fileno()))])
 		# Replay the bufferend messages, pack them (to be sent to worker)
 		buffer = ""
 		for message in messages:

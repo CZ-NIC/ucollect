@@ -20,8 +20,14 @@
 from twisted.internet.task import LoopingCall
 import logging
 import traceback
+import inspect
+import hashlib
+from protocol import extract_string, format_string
+import struct
+import worker2gatekeeper
 
 logger = logging.getLogger(name='timers')
+
 
 def timer(callback, time, startnow=False):
 	def protected():
@@ -32,3 +38,29 @@ def timer(callback, time, startnow=False):
 	result = LoopingCall(protected)
 	result.start(time, startnow)
 	return result
+
+global_timer_map = {}
+
+def global_timer(name, callback, time, startnow=False):
+	"""
+	Sets timer (that will be synchronized between all workers).
+
+	It just saves it's identifier and callback internally and requests setting timer on master.
+	"""
+	global global_timer_map
+	global_timer_map[name] = callback
+	worker2gatekeeper.send_to_master("T" + struct.pack('!L', time) + format_string(name))
+	if startnow:
+		callback()
+
+def global_timer_cb(id):
+	"""
+	Callback for globally synchronized timer.
+
+	It's called upon receiving notification about global timer from master.
+	"""
+	global global_timer_map
+	try:
+		global_timer_map[id]()
+	except Exception as e:
+		logger.error("Error calling: ", e)
