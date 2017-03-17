@@ -24,8 +24,7 @@ from twisted.internet.error import ReactorNotRunning
 import log_extra
 import logging
 import logging.handlers
-from client import ClientFactory
-from worker_conn import WorkerConnFactory
+from worker2gatekeeper import Worker2GatekeeperConnFactory
 from plugin import Plugins, pool
 import master_config
 import activity
@@ -64,7 +63,7 @@ for (plugin, config) in master_config.plugins().items():
 	logging.info('Loaded plugin %s from %s', loaded_plugins[plugin].name(), plugin)
 
 ep = UNIXClientEndpoint(reactor, sys.argv[2])
-d=ep.connect(WorkerConnFactory(plugins, frozenset(master_config.get('fastpings')))) #connect to master
+d=ep.connect(Worker2GatekeeperConnFactory(plugins, frozenset(master_config.get('fastpings')))) #connect to master
 def cant_connect(failure):
 	logging.fatal("Can't connect to master: %s", failure)
 	if reactor.running:

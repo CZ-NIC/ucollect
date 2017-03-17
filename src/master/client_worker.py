@@ -30,16 +30,16 @@ import plugin_versions
 import database
 import timers
 
-logger = logging.getLogger(name='client')
+logger = logging.getLogger(name='client_worker')
 
-class ClientConn(twisted.protocols.basic.Int32StringReceiver):
+class ClientWorkerConn(twisted.protocols.basic.Int32StringReceiver):
 	MAX_LENGTH = 1024 ** 3 # A gigabyte should be enough
 	"""
 	Connection from one client. It handles the low-level protocol,
 	sorts the messages, answers pings, times out, etc.
 
 	It also routes messages to other parts of system.
-	
+
 	This is the protocol without authentication (for worker).
 	Authentication is done by master (in ClientMasterConn in client_master.py).
 	"""
@@ -61,6 +61,8 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		self.session_id = None
 		self.__cid = cid
 		self.__connected = True
+		# messages cannot be replayed yet, transport is not ready (server will immediatelly try to reply to received messages)
+		# because of this, messages are replayed in connectionMade
 		self.__replay=replay
 
 	def has_plugin(self, plugin_name):
@@ -242,10 +244,11 @@ class ClientConn(twisted.protocols.basic.Int32StringReceiver):
 		if self.__logged_in and self.__connected:
 			self.__check_versions(self.__plugin_versions)
 
-class ClientFactory(twisted.internet.protocol.Factory):
+class ClientWorkerFactory(twisted.internet.protocol.Factory):
 	"""
-	Just a factory to create the clients. Stores a reference to the
-	plugins and passes them to the client.
+	Just a factory to create the client. Stores a reference to the plugins, cid and replay buffer and passes them to ClientWorkerConn when it's created.
+
+	One factory is actually used to create only one ClientWorkerConn here, that's the way how it's used in adoptStreamConnection in worker2gatekeeper.py.
 	"""
 	def __init__(self, plugins, fastpings, cid, replay):
 		self.__plugins = plugins
@@ -254,6 +257,6 @@ class ClientFactory(twisted.internet.protocol.Factory):
 		self.__replay=replay
 
 	def buildProtocol(self, addr):
-		conn=ClientConn(self.__plugins, addr, self.__fastpings, self.__cid, self.__replay)
+		conn=ClientWorkerConn(self.__plugins, addr, self.__fastpings, self.__cid, self.__replay)
 		self.__replay=[]
 		return conn

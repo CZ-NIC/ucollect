@@ -37,13 +37,13 @@ with database.transaction() as t:
 	t.execute("INSERT INTO plugin_history (client, name, timestamp, active) SELECT client, name, CURRENT_TIMESTAMP AT TIME ZONE 'UTC', false FROM active_plugins")
 	t.execute("DELETE FROM active_plugins")
 
-class ClientMasterConn(twisted.protocols.basic.Int32StringReceiver):
+class ClientGatekeeperConn(twisted.protocols.basic.Int32StringReceiver):
 	MAX_LENGTH = 10240 # Ten kilobytes should be enough
 	"""
 	Connection from one client. It handles the low-level protocol.
-	
+
 	This is just small subset of client communication (that is interesting for master) - only authentication.
-	
+
 	After authentication, master passes client (passes its socket) to worker and doesn't communicate with that client anymore.
 	The rest could be found in ClientConn in client.py
 	"""
@@ -141,7 +141,7 @@ class ClientMasterConn(twisted.protocols.basic.Int32StringReceiver):
 			return self.__addr
 
 
-class ClientMasterFactory(twisted.internet.protocol.Factory):
+class ClientGatekeeperFactory(twisted.internet.protocol.Factory):
 	"""
 	Just a factory to create the clients. Stores a reference to the
 	plugins and passes them to the client.
@@ -150,4 +150,4 @@ class ClientMasterFactory(twisted.internet.protocol.Factory):
 		self.__workers = workers
 
 	def buildProtocol(self, addr):
-		return ClientMasterConn(addr, self.__workers)
+		return ClientGatekeeperConn(addr, self.__workers)

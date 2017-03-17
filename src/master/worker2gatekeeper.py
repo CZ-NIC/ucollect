@@ -29,22 +29,22 @@ import traceback
 import socket
 import sys
 from protocol import extract_string, format_string
-import client
+import client_worker
 from struct import unpack, pack
 import sys
 
 #worker's file descriptor no on which worker'll get client's handle (for recvn1msg)
 #this is ugly, but spawnProcess wants directly FD numbers...
-#worker is created with this file descriptor already opened and connected to socket to master (see spawnProcess in collect-master.py)
+#worker is created with this file descriptor already opened and connected to socket to gatekeeper (see spawnProcess in collect-gatekeeper.py)
 WORKER_SOCK_FD = 3
 
 logger = logging.getLogger(name='workerConn')
 
-class WorkerConn(twisted.protocols.basic.Int32StringReceiver):
+class Worker2GatekeeperConn(twisted.protocols.basic.Int32StringReceiver):
 	"""
-	Connection from worker to master.
+	Connection from worker to gatekeeper.
 
-	Now it just handles passing client from master to worker.
+	Now it just handles passing client from gatekeeper to worker.
 	More will be added in future - timers and etc.
 	"""
 	MAX_LENGTH = 10240 # Ten kilobytes should be enough
@@ -53,11 +53,11 @@ class WorkerConn(twisted.protocols.basic.Int32StringReceiver):
 		self.__fastpings = fastpings
 
 	def connectionMade(self):
-		logger.debug("Connected to master")
+		logger.debug("Connected to gatekeeper")
 		return
 
 	def connectionLost(self, reason):
-		logger.fatal("Lost connection to master")
+		logger.fatal("Lost connection to gatekeeper")
 		try:
 			reactor.stop()
 		except ReactorNotRunning:
@@ -65,11 +65,11 @@ class WorkerConn(twisted.protocols.basic.Int32StringReceiver):
 		return
 
 	def stringReceived(self, string):
-		logger.trace("WORKER Received from MASTER: %s", repr(string))
+		logger.trace("Worker received from gatekeeper: %s", repr(string))
 		(msg, params) = (string[0], string[1:])
 		if msg == 'l':
 			"""
-			Receive (already established) client's connection from master, start handling that client.
+			Receive (already established) client's connection from gatekeeper, start handling that client.
 			"""
 			#receive socket
 			data, flags, ancillary = recv1msg(WORKER_SOCK_FD, 1024)
@@ -83,16 +83,16 @@ class WorkerConn(twisted.protocols.basic.Int32StringReceiver):
 			for i in range(replay_msgs):
 				(msg,params) = extract_string(params)
 				replay.append(msg)
-			reactor.adoptStreamConnection(s, socket.AF_INET, client.ClientFactory(self.__plugins, self.__fastpings, cid, replay))
+			reactor.adoptStreamConnection(s, socket.AF_INET, client_worker.ClientWorkerFactory(self.__plugins, self.__fastpings, cid, replay))
 			logger.debug("Got client (fd %s) from master: CID %s msgs %s", s, cid, replay_msgs)
 			return
 		else:
-			logger.warn("Unknown message from coordinator: %s", msg)
+			logger.warn("Unknown message from gatekeeper: %s", msg)
 
-class WorkerConnFactory(twisted.internet.protocol.Factory):
+class Worker2GatekeeperConnFactory(twisted.internet.protocol.Factory):
 	def __init__(self, plugins, fastpings):
 		self.__plugins = plugins
 		self.__fastpings = fastpings
-    
+
 	def buildProtocol(self, addr):
-		return WorkerConn(self.__plugins, self.__fastpings)
+		return Worker2GatekeeperConn(self.__plugins, self.__fastpings)

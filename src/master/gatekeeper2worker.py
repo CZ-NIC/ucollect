@@ -32,9 +32,12 @@ from struct import unpack, pack
 
 logger = logging.getLogger(name='workerConn')
 
-class MasterConn(twisted.protocols.basic.Int32StringReceiver):
-	# connection from master to worker.
-	# this is just a skeleton (required by twisted) for now, but more will be added - timers and etc.
+class Gatekeeper2WorkerConn(twisted.protocols.basic.Int32StringReceiver):
+	"""
+	Connection from gatekeeper to worker.
+
+	This is just a skeleton (required by twisted) for now, but more will be added - timers and etc.
+	"""
 	MAX_LENGTH = 10240 # Ten kilobytes should be enough
 	def __init__(self, addr, worker):
 		self.__worker = worker
@@ -45,31 +48,33 @@ class MasterConn(twisted.protocols.basic.Int32StringReceiver):
 
 	def connectionLost(self, reason):
 		logger.fatal("Lost connection to worker")
-		
-	def stringReceived(self, string):
-		logger.trace("MASTER Received from WORKER: %s", repr(string))
 
-class MasterConnFactory(twisted.internet.protocol.Factory):
+	def stringReceived(self, string):
+		logger.trace("Gatekeeper received from worker: %s", repr(string))
+
+class Gatekeeper2WorkerConnFactory(twisted.internet.protocol.Factory):
 	def __init__(self, worker):
 		self.__worker = worker
 
 	def buildProtocol(self, addr):
-		return MasterConn(addr, self.__worker)
-	
+		return Gatekeeper2WorkerConn(addr, self.__worker)
+
 class Worker():
-	# represents worker, contains variables (pipes, sockets) for one worker
-	# wraps ugly low-level things like socket passing
-	# this might be changed as more functions will be added to master
+	"""
+	Represents worker, contains variables (pipes, sockets) for one worker. Wraps ugly low-level things like socket passing.
+
+	This might be changed as more functions will be added to gatekeeper.
+	"""
 	def __init__(self, pipe, sock):
 		self.__pipe = pipe
 		self.__sock = sock
 		self.__queue = []
 		self.__conn = None
-		self.__sock.listen(MasterConnFactory(self))
+		self.__sock.listen(Gatekeeper2WorkerConnFactory(self))
 
 	def connected(self, conn):
 		"""
-		Callback, called from MasterConn::connectionMade when worker connects.
+		Callback, called from Gatekeeper2WorkerConn::connectionMade when worker connects.
 
 		Sets to reference to established connection and eventually sends waiting messages.
 		"""
