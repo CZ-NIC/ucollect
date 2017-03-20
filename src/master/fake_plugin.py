@@ -26,6 +26,7 @@ import socket
 import protocol
 import database
 import psycopg2
+import rate_limit
 
 logger = logging.getLogger(name='fake')
 
@@ -89,6 +90,7 @@ class FakePlugin(plugin.Plugin):
 	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
 		self.__config = config
+		self.__rate_limiter = rate_limit.RateLimiter(100, 1000, 60) #maximum 100 (in average) records per 60 seconds (peak 1000)
 
 	def name(self):
 		return 'Fake'
@@ -96,6 +98,16 @@ class FakePlugin(plugin.Plugin):
 	def message_from_client(self, message, client):
 		if message[0] == 'L':
 			activity.log_activity(client, 'fake')
+			# max_size - sizeof(14)
+			if not self.__rate_limiter.check_rate(client, 1):
+				logger.warn("Storing fake server log events for client %s blocked by rate limiter.", client)
+				return
+			# maximal number of records in one message is not specified for fake plugin (as far as I know)
+			# but the message shouldn't be much larger then max_size bytes (from documentation)
+			# so 3 times max_size should be fine (2 times when the client reconnects + reserve - "the message may be actually larger, usually by the last event")
+			if len(message[1:]) > 3 * int(self.__config['max_size']):
+				logger.warn("Unexpectedly long message for fake plugin from client %s - %s bytes, max expected size %s. Ignoring.", client, len(message[1:]), 3 * self.__config['max_size'])
+				return
 			reactor.callInThread(store_logs, message[1:], client, database.now(), self.version(client))
 		elif message[0] == 'C':
 			config = struct.pack('!IIIII', *map(lambda name: int(self.__config[name]), ['version', 'max_age', 'max_size', 'max_attempts', 'throttle_holdback']))

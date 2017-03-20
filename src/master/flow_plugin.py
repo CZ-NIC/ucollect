@@ -27,6 +27,7 @@ import socket
 import re
 import diff_addr_store
 import timers
+import rate_limit
 
 logger = logging.getLogger(name='flow')
 token_re = re.compile('\(?\s*(.*?)\s*([,\(\)])(.*)')
@@ -175,7 +176,7 @@ filter_index = {
 	'R': FilterRange
 }
 
-def store_flows(client, message, expect_conf_id, now):
+def store_flows(max_records, client, message, expect_conf_id, now):
 	(header, message) = (message[:12], message[12:])
 	(conf_id, calib_time) = struct.unpack('!IQ', header)
 	if conf_id != expect_conf_id:
@@ -213,6 +214,9 @@ def store_flows(client, message, expect_conf_id, now):
 		if ok:
 			values.append((aloc, arem, ploc, prem, proto, now, calib_time - tbin if tbin > 0 else None, now, calib_time - tbout if tbout > 0 else None, now, calib_time - tein if tein > 0 else None, now, calib_time - teout if teout > 0 else None, cin, cout, sin, sout, in_started, out_started, client))
 			count += 1
+	if count > max_records:
+		logger.warn("Unexpectedly high number of flows in the message from client %s - %s connection, max expected %s. Ignoring.", client, count, max_records)
+		return
 	with database.transaction() as t:
 		t.executemany("INSERT INTO biflows (client, ip_local, ip_remote, port_local, port_remote, proto, start_in, start_out, stop_in, stop_out, count_in, count_out, size_in, size_out, seen_start_in, seen_start_out) SELECT clients.id, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
 	logger.debug("Stored %s flows for %s", count, client)
@@ -227,6 +231,7 @@ class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 		diff_addr_store.DiffAddrStore.__init__(self, logger, "flow", "flow_filters", "filter")
 		self.__delayed_config = {}
 		self.__delayed_conf_timer = timers.timer(self.__delayed_config_send, 120)
+		self.__rate_limiter = rate_limit.RateLimiter(1000, 10000, 60) #maximum 1000 (in average) flows per 60 seconds (peak 10000)
 
 	# A workaround. Currently, clients sometime need to recreate their local
 	# data structures, so they ask for configuration. However, the configuration ID
@@ -297,7 +302,11 @@ class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 		elif message[0] == 'D':
 			logger.debug('Flows from %s', client)
 			activity.log_activity(client, 'flow')
-			reactor.callInThread(store_flows, client, message[1:], int(self._conf['version']), database.now())
+			if not self.__rate_limiter.check_rate(client, 1):
+				logger.warn("Storing flows for client %s blocked by rate limiter.", client)
+				return
+			# the limit for the number of records in a message is 2*max_flows because the client may buffer up to two times the number if he disconnects/reconnects
+			reactor.callInThread(store_flows, 2 * int(self._conf['max_flows']), client, message[1:], int(self._conf['version']), database.now())
 		elif message[0] == 'U':
 			self._provide_diff(message[1:], client)
 
