@@ -23,7 +23,7 @@ from twisted.internet.endpoints import UNIXServerEndpoint, TCP4ServerEndpoint
 from twisted.internet.error import ReactorNotRunning
 import log_extra
 import logging
-import logging.handlers
+from cloghandler import ConcurrentRotatingFileHandler
 from client_gatekeeper import ClientGatekeeperFactory
 from worker2gatekeeper import WORKER_SOCK_FD
 from gatekeeper2worker import Worker
@@ -42,7 +42,7 @@ else:
 log_file = master_config.get('log_file')
 logging.basicConfig(level=severity, format=master_config.get('log_format'))
 if log_file != '-':
-	handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=int(master_config.get('log_file_size')), backupCount=int(master_config.get('log_file_count')))
+	handler = ConcurrentRotatingFileHandler(log_file, maxBytes=int(master_config.get('log_file_size')), backupCount=int(master_config.get('log_file_count')))
 	handler.setFormatter(logging.Formatter(fmt=master_config.get('log_format')))
 	logging.getLogger().addHandler(handler)
 
