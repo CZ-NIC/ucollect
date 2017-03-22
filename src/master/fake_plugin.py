@@ -90,7 +90,7 @@ class FakePlugin(plugin.Plugin):
 	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
 		self.__config = config
-		self.__rate_limiter = rate_limit.RateLimiter(100, 1000, 60) #maximum 100 (in average) records per 60 seconds (peak 1000)
+		self.__rate_limiter = rate_limit.RateLimiter(int(self.__config['rate_limit_number']), int(self.__config['rate_limit_interval']))
 
 	def name(self):
 		return 'Fake'

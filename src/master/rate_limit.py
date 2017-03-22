@@ -18,25 +18,36 @@
 #
 
 import timers
+import master_config
 
 class RateLimiter():
 	"""
 	Rate Limiter (per client)
 
 	Implements token bucket for each client.
+
+	Parameters of buckets are:
+	 - inflow (how many tokens will be added),
+	 - interval (how often tokens will be added),
+	 - capacity (maximum number of token).
+	Inflow and interval are specified when calling __init__, capacity is set in master configuration (rate_limiter_bucket_capacity).
+	The actual capacity (maximum number of tokens in buckets) is rate_limiter_bucket_capacity * inflow.
+
+	rate_limiter_bucket_capacity basically specifies the factor by which the normal limits might be exceeded.
+	Eg. with rate_limiter_bucket_capacity=5 clients might send 5 * the normal limits in a burst without being blocked (assuming their rate was below the normal limits before).
 	"""
-	def __init__(self, inflow, max_value, interval=None):
+	def __init__(self, inflow, interval=None):
 		"""
 		Initializes rate-limit (for all clients).
 
 		:param inflow: number of tokens added to bucket
-		:param max_value: max number of tokens in bucket
 		:param interval: number of second, every [interval] seconds [inflow] tokens are added to each client's bucket. If it's None, adding should be done manually.
 
+		Maximum number of tokens in the bucket is set to inflow * rate_limiter_bucket_capacity, which comes from master configuration.
 		"""
 		self.__buckets = {}
 		self.__inflow = inflow
-		self.__max_value = max_value
+		self.__max_value = inflow * master_config.getint('rate_limiter_bucket_capacity')
 		if interval:
 			timers.timer(self.add_tokens, interval, False)
 

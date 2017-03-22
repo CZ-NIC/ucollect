@@ -227,11 +227,12 @@ class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
 	"""
 	def __init__(self, plugins, config):
 		plugin.Plugin.__init__(self, plugins)
+		self.__config = config
 		self.__top_filter_cache = {}
 		diff_addr_store.DiffAddrStore.__init__(self, logger, "flow", "flow_filters", "filter")
 		self.__delayed_config = {}
 		self.__delayed_conf_timer = timers.timer(self.__delayed_config_send, 120)
-		self.__rate_limiter = rate_limit.RateLimiter(1000, 10000, 60) #maximum 1000 (in average) flows per 60 seconds (peak 10000)
+		self.__rate_limiter = rate_limit.RateLimiter(int(self.__config['rate_limit_number']), int(self.__config['rate_limit_interval']))
 
 	# A workaround. Currently, clients sometime need to recreate their local
 	# data structures, so they ask for configuration. However, the configuration ID
