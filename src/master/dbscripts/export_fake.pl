@@ -47,4 +47,16 @@ for my $d (@ARGV) {
 	}
 	close $_ for values %files;
 }
+
+# The raw blacklist with everything
+my $stm = $dbh->prepare("SELECT server, remote, clients, score, mode FROM fake_blacklist ORDER BY server, remote");
+$stm->execute;
+open my $file, '>:utf8', "blacklist.csv" or die "Couln't write the blacklist file: $!\n";
+print $file "server,remote,clients,score,mode\n";
+while (my @data = $stm->fetchrow_array) {
+	my $remote = $data[1];
+	next if exists $omit_addresses->{$remote};
+	print $file (join ",", @data), "\n";
+}
+close $file;
 $dbh->rollback;
