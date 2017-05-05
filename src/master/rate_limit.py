@@ -49,7 +49,7 @@ class RateLimiter():
 		self.__inflow = inflow
 		self.__max_value = inflow * master_config.getint('rate_limiter_bucket_capacity')
 		if interval:
-			timers.timer(self.add_tokens, interval, False)
+			timers.timer(self.add_tokens_all, interval, False)
 
 	def check_rate(self, client, cost):
 		"""
