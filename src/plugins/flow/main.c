@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014-2015 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014-2017 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -204,8 +204,16 @@ static void packet_handle(struct context *context, const struct packet_info *inf
 	f->last_time[info->direction] = loop_now(context->loop);
 	if (!f->first_time[info->direction])
 		f->first_time[info->direction] = loop_now(context->loop);
+	// Note about info->direction:
+	// DIR_IN = 0
+	// DIR_OUT = 1
+	// (guaranteed by C's rules about values of enum variants)
 	if (info->app_protocol == 'T' && (info->tcp_flags & TCP_SYN) && !(info->tcp_flags & TCP_ACK))
-		f->seen_flow_start[info->direction] = true;
+		f->seen_flow_event[info->direction + SEEN_START_IN] = true;
+	if (info->app_protocol == 'T' && (info->tcp_flags & TCP_FIN))
+		f->seen_flow_event[info->direction + SEEN_FIN_IN] = true;
+	if (info->app_protocol == 'T' && (info->tcp_flags & TCP_RESET))
+		f->seen_flow_event[SEEN_RST] = true;
 }
 
 static void connected(struct context *context) {

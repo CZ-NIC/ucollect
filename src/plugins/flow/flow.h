@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014-2017 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -37,7 +37,15 @@ enum flow_proto {
 	FLOW_UDP = 2// Maybe others?
 };
 
-static const uint8_t const flow_starts[2] = { 4, 8 };
+enum seen_event {
+	SEEN_START_IN,
+	SEEN_START_OUT,
+	SEEN_FIN_IN,
+	SEEN_FIN_OUT,
+	SEEN_RST,
+};
+
+static const uint8_t const flow_events[5] = { 4, 8, 16, 32, 64 };
 
 typedef uint8_t flow_addr_t[16];
 
@@ -51,7 +59,7 @@ struct flow  {
 	enum flow_ipv ipv;
 	enum flow_proto proto;
 	// Detected an initialization of the communication. Curretly, this is done only for TCP and it means a packet with only SYN was seen.
-	bool seen_flow_start[2];
+	bool seen_flow_event[5];
 };
 
 void flow_parse(struct flow *target, const struct packet_info *packet) __attribute__((nonnull));

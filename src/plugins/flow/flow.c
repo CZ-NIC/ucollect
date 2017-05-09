@@ -1,6 +1,6 @@
 /*
     Ucollect - small utility for real-time analysis of network data
-    Copyright (C) 2014 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
+    Copyright (C) 2014-2017 CZ.NIC, z.s.p.o. (http://www.nic.cz/)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -79,9 +79,9 @@ void flow_render(uint8_t *dst, size_t dst_size, const struct flow *flow) {
 	size_t size = flow_size(flow);
 	sanity(dst_size == size, "Flow buffer of wrong length: %zu/%zu\n", size, dst_size);
 	*dst = flow->ipv | flow->proto;
-	for (size_t i = 0; i < 2; i ++)
-		if (flow->seen_flow_start[i])
-			*dst |= flow_starts[i];
+	for (size_t i = 0; i < sizeof flow_events / sizeof *flow_events; i ++)
+		if (flow->seen_flow_event[i])
+			*dst |= flow_events[i];
 	dst ++;
 	// Encode counts
 	for (size_t i = 0; i < 2; i ++) {

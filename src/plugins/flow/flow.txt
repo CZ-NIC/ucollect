@@ -171,7 +171,8 @@ Flags (`uint8_t`):: This encodes the protocol and address family of
   Another two bits (2nd and 3rd) specify if the flow has been seen to
   be initialized in inbound resp. outbound direction. This is
   implemented for TCP only and it means a packet with SYN flag but
-  without ACK.
+  without ACK. Similarly, 4th and 5th bits represent seeing FIN flags
+  in each direction and the 6th represents RST in either direction.
 Counts (2*`uint32_t`):: Count of packets in the inbound and outbound
   direction.
 Sizes (2*`uint64_t`):: Number of bytes in the inbound and outbound
