@@ -93,6 +93,8 @@ sub perform($$) {
 		109,	# pop2
 		110,	# pop3
 		123,	# ntp
+		138,	# netbios
+		139,	# netbios
 		143,	# imap
 		161,	# snmp
 		194,	# irc
