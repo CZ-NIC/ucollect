@@ -48,6 +48,9 @@ if log_file != '-':
 	handler.setFormatter(logging.Formatter(fmt=master_config.get('log_format')))
 	logging.getLogger().addHandler(handler)
 
+handler_syslog = logging.handlers.SysLogHandler(address="/dev/log")
+logging.getLogger().addHandler(handler_syslog)
+
 loaded_plugins = {}
 plugins = Plugins()
 for (plugin, config) in master_config.plugins().items():
