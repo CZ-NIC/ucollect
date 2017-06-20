@@ -30,7 +30,6 @@ DROP TABLE IF EXISTS ssh_commands;
 DROP TABLE IF EXISTS ssh_sessions;
 DROP TABLE IF EXISTS refused;
 DROP TABLE IF EXISTS spoof;
-DROP TABLE IF EXISTS nats;
 DROP TABLE IF EXISTS biflows;
 DROP TABLE IF EXISTS flow_filters;
 DROP TABLE IF EXISTS capture_stats;
@@ -299,7 +298,7 @@ CREATE SEQUENCE biflow_ids OWNED BY biflows.id;
 ALTER TABLE biflows ALTER COLUMN id SET DEFAULT NEXTVAL('biflow_ids');
 CREATE INDEX ON biflows (tagged_on);
 
-INSERT INTO activity_types (name, plugin) VALUES ('login', NULL), ('logout', NULL), ('buckets', 'Buckets'), ('counts', 'Count'), ('pings', 'Sniff'), ('bandwidth', 'Bandwidth'), ('certs', 'Sniff'), ('flow', 'Flow'), ('nat', 'Sniff'), ('spoof', 'Spoof'), ('refused', 'Refused'), ('fake', 'Fake');
+INSERT INTO activity_types (name, plugin) VALUES ('login', NULL), ('logout', NULL), ('buckets', 'Buckets'), ('counts', 'Count'), ('pings', 'Sniff'), ('bandwidth', 'Bandwidth'), ('certs', 'Sniff'), ('flow', 'Flow'), ('spoof', 'Spoof'), ('refused', 'Refused'), ('fake', 'Fake');
 CREATE TABLE starttls_protos (
 	id SMALLINT NOT NULL PRIMARY KEY,
 	name TEXT NOT NULL,
@@ -365,22 +364,13 @@ INSERT INTO count_types (name, description, ord) VALUES
 	('V6TUNNEL', 'Packets sent over IPv6-tunelled connectivity', 16);
 INSERT INTO starttls_protos (id, name) VALUES (0, ''), (1, 'smtp'), (2, 'pop3'), (3, 'imap'), (4, 'ftp'), (5, 'xmpp');
 
-CREATE TABLE nats (
-	client INT NOT NULL,
-	batch TIMESTAMP NOT NULL,
-	nat_v4 BOOLEAN,
-	nat_v6 BOOLEAN,
-	FOREIGN KEY (client) REFERENCES clients(id),
-	UNIQUE(client, batch)
-);
-
 CREATE TABLE config (
 	plugin TEXT NOT NULL,
 	name TEXT NOT NULL,
 	value TEXT NOT NULL,
 	UNIQUE(plugin, name)
 );
-INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('flow', 'filter-diff', 'D(addresses)'), ('sniff', 'nat-interval', '3 days'), ('spoof', 'answer_timeout', '60'), ('spoof', 'dest_addr', 'api.turris.cz'), ('spoof', 'src_addr', '192.0.2.1'), ('spoof', 'interval', '1 day'), ('spoof', 'port', '5678'), ('fwup', 'version', '1');
+INSERT INTO config (plugin, name, value) VALUES ('flow', 'max_flows', '5000'), ('flow', 'timeout', '1800000'), ('flow', 'minpackets', '5'), ('flow', 'version', '1'), ('flow', 'filter', '!(|(i(127.0.0.1,::1),I(127.0.0.1,::1)))'), ('flow', 'filter-diff', 'D(addresses)'), ('spoof', 'answer_timeout', '60'), ('spoof', 'dest_addr', 'api.turris.cz'), ('spoof', 'src_addr', '192.0.2.1'), ('spoof', 'interval', '1 day'), ('spoof', 'port', '5678'), ('fwup', 'version', '1');
 
 CREATE TABLE flow_filters (
 	filter TEXT NOT NULL,
@@ -696,8 +686,6 @@ GRANT INSERT ON cert_chains TO $DBUPDATER;
 GRANT SELECT ON certs TO $DBUPDATER;
 GRANT INSERT ON biflows TO $DBUPDATER;
 GRANT ALL ON biflow_ids TO $DBUPDATER;
-GRANT INSERT ON nats TO $DBUPDATER;
-GRANT SELECT (batch) ON nats TO $DBUPDATER;
 GRANT SELECT ON config TO $DBUPDATER;
 GRANT SELECT ON flow_filters TO $DBUPDATER;
 GRANT SELECT ON fake_server_names TO $DBUPDATER;
@@ -733,7 +721,6 @@ GRANT SELECT (batch) ON pings TO $DBCLEANER;
 GRANT SELECT (batch, id) ON certs TO $DBCLEANER;
 GRANT SELECT (cert) ON cert_chains TO $DBCLEANER;
 GRANT SELECT (start_in, start_out) ON biflows TO $DBCLEANER;
-GRANT SELECT (batch) ON nats TO $DBCLEANER;
 GRANT SELECT (timestamp) ON fake_logs TO $DBCLEANER;
 GRANT SELECT (batch) ON spoof TO $DBCLEANER;
 GRANT SELECT (timestamp) ON refused TO $DBCLEANER;
@@ -747,7 +734,6 @@ GRANT DELETE ON pings TO $DBCLEANER;
 GRANT DELETE ON certs TO $DBCLEANER;
 GRANT DELETE ON cert_chains TO $DBCLEANER;
 GRANT DELETE ON biflows TO $DBCLEANER;
-GRANT DELETE ON nats TO $DBCLEANER;
 GRANT DELETE ON fake_logs TO $DBCLEANER;
 GRANT DELETE ON spoof TO $DBCLEANER;
 GRANT DELETE ON refused TO $DBCLEANER;
@@ -775,7 +761,6 @@ GRANT SELECT ON cert_chains TO $DBARCHIVIST;
 GRANT SELECT ON biflows TO $DBARCHIVIST;
 GRANT SELECT ON bandwidth TO $DBARCHIVIST;
 GRANT SELECT ON bandwidth_stats TO $DBARCHIVIST;
-GRANT SELECT ON nats TO $DBARCHIVIST;
 GRANT SELECT ON fake_logs TO $DBARCHIVIST;
 GRANT SELECT ON spoof TO $DBARCHIVIST;
 GRANT SELECT ON refused TO $DBARCHIVIST;

@@ -412,27 +412,6 @@ if (fork == 0) {
 if (fork == 0) {
 	my $source = connect_db 'source';
 	my $destination = connect_db 'destination';
-	my ($max_batch) = $destination->selectrow_array('SELECT COALESCE(MAX(batch), TO_TIMESTAMP(0)) FROM nat_counts');
-	tprint "Dropping nats from batch $max_batch\n";
-	$destination->do('DELETE FROM nat_counts WHERE batch = ?', undef, $max_batch);
-	tprint "Getting nat records not older than $max_batch\n";
-	my $store_nat = $destination->prepare('INSERT INTO nat_counts (from_group, batch, v4direct, v4nat, v6direct, v6nat, total) VALUES(?, ?, ?, ?, ?, ?, ?)');
-	my $get_nats = $source->prepare('SELECT in_group, batch, COUNT(CASE WHEN nat_v4 = false THEN true END), COUNT(CASE WHEN nat_v4 = true THEN true END), COUNT(CASE WHEN nat_v6 = false THEN true END), COUNT(CASE WHEN nat_v6 = true THEN true END), COUNT(nats.client) FROM nats JOIN group_members ON nats.client = group_members.client WHERE batch >= ? GROUP BY batch, in_group');
-	my $nat_count = -1;
-	$get_nats->execute($max_batch);
-	$store_nat->execute_for_fetch(sub {
-		$nat_count ++;
-		return $get_nats->fetchrow_arrayref;
-	});
-	tprint "Stored $nat_count nat counts\n";
-	$destination->commit;
-	$source->commit;
-	exit;
-}
-
-if (fork == 0) {
-	my $source = connect_db 'source';
-	my $destination = connect_db 'destination';
 	my ($max_batch) = $destination->selectrow_array('SELECT COALESCE(MAX(batch), TO_TIMESTAMP(0)) FROM spoof_counts');
 	tprint "Dropping spoofed packets from batch $max_batch\n";
 	$destination->do('DELETE FROM spoof_counts WHERE batch = ?', undef, $max_batch);
@@ -578,4 +557,4 @@ if (fork == 0) {
 	exit;
 }
 
-wait for (1..12);
+wait for (1..11);

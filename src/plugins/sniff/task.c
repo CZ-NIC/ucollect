@@ -21,7 +21,6 @@
 #include "nop.h"
 #include "ping.h"
 #include "cert.h"
-#include "nat.h"
 
 struct task_desc task_descs[] = {
 	{
@@ -41,12 +40,6 @@ struct task_desc task_descs[] = {
 		.label = "Certificate",
 		.start = start_cert,
 		.finish = finish_cert
-	},
-	{
-		.name = 'n',
-		.label = "Nat",
-		.start = start_nat,
-		.finish = finish_nat
 	},
 	{
 		.name = '\0'
