@@ -120,7 +120,7 @@ def transaction(reuse=True):
 		return transaction_raw(False)
 
 __time_update = 0
-__time_db = 0
+__time_db = None
 
 def now():
 	"""
@@ -135,7 +135,7 @@ def now():
 	global __time_db
 	t = monotonic.monotonic()
 	diff = t - __time_update
-	if diff > CACHE_TIME: # More than 10 minutes since the last update, request a new one
+	if diff > CACHE_TIME or __time_db is None: # More than 10 minutes since the last update, request a new one
 		__time_update = t
 		diff = 0 # We request it now, so it is in sync
 		with transaction() as t:
