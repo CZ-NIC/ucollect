@@ -221,7 +221,7 @@ def store_flows(max_records, client, message, expect_conf_id, now):
 		logger.warn("Unexpectedly high number of flows in the message from client %s - %s connection, max expected %s. Ignoring.", client, count, max_records)
 		return
 	with database.transaction() as t:
-		t.executemany("INSERT INTO biflows (client, ip_local, ip_remote, port_local, port_remote, proto, start_in, start_out, stop_in, stop_out, count_in, count_out, size_in, size_out, seen_start_in, seen_start_out, seen_end_in, seen_end_out, seen_rst) SELECT clients.id, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
+		t.executemany("INSERT INTO biflows (client, ip_local, ip_remote, port_local, port_remote, proto, start_in, start_out, stop_in, stop_out, count_in, count_out, size_in, size_out, seen_start_in, seen_start_out, seen_end_in, seen_end_out, seen_rst, tagged_on) SELECT clients.id, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
 	logger.debug("Stored %s flows for %s", count, client)
 
 class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
