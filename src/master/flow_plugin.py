@@ -215,13 +215,13 @@ def store_flows(max_records, client, message, expect_conf_id, now):
 				logger.error("Time difference out of range for client %s: %s/%s", client, calib_time - v, v)
 				ok = False
 		if ok:
-			values.append((aloc, arem, ploc, prem, proto, now, calib_time - tbin if tbin > 0 else None, now, calib_time - tbout if tbout > 0 else None, now, calib_time - tein if tein > 0 else None, now, calib_time - teout if teout > 0 else None, cin, cout, sin, sout, in_started, out_started, in_ended, out_ended, rst_seen, client))
+			values.append((aloc, arem, ploc, prem, proto, now, calib_time - tbin if tbin > 0 else None, now, calib_time - tbout if tbout > 0 else None, now, calib_time - tein if tein > 0 else None, now, calib_time - teout if teout > 0 else None, cin, cout, sin, sout, in_started, out_started, in_ended, out_ended, rst_seen, now, client))
 			count += 1
 	if count > max_records:
 		logger.warn("Unexpectedly high number of flows in the message from client %s - %s connection, max expected %s. Ignoring.", client, count, max_records)
 		return
 	with database.transaction() as t:
-		t.executemany("INSERT INTO biflows (client, ip_local, ip_remote, port_local, port_remote, proto, start_in, start_out, stop_in, stop_out, count_in, count_out, size_in, size_out, seen_start_in, seen_start_out, seen_end_in, seen_end_out, seen_rst) SELECT clients.id, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
+		t.executemany("INSERT INTO biflows (client, ip_local, ip_remote, port_local, port_remote, proto, start_in, start_out, stop_in, stop_out, count_in, count_out, size_in, size_out, seen_start_in, seen_start_out, seen_end_in, seen_end_out, seen_rst) SELECT clients.id, %s, %s, %s, %s, %s, %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s - %s * INTERVAL '1 millisecond', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM clients WHERE clients.name = %s", values)
 	logger.debug("Stored %s flows for %s", count, client)
 
 class FlowPlugin(plugin.Plugin, diff_addr_store.DiffAddrStore):
