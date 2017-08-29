@@ -5,7 +5,7 @@ use FindBin;
 use lib $FindBin::Bin;
 
 use AddrStoreBuild;
-use Tagger::Flows;
+#use Tagger::Flows;
 use Tagger::FlowFilter;
 use Tagger::FwUp;
 use Getopt::Long;
@@ -29,7 +29,7 @@ $dbh->do('ANALYZE fake_blacklist_tmp');
 print "Prepared the fake blacklist\n";
 
 # Prepare the tags to be used for tagging the flows
-my $flow_tags = Tagger::Flows::prepare_tags($dbh, @flows);
+#my $flow_tags = Tagger::Flows::prepare_tags($dbh, @flows);
 
 Tagger::FlowFilter::perform($dbh, $blacklist);
 print "Stored flow filters\n";
@@ -40,4 +40,4 @@ print "Stored FWUp filters\n";
 # We no longer need the temporary table, commit will kill it. Also, commit the filters and sets.
 $dbh->commit;
 
-Tagger::Flows::perform($dbh, $flow_tags);
+#Tagger::Flows::perform($dbh, $flow_tags);

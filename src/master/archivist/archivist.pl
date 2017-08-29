@@ -513,18 +513,18 @@ if (fork == 0) {
 	my $destination = connect_db 'destination';
 	incident_init 'telnet';
 	my ($max_date) = $destination->selectrow_array("SELECT DATE(COALESCE(MAX(date), TO_TIMESTAMP(0))) FROM fake_attackers");
-	$destination->do("DELETE FROM fake_attackers WHERE date >= ?", undef, $max_date);
-	my $get_attackers = $source->prepare("SELECT DATE(timestamp), server, remote, COUNT(CASE WHEN event = 'login' THEN true END), COUNT(CASE WHEN event = 'connect' THEN true END) FROM fake_logs WHERE DATE(timestamp) >= ? GROUP BY remote, server, DATE(timestamp)");
-	$get_attackers->execute($max_date);
-	my $put_attacker = $destination->prepare("INSERT INTO fake_attackers (date, server, remote, attempt_count, connect_count) VALUES (?, ?, ?, ?, ?)");
-	my $attackers = -1;
-	while (my @data = $get_attackers->fetchrow_array) {
-		$attackers ++;
-		my ($date, $server, $remote, $attempt_count) = @data;
-		incident $remote, $date, $attempt_count, $server if $attempt_count > 0;
-		$put_attacker->execute(@data);
-	}
-	tprint "Archived $attackers fake attacker stats\n";
+#	$destination->do("DELETE FROM fake_attackers WHERE date >= ?", undef, $max_date);
+#	my $get_attackers = $source->prepare("SELECT DATE(timestamp), server, remote, COUNT(CASE WHEN event = 'login' THEN true END), COUNT(CASE WHEN event = 'connect' THEN true END) FROM fake_logs WHERE DATE(timestamp) >= ? GROUP BY remote, server, DATE(timestamp)");
+#	$get_attackers->execute($max_date);
+#	my $put_attacker = $destination->prepare("INSERT INTO fake_attackers (date, server, remote, attempt_count, connect_count) VALUES (?, ?, ?, ?, ?)");
+#	my $attackers = -1;
+#	while (my @data = $get_attackers->fetchrow_array) {
+#		$attackers ++;
+#		my ($date, $server, $remote, $attempt_count) = @data;
+#		incident $remote, $date, $attempt_count, $server if $attempt_count > 0;
+#		$put_attacker->execute(@data);
+#	}
+#	tprint "Archived $attackers fake attacker stats\n";
 	$destination->do("DELETE FROM fake_passwords WHERE timestamp >= ?", undef, $max_date);
 	my $get_passwords = $source->prepare("SELECT timestamp, server, remote, name, password, remote_port FROM fake_logs WHERE name IS NOT NULL AND password IS NOT NULL AND event = 'login' AND timestamp >= ?");
 	$get_passwords->execute($max_date);
@@ -541,16 +541,16 @@ if (fork == 0) {
 		return $get_passwords->fetchrow_arrayref;
 	});
 	tprint "Archived $passwords password attempts\n";
-	$destination->do("DELETE FROM fake_server_activity WHERE date >= ?", undef, $max_date);
-	my $get_activity = $source->prepare("SELECT DATE(timestamp), server, client, COUNT(CASE WHEN event = 'login' THEN true END), COUNT(CASE WHEN event = 'connect' THEN true END) FROM fake_logs WHERE timestamp >= ? GROUP BY DATE(timestamp), server, client");
-	$get_activity->execute($max_date);
-	my $put_activity = $destination->prepare("INSERT INTO fake_server_activity (date, server, client, attempt_count, connect_count) VALUES (?, ?, ?, ?, ?)");
-	my $activity_count = -1;
-	$put_activity->execute_for_fetch(sub {
-		$activity_count ++;
-		return $get_activity->fetchrow_arrayref;
-	});
-	tprint "Archived $activity_count fake server activity statistics\n";
+#	$destination->do("DELETE FROM fake_server_activity WHERE date >= ?", undef, $max_date);
+#	my $get_activity = $source->prepare("SELECT DATE(timestamp), server, client, COUNT(CASE WHEN event = 'login' THEN true END), COUNT(CASE WHEN event = 'connect' THEN true END) FROM fake_logs WHERE timestamp >= ? GROUP BY DATE(timestamp), server, client");
+#	$get_activity->execute($max_date);
+#	my $put_activity = $destination->prepare("INSERT INTO fake_server_activity (date, server, client, attempt_count, connect_count) VALUES (?, ?, ?, ?, ?)");
+#	my $activity_count = -1;
+#	$put_activity->execute_for_fetch(sub {
+#		$activity_count ++;
+#		return $get_activity->fetchrow_arrayref;
+#	});
+#	tprint "Archived $activity_count fake server activity statistics\n";
 	$destination->commit;
 	$source->commit;
 	incident_finish;
