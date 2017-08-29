@@ -52,9 +52,6 @@ def store_logs(message, client, now, version):
 			message = message[10:]
 		(name, passwd, reason, method, host, uri) = (None, None, None, None, None, None)
 		tp = types[type_idx]
-		#to reduce database size, we now want only login events
-		if tp != 'login':
-			continue
 		family = families[family_idx]
 		rem_address = socket.inet_ntop(family['opt'], message[:family['len']])
 		message = message[family['len']:]
@@ -83,6 +80,9 @@ def store_logs(message, client, now, version):
 				uri = psycopg2.Binary(content)
 			elif kind_i == 5:
 				host = psycopg2.Binary(content)
+		#to reduce database size, we now want only login events
+		if tp != 'login':
+			continue
 		values.append((now, age, tp, rem_address, loc_address, rem_port, name, passwd, reason, method, host, uri, client, code))
 		count += 1
 	with database.transaction() as t:
