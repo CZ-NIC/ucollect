@@ -5,4 +5,4 @@ cd $(dirname "$0")
 ./plugin_hashes.pl --base-url https://repo.turris.cz --board turris --board omnia \
 	--branch dev-honza --branch dev-japa --branch dev-karel --branch dev-michal --branch dev-miska --branch dev-robin --branch dev-stepan --branch dev-tms --branch master --branch next --branch nightly --branch rc --branch test --branch dev-jirka --branch dev-martin --branch stable \
 	--suffix packages --suffix packages/turrispackages \
-	--package ucollect-flow --package ucollect-counts --package ucollect-bandwidth --package ucollect-fake --package ucollect-refused --package ucollect-sniff --package ucollect-spoof --package ucollect-count --package ucollect-fwup
+	--package ucollect-flow --package ucollect-counts --package ucollect-sendline --package ucollect-bandwidth --package ucollect-fake --package ucollect-refused --package ucollect-sniff --package ucollect-spoof --package ucollect-count --package ucollect-fwup

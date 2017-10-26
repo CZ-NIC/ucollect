@@ -4,6 +4,9 @@
 # The RELATIVE variable is for the wrapper makefiles.
 O := $(RELATIVE).
 S := $(RELATIVE).
+CFLAGS += -latsha204 -luci -lpcap 
+LINK_LIBRARIES += -latsha204 -luci -lpcap 
+LDFLAGS_ALL += -latsha204 -luci -lpcap 
 ASCIIDOC := asciidoc
 AR := ar
 MAX_LOG_LEVEL := LLOG_DEBUG_VERBOSE

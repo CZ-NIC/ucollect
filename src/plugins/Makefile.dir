@@ -11,6 +11,7 @@ UCOLLECT_PLUGINS:= \
 	refused \
 	fake \
 	plugtest \
-	fwup
+	fwup \
+	sendline
 
 include $(patsubst %,$(S)/src/plugins/%/Makefile.dir,$(UCOLLECT_PLUGINS))

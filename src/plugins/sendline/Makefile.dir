@@ -1,0 +1,2 @@
+LIBRARIES += src/plugins/sendline/libplugin_sendline
+libplugin_sendline_MODULES := sendline
