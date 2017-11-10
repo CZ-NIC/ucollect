@@ -21,6 +21,12 @@
 #insert into known_plugins (name,status,introduced) values ('Sendline','allowed','2017-09-18 10:31:46.718964');
 #create table ludus (client text, value text);
 
+'''
+This is the server part of the ucollect plugin for the LUDUS project.
+It receives a JSON and stores it into database.
+'''
+
+
 from twisted.internet import reactor
 import struct
 import plugin
@@ -29,45 +35,160 @@ import logging
 import database
 import activity
 import timers
-
+import json
+import time
 logger = logging.getLogger(name='sendline')
+
+cached_tables={} #'tablename':[date_of_the_last_reload, {'column_name':order,..}, DATA_OF_THE_TABLE] #this cache is supposed to contain only small tables (tens of records...)
+
+def get_porttype_id(type_):
+	table_column_ids=cached_tables["ludus_port_types"][1]
+	table_data=cached_tables["ludus_port_types"][2]
+	
+	for record in table_data: #iterate through columns of cached table
+		if(record[table_column_ids["name"]]==type_): #access the column "name" of a port type.
+			return record[table_column_ids["type_id"]]
+	return None
+
+
+def get_alerttype_id(type_):
+	table_column_ids=cached_tables["ludus_alert_types"][1]
+	table_data=cached_tables["ludus_alert_types"][2]
+	
+	for record in table_data: #iterate through columns of cached table
+		if(record[table_column_ids["name"]]==type_): #access the column "name" of a port type.
+			return record[table_column_ids["type_id"]]
+	return None
+
+def get_strategy_id(type_):
+	table_column_ids=cached_tables["ludus_strategy_files"][1]
+	table_data=cached_tables["ludus_strategy_files"][2]
+	
+	for record in table_data: #iterate through columns of cached table
+		if(record[table_column_ids["name"]]==type_): #access the column "name" of a port type.
+			return record[table_column_ids["strategy_id"]]
+	return None
 
 def store_counts(data, stats, now):
 	logger.info('Storing sendline data')
 	with database.transaction() as t:
-		#t.execute('SELECT name, id FROM count_types ORDER BY ord')
-		#name_data = t.fetchall()
-		#name_order = map(lambda x: x[0], name_data)
-		#names = dict(name_data)
-		# It seems MySQL complains with insert ... select in some cases.
-		# So we do some insert-select-insert magic here. That is probably
-		# slower, but no idea how to help that. And it should work.
-		#t.execute('SELECT name, id FROM clients WHERE name IN (' + (','.join(['%s'] * len(data))) + ')', data.keys())
-		#clients = dict(t.fetchall())
-		# Create a snapshot for each client
-		#t.executemany('INSERT INTO ludus (client,value) VALUES(%s, %s)', map(lambda client: (now, client), clients.values()))
-		t.executemany('INSERT INTO ludus (client,value) VALUES(%s, %s)', map(lambda k: (k, data[k]), data.keys()))
-		#t.execute('SELECT client, id FROM count_snapshots WHERE timestamp = %s', (now,))
-		#snapshots = dict(t.fetchall())
-		# Push all the data in
-		#def truncate(data, limit):
-		#	if data > 2**limit-1:
-		#		logger.warn("Number %s overflow, truncating to %s", data, 2**limit-1)
-		#		return 2**limit-1
-		#	else:
-		#		return data
-		#def clientdata(client):
-		#	snapshot = snapshots[clients[client]]
-		#	l = min(len(data[client]) / 2, len(name_order))
-		#	return map(lambda name, index: (snapshot, names[name], truncate(data[client][index * 2], 63), truncate(data[client][index * 2 + 1], 63)), name_order[:l], range(0, l))
-		#def clientcaptures(client):
-		#	snapshot = snapshots[clients[client]]
-		#	return map(lambda i: (snapshot, i, truncate(stats[client][3 * i], 31), truncate(stats[client][3 * i + 1], 31), truncate(stats[client][3 * i + 2], 31)), range(0, len(stats[client]) / 3))
-		#def join_clients(c1, c2):
-		#	c1.extend(c2)
-		#	return c1
-		#t.executemany('INSERT INTO counts(snapshot, type, count, size) VALUES(%s, %s, %s, %s)', reduce(join_clients, map(clientdata, data.keys())))
-		#t.executemany('INSERT INTO capture_stats(snapshot, interface, captured, dropped, dropped_driver) VALUES(%s, %s, %s, %s, %s)', reduce(join_clients, map(clientcaptures, stats.keys())))
+		for table in ["ludus_port_types", "ludus_strategy_files","ludus_alert_types"]:
+			if(not cached_tables.get(table) or time.time()-cached_tables[table][0]> 1*60): #only renew the cache once per minute. #TODO: in production this can be set to a longer interval...
+				t.execute('SELECT * FROM '+table) #if this select returns more than a few tens of lines something is wrong.
+				data_ = t.fetchall()
+				column_names={}
+				i=0
+				for x in t.description:
+					column_names[x[0]]=i
+					i+=1
+				cached_tables[table]=[time.time(),column_names,data_]
+						
+		#we should have port_types, strategy_files and alert_types cached in memory
+
+		#TODO: Re: fail: prostudovat co vsechno tam muze chybet, abych nebyl moc prisny...
+		for router_id in data.keys():
+			try:
+				if(len(data[router_id])>1024*1024):
+					#fail
+					logger.debug("Record too long.")
+					continue
+				json_data=None
+				try:
+					json_data=json.loads(data[router_id])
+				except ValueError as e:
+					#fail
+					logger.debug("JSON parse error while storing a record: %s", str(e))
+					continue
+
+				#insert into Records
+				t.execute("insert into ludus_records (router_id, date_created) values (%s,%s) returning record_id", (router_id,json_data['timestamp']))
+				record_id=t.fetchone()[0]
+
+				#insert into Strategy_used
+				strategy_id=get_strategy_id(json_data['GameStrategyFileName'])
+				if(strategy_id==None):
+					#fail
+					logger.debug("Strategy not found in database.")
+					t.execute("ROLLBACK")
+					continue
+				t.execute("insert into ludus_strategy_used (strategy_id,record_id) values (%s,%s)",(strategy_id,record_id))
+				
+				#insert into Port_information
+				port_information=[]
+				dobreak=False
+				for protocol in json_data['PortInfo'].keys(): #TCP/UDP
+					for port in json_data['PortInfo'][protocol].keys(): #port
+						type_id=get_porttype_id(json_data['PortInfo'][protocol][port]["type"]) #Honeypot/Production
+						if(type_id==None):
+							#fail
+							logger.debug("Port Type not found in database (Port Type means e.g. Honeypot/Production).")
+							t.execute("ROLLBACK")
+							dobreak=True
+							break
+						else:
+							rec=json_data['PortInfo'][protocol][port]
+							port_information.append({'record_id':record_id, 'protocol':protocol, 'port_number':port, 'type_id':type_id, 'flow_count':rec["Flows"], 'packets_count':rec["Packets"], 'bytes_count':rec["bytes"], 'alert_count':rec["#Alerts"]})
+					if(dobreak):
+						break
+				if(dobreak):
+					continue
+
+				t.executemany("insert into ludus_port_information (record_id,protocol,port_number,type_id,   flow_count, packets_count,bytes_count, alert_count) values (%s,%s,%s,%s,  %s,%s,%s,%s)", map(lambda x:(x["record_id"],x["protocol"],x["port_number"],x["type_id"],   x["flow_count"], x["packets_count"], x["bytes_count"], x["alert_count"]),port_information))		
+				del(port_information)
+
+				#insert into Alert_volumes
+				t.execute("insert into ludus_alert_volumes (record_id,severity_1,severity_2,severity_3,severity_4,unique_signatures) values (%s,%s,%s,%s,%s,%s)", (record_id,json_data["alerts"]["# Severity 1"],json_data["alerts"]["# Severity 2"],json_data["alerts"]["# Severity 3"],json_data["alerts"]["# Severity 4"],json_data["alerts"]["# Uniq Signatures"]))
+
+				#insert into Alert_types_per_record
+				dobreak=False
+				alert_types_per_record=[]
+				for alert in json_data['alerts']['Alerts Categories'].keys():
+					type_id=get_alerttype_id(alert)
+					if(type_id==None):
+						#fail
+						logger.debug("Alert type not found in database.")
+						t.execute("ROLLBACK")
+						dobreak=True
+						break
+					else:
+						alert_types_per_record.append({'record_id':record_id, 'type_id':type_id,'count':json_data['alerts']['Alerts Categories'][alert]})
+				if(dobreak):
+					continue
+				t.executemany("insert into ludus_alert_types_per_record (record_id,type_id,count) values (%s,%s,%s)",map(lambda x: (x['record_id'],x['type_id'], x['count']),alert_types_per_record))
+				del(alert_types_per_record)
+
+				#find all distinct B class networks and create their records in B_class_networks if they do not exist
+				network_info_per_record=[]
+				for ip in json_data['alerts']['Alerts/DstBClassNet'].keys():
+					network_info_per_record.append({'direction':'DEST','__ip__':ip,'__count__':json_data['alerts']['Alerts/DstBClassNet'][ip]})
+				for ip in json_data['alerts']['Alerts/SrcBClassNet'].keys():
+					network_info_per_record.append({'direction':'SRC','__ip__':ip,'__count__':json_data['alerts']['Alerts/SrcBClassNet'][ip]})
+
+				network_ips=list(set(map(lambda x:(x["__ip__"],), network_info_per_record)))
+				t.executemany("insert into ludus_b_class_networks (ip) values (%s) on conflict do nothing",network_ips) #on conflict requires postgres 9.5 :-X
+
+				
+				'''
+				#select ids of all used B class networks
+				t.execute("select network_id,ip from ludus_b_class_networks where ip in ('" + ','.join(['%s'] * len(network_ips)) + "')", network_ips)
+				ip_to_id={}
+				for x in t.fetchall():
+					ip_to_id[x[1]]=x[0]
+				'''
+
+				#insert into Network_info_per_record
+				t.executemany("insert into ludus_network_info_per_record ((select network_id from ludus_b_class_networks where ip=%s limit 1),record_id,direction,count) values (%s,%s,%s)", map(lambda x: (x['__ip__'],record_id,x['direction'],x['__count__']), network_info_per_record))
+
+				#everything succeeded. We can commit the insertion of a single json.
+				t.commit()
+				
+			except Exception as e:
+				raise
+				logger.debug("Exception while storing a record: %s (%s)\nThe record will not be stored.",str(e),str(type(e)))
+				#fail
+				t.execute("ROLLBACK")
+
+
 
 class SendlinePlugin(plugin.Plugin):
 	"""
@@ -120,7 +241,7 @@ class SendlinePlugin(plugin.Plugin):
 		#f.close()
 		logger.debug("Data: %s", message)
 		activity.log_activity(client, "sendline")
-		self.__data[client]=message;
+		self.__data[client]=message
 		'''
 		count = len(message) / 4 - 2 # 2 for the timestamp
 		dtype = 'L'

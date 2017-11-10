@@ -1,0 +1,105 @@
+psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
+BEGIN;
+insert into known_plugins (name,status,introduced) values ('Sendline','allowed','2017-09-18 10:31:46.718964');
+
+
+
+
+
+
+
+
+create table ludus_records (record_ID bigserial primary key not null, router_ID text not null,date_stored timestamp with time zone default current_timestamp, date_created timestamp with time zone);
+
+
+--Strategy_files
+create table ludus_strategy_files (strategy_ID bigserial primary key not null, name varchar(100) not null unique, date_created timestamp with time zone default current_timestamp);
+
+insert into ludus_strategy_files (name) values ('strategy');
+
+
+--Strategy_used
+create table ludus_strategy_used (strategy_ID bigint references ludus_strategy_files(strategy_ID) not null, record_ID bigint references ludus_records(record_ID) not null, constraint ludus_strategy_used_pkey primary key (strategy_ID,record_ID) );
+
+
+--Alert types
+create table ludus_alert_types (type_ID bigserial primary key not null, name varchar(100) not null unique);
+insert into ludus_alert_types (name) values ('Not Suspicious Traffic');
+insert into ludus_alert_types (name) values ('Unknown Traffic');
+insert into ludus_alert_types (name) values ('Potentially Bad Traffic');
+insert into ludus_alert_types (name) values ('Attempted Information Leak');
+insert into ludus_alert_types (name) values ('Information Leak');
+insert into ludus_alert_types (name) values ('Large Scale Information Leak');
+insert into ludus_alert_types (name) values ('Attempted Denial of Service');
+insert into ludus_alert_types (name) values ('Denial of Service');
+insert into ludus_alert_types (name) values ('Attempted User Privilege Gain');
+insert into ludus_alert_types (name) values ('Unsuccessful User Privilege Gain');
+insert into ludus_alert_types (name) values ('Successful User Privilege Gain');
+insert into ludus_alert_types (name) values ('Attempted Administrator Privilege Gain');
+insert into ludus_alert_types (name) values ('Successful Administrator Privilege Gain');
+insert into ludus_alert_types (name) values ('Decode of an RPC Query');
+insert into ludus_alert_types (name) values ('Executable Code was Detected');
+insert into ludus_alert_types (name) values ('A Suspicious String was Detected');
+insert into ludus_alert_types (name) values ('A Suspicious Filename was Detected');
+insert into ludus_alert_types (name) values ('An Attempted Login Using a Suspicious Username was Detected');
+insert into ludus_alert_types (name) values ('A System Call was Detected');
+insert into ludus_alert_types (name) values ('A TCP Connection was Detected');
+insert into ludus_alert_types (name) values ('A Network Trojan was Detected');
+insert into ludus_alert_types (name) values ('A Client was Using an Unusual Port');
+insert into ludus_alert_types (name) values ('Detection of a Network Scan');
+insert into ludus_alert_types (name) values ('Detection of a Denial of Service Attack');
+insert into ludus_alert_types (name) values ('Detection of a Non-Standard Protocol or Event');
+insert into ludus_alert_types (name) values ('Generic Protocol Command Decode');
+insert into ludus_alert_types (name) values ('Access to a Potentially Vulnerable Web Application');
+insert into ludus_alert_types (name) values ('Web Application Attack');
+insert into ludus_alert_types (name) values ('Misc activity');
+insert into ludus_alert_types (name) values ('Misc Attack');
+insert into ludus_alert_types (name) values ('Generic ICMP event');
+insert into ludus_alert_types (name) values ('Inappropriate Content was Detected');
+insert into ludus_alert_types (name) values ('Potential Corporate Privacy Violation');
+insert into ludus_alert_types (name) values ('Attempt to Login By a Default Username and Password');
+
+--Alert types per record
+create table ludus_alert_types_per_record (record_ID bigint references ludus_records(record_ID) not null, type_ID bigint references ludus_alert_types(type_ID) not null,count bigint not null,
+constraint ludus_alert_types_per_record_pkey primary key (record_ID,type_ID));
+
+--B class networks
+--TODO: TYPE OF IP. Why 32 chars, what about ipv6?
+--TODO: TYPE OF WHOIS --temporarily set to varchar(500)
+create table ludus_b_class_networks (network_ID bigserial primary key not null, IP varchar(32) unique not null, WHOIS varchar(500) default NULL);
+
+
+--Network info per record
+create type ludus_enum_lud_netw_info_per_record__direction as enum ('SRC','DEST');
+
+create table ludus_network_info_per_record (network_ID bigint references ludus_b_class_networks(network_ID) not null, record_ID bigint references ludus_records(record_ID) not null,direction ludus_enum_lud_netw_info_per_record__direction not null,count bigint not null,
+constraint ludus_network_info_per_record_pkey primary key (record_ID,network_ID,direction));
+
+
+
+--Port types
+create table ludus_port_types (type_ID bigserial primary key not null, name varchar(50) unique not null);
+insert into ludus_port_types (name) values ('Production');
+insert into ludus_port_types (name) values ('Honeypot');
+
+--port information
+create table ludus_port_information (record_ID bigint references ludus_records(record_ID) not null, protocol varchar(5), port_number int not null, type_ID bigint references ludus_port_types(type_ID) not null, flow_count bigint not null, packets_count bigint not null, bytes_count bigint not null, alert_count bigint not null);
+
+--todo:primary key?
+
+--alert volumes
+create table ludus_alert_volumes (record_ID bigint references ludus_records primary key not null, severity_1 bigint not null, severity_2 bigint not null,severity_3 bigint not null,severity_4 bigint not null, unique_signatures bigint not null);
+
+
+
+
+
+
+
+
+
+
+COMMIT;
+END_SQL
+
+
