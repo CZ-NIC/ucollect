@@ -1,16 +1,38 @@
-#!/bin/sh
+/*
+-- everything is timestamp because postgress cannot do datetime.
+-- timestamps: I need to insert timestamp into date_stored
+--todo: timestamp with time zone?
+--  INSERT INTO some_table  (ts_column)  VALUES  (to_timestamp('16-05-2011 15:36:38', 'dd-mm-yyyy hh24:mi:ss'));
+If you use psycopg2 (and possibly some other client library), you can simply pass a Python datetime object as a parameter to a SQL-query:
 
-#TODO: grant permissions. 
-#TODO: check it works.
-. ../../master/dbscripts/dbconfig/dbconfig
+from datetime import datetime
 
-#psql -U turris_db_admin -d turris -h localhost <<'END_SQL'
-psql -U "$DBADMIN" -d "$DB" $DBPARAMS <<ENDSQL
-
-BEGIN;
-insert into known_plugins (name,status,introduced) values ('Sendline','allowed','2017-09-18 10:31:46.718964');
+dt = datetime.now()
+cur.execute('INSERT INTO some_table (somecol) VALUES (%s)', (dt,))
 
 
+reaction:
+you should avoid passing a naive datetime object that represents the local time: it may be ambiguous and the db connection may use a different timezone. Use an aware datetime object such as datetime.now(timezone.utc) and make sure "timestamp with time zone" is used on the db side. – jfs
+*/
+--TODO:? Remove some of the constraints from production for performance reasons?
+--TODO: They want to collect b class networks of attackers!!!!!!
+--TODO: not null
+-- index (/indices)?
+--Records
+--todo: typ text?!!, puvodne misto date bylo datetime
+
+
+
+ drop table ludus_alert_types
+ cascade;drop table ludus_alert_types_per_second
+ cascade;drop table ludus_strategy_files
+ cascade;drop table ludus_strategy_used
+ cascade;drop table ludus_b_class_networks
+ cascade;drop table ludus_records
+ cascade;drop table ludus_network_info_per_record
+ cascade;drop table ludus_port_types
+ cascade;drop table ludus_port_information
+ cascade;drop table ludus_alert_volumes cascade;
 
 
 
@@ -97,17 +119,5 @@ create table ludus_port_information (record_ID bigint references ludus_records(r
 
 --alert volumes
 create table ludus_alert_volumes (record_ID bigint references ludus_records primary key not null, severity_1 bigint not null, severity_2 bigint not null,severity_3 bigint not null,severity_4 bigint not null, unique_signatures bigint not null);
-
-
-
-
-
-
-
-
-
-
-COMMIT;
-END_SQL
 
 

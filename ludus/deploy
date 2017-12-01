@@ -1,0 +1,106 @@
+=========================================
+$ !!DO NOT DEPLOY THIS TO PRODUCTION!!  $
+$  THIS IS DEPLOYMENT FOR DEVELOPMENT   $
+$            PURPOSE ONLY               $
+=========================================
+
+[TODO: TRANSLATE TO ENGLISH]
+
+-------------------------------------
+Modification of the client script:
+-------------------------------------
+1) modify the source code on gitlab (it has it's own branch jbodnar/ludus in the gitlab repository of ucollect)
+   - the source code is in directory ucollect/src/plugins/sendline
+   -  it's job is to take the last line of a file and send it to server
+2) Deploy client
+
+
+-------------------------------------
+Modification of the server script:
+-------------------------------------
+1) modify the source code on gitlab (it has it's own branch jbodnar/ludus in the gitlab repository of ucollect)
+   - the server script is in file /src/master/sendline_plugin.py
+     - this script parses a received line and stores it to database
+   - the database init is in ./ucollect/src/plugins/sendline/ludus_initdb
+
+
+2) Deploy server
+
+-------------------------------------
+Deployment of client:
+-------------------------------------
+1) go to build_package_pro_turris/ and run ./build_repo.sh all
+2) installation packages are in
+./.omnia-sdk/bin/mvebu-musl/packages/base/ucollect-sendline_1_mvebu.ipk
+./.turris-sdk/bin/mpc85xx/packages/base/ucollect-sendline_1_mpc85xx.ipk
+
+3) upload the corresponding file to router. (Be careful to upload turris package to turris router and omnia package to omnia router)
+4) opkg install PACKAGE.ipk
+5) add to /usr/share/ucollect/configs/00-main.cfg
+config plugin
+    option libname 'libplugin_ucollect_sendline_1.so'
+
+
+[steps 6-8 are only done when deploying for testing purposes with use of a testing server. They will not be in production release.]
+
+6) upload certificate to router
+   upload ./cert.pem to location /etc/ssl/ludus-ucollect-server.pem 
+
+7) change /usr/share/ucollect/configs/00-main.cfg
+change "config uplink" to:
+
+config uplink
+        option name collectserver
+        option service 5679
+        option cert "/etc/ssl/ludus-ucollect-server.pem"
+
+
+8) add a new line to /etc/hosts
+192.168.1.110 collectserver
+//this should be the ip address on which you run the ucollect server.
+
+9)/etc/init.d/ucollect restart
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-------------------------------------
+Deployment of server:
+-------------------------------------
+1) download the latest version of branch jbodnar/ludus from the ucollect repository
+2) copy ./cert.cert ./key.pem to ucollect/master/
+
+3) change ucollect/master/collect-master.conf:
+
+cert = cert.cert
+key  = key.pem
+ca   = cert.cert
+
+
+4) BUILD AND INSTALL NEWCOLLECT
+5) INSTALL LUDUS DATABASE
+
+psql$ create database turris; 
+
+bash$ ./ucollect/src/plugins/sendline/ludus_initdb
+
+6) run server
+
+cd ./ucollect/src/master/
+python authenticator/authenticator_allow_all.py authenticator/authenticator.conf
+
+cd ./ucollect/src/master/
+python collect_master.py collect-master.conf

@@ -18,6 +18,9 @@ DBFLOWTAGGER=ucollect
 # The Kippo feeder
 DBKIPPO=ucollect
 
+#LUDUS user
+DBLUDUS=ucollect
+
 # Name of the database
 DB=ucollect
 
