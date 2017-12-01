@@ -35,7 +35,10 @@ Deployment of client:
 ./.turris-sdk/bin/mpc85xx/packages/base/ucollect-sendline_1_mpc85xx.ipk
 
 3) upload the corresponding file to router. (Be careful to upload turris package to turris router and omnia package to omnia router)
-4) opkg install PACKAGE.ipk
+4) 
+opkg update;
+opkg install ucollect-prog;
+opkg install ____PACKAGE____.ipk;
 5) add to /usr/share/ucollect/configs/00-main.cfg
 config plugin
     option libname 'libplugin_ucollect_sendline_1.so'
