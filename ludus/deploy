@@ -47,7 +47,7 @@ config plugin
 [steps 6-8 are only done when deploying for testing purposes with use of a testing server. They will not be in production release.]
 
 6) upload certificate to router
-   upload ./cert.pem to location /etc/ssl/ludus-ucollect-server.pem 
+   upload ./cert.cert to location /etc/ssl/ludus-ucollect-server.cert 
 
 7) change /usr/share/ucollect/configs/00-main.cfg
 change "config uplink" to:
@@ -55,7 +55,7 @@ change "config uplink" to:
 config uplink
         option name collectserver
         option service 5679
-        option cert "/etc/ssl/ludus-ucollect-server.pem"
+        option cert "/etc/ssl/ludus-ucollect-server.cert"
 
 
 8) add a new line to /etc/hosts
