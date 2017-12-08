@@ -136,8 +136,11 @@ def store_counts(data, stats, now):
 						break
 				if(dobreak):
 					continue
-
-				t.executemany("insert into ludus_port_information (record_id,protocol,port_number,type_id,   flow_count, packets_count,bytes_count, alert_count) values (%s,%s,%s,%s,  %s,%s,%s,%s)", map(lambda x:(x["record_id"],x["protocol"],x["port_number"],x["type_id"],   x["flow_count"], x["packets_count"], x["bytes_count"], x["alert_count"]),port_information))		
+				for y in map(lambda x:(x["record_id"],x["protocol"],x["port_number"],x["type_id"], x["flow_count"], x["packets_count"], x["bytes_count"], x["alert_count"]),port_information):
+					try:
+						t.execute("insert into ludus_port_information (record_id,protocol,port_number,type_id, flow_count, packets_count,bytes_count, alert_count) values (%s,%s,%s,%s,  %s,%s,%s,%s)", y)		
+					except:
+						pass
 				del(port_information)
 
 				#insert into Alert_volumes
@@ -158,9 +161,12 @@ def store_counts(data, stats, now):
 						alert_types_per_record.append({'record_id':record_id, 'type_id':type_id,'count':json_data['alerts']['Alerts Categories'][alert]})
 				if(dobreak):
 					continue
-				t.executemany("insert into ludus_alert_types_per_record (record_id,type_id,count) values (%s,%s,%s)",map(lambda x: (x['record_id'],x['type_id'], x['count']),alert_types_per_record))
+				for y in map(lambda x: (x['record_id'],x['type_id'], x['count']),alert_types_per_record):
+					try:
+						t.execute("insert into ludus_alert_types_per_record (record_id,type_id,count) values (%s,%s,%s)",y)
+					except:
+						pass
 				del(alert_types_per_record)
-
 				#find all distinct B class networks and create their records in B_class_networks if they do not exist
 				network_info_per_record=[]
 				for ip in json_data['alerts']['Alerts/DstBClassNet'].keys():
@@ -169,8 +175,11 @@ def store_counts(data, stats, now):
 					network_info_per_record.append({'direction':'SRC','__ip__':ip,'__count__':json_data['alerts']['Alerts/SrcBClassNet'][ip]})
 
 				network_ips=list(set(map(lambda x:(x["__ip__"],), network_info_per_record)))
-				t.executemany("insert into ludus_b_class_networks (ip) values (%s) on conflict do nothing",network_ips) #on conflict requires postgres 9.5 :-X
-
+				for x in network_ips:
+					try:
+						t.execute("insert into ludus_b_class_networks (ip) values (%s)",x) #on conflict requires postgres 9.5
+					except:
+						pass
 				
 				'''
 				#select ids of all used B class networks
@@ -181,10 +190,13 @@ def store_counts(data, stats, now):
 				'''
 
 				#insert into Network_info_per_record
-				t.executemany("insert into ludus_network_info_per_record ((select network_id from ludus_b_class_networks where ip=%s limit 1),record_id,direction,count) values (%s,%s,%s)", map(lambda x: (x['__ip__'],record_id,x['direction'],x['__count__']), network_info_per_record))
-
+				for y in network_info_per_record:
+					try:
+						t.execute("insert into ludus_network_info_per_record (network_id,record_id,direction,count) values ((select network_id from ludus_b_class_networks where ip=%s limit 1),%s,%s,%s)", map(lambda x: (x['__ip__'],record_id,x['direction'],x['__count__']), y))
+					except:
+						pass
 				#everything succeeded. We can commit the insertion of a single json.
-				t.commit()
+				t.execute("COMMIT")
 				
 			except Exception as e:
 				logger.debug("Exception while storing a record: %s (%s)\nThe record will not be stored.",str(e),str(type(e)))
