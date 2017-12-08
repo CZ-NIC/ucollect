@@ -75,9 +75,9 @@ def store_counts(data, stats, now):
 		for table in ["ludus_port_types", "ludus_strategy_files","ludus_alert_types"]:
 			#only renew the cache once per minute.
 			#TODO: in production this can be set to a longer interval...
-			if(not cached_tables.get(table) or time.time()-cached_tables[table][0]> 1*60): 
+			if(not cached_tables.get(table) or time.time()-cached_tables[table][0]> 1*60):
 				#if the following select returns more than a few tens of lines something is wrong.
-				t.execute('SELECT * FROM '+table) 
+				t.execute('SELECT * FROM '+table)
 				data_ = t.fetchall()
 				column_names={}
 				i=0
@@ -161,14 +161,12 @@ def store_counts(data, stats, now):
 						alert_types_per_record.append({'record_id':record_id, 'type_id':type_id,'count':json_data['alerts']['Alerts Categories'][alert]})
 				if(dobreak):
 					continue
-
 				for y in map(lambda x: (x['record_id'],x['type_id'], x['count']),alert_types_per_record):
 					try:
 						t.execute("insert into ludus_alert_types_per_record (record_id,type_id,count) values (%s,%s,%s)",y)
 					except:
 						pass
 				del(alert_types_per_record)
-
 				#find all distinct B class networks and create their records in B_class_networks if they do not exist
 				network_info_per_record=[]
 				for ip in json_data['alerts']['Alerts/DstBClassNet'].keys():
@@ -251,7 +249,7 @@ class SendlinePlugin(plugin.Plugin):
 		return 'Sendline'
 
 	def message_from_client(self, message, client):
-		logger.debug("Data: %s", message)
+		logger.debug("Data for sendline: %s", message)
 		activity.log_activity(client, "sendline")
 		self.__data[client]=message
 		'''
@@ -278,6 +276,7 @@ class SendlinePlugin(plugin.Plugin):
 		'''
 
 	def client_connected(self, client):
+		logger.debug("Sendline client connected")
 		"""
 		A client connected. Ask for the current counts. It will get ignored (because it'll have time of
 		0 probably, or something old anyway), but it resets the client, so we'll get the counts for the
