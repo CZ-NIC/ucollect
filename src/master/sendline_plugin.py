@@ -73,8 +73,11 @@ def store_counts(data, stats, now):
 	logger.info('Storing sendline data')
 	with database.transaction() as t:
 		for table in ["ludus_port_types", "ludus_strategy_files","ludus_alert_types"]:
-			if(not cached_tables.get(table) or time.time()-cached_tables[table][0]> 1*60): #only renew the cache once per minute. #TODO: in production this can be set to a longer interval...
-				t.execute('SELECT * FROM '+table) #if this select returns more than a few tens of lines something is wrong.
+			#only renew the cache once per minute.
+			#TODO: in production this can be set to a longer interval...
+			if(not cached_tables.get(table) or time.time()-cached_tables[table][0]> 1*60):
+				#if the following select returns more than a few tens of lines something is wrong.
+				t.execute('SELECT * FROM '+table)
 				data_ = t.fetchall()
 				column_names={}
 				i=0
@@ -85,9 +88,10 @@ def store_counts(data, stats, now):
 						
 		#we should have port_types, strategy_files and alert_types cached in memory
 
-		#TODO: Re: fail: prostudovat co vsechno tam muze chybet, abych nebyl moc prisny...
+		#TODO: Re: fail: check which information can be missing. We do not want to be _too_ strict.
 		for router_id in data.keys():
 			try:
+				#json size limit.
 				if(len(data[router_id])>1024*1024):
 					#fail
 					logger.debug("Record too long.")
@@ -183,11 +187,10 @@ def store_counts(data, stats, now):
 				t.commit()
 				
 			except Exception as e:
-				raise
 				logger.debug("Exception while storing a record: %s (%s)\nThe record will not be stored.",str(e),str(type(e)))
 				#fail
 				t.execute("ROLLBACK")
-
+				#raise
 
 
 class SendlinePlugin(plugin.Plugin):
@@ -234,11 +237,6 @@ class SendlinePlugin(plugin.Plugin):
 		return 'Sendline'
 
 	def message_from_client(self, message, client):
-		#f=open("/tmp/assssdff","a")
-		#f.write("x")
-		#f.write(str(message))
-		#f.write(str(client))
-		#f.close()
 		logger.debug("Data: %s", message)
 		activity.log_activity(client, "sendline")
 		self.__data[client]=message
