@@ -185,7 +185,7 @@ static void initialize(struct context *context) {
 }
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
-	char * outdata=read_last_line("/tmp/sndln",true);
+	char * outdata=read_last_line("/tmp/ludus_output",true);
 	if(outdata!=0){
 		size_t len=strlen(outdata);
 		uint8_t *me = mem_pool_alloc(context->temp_pool, len*sizeof(char));
