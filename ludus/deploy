@@ -66,17 +66,27 @@ config uplink
 9) /etc/init.d/ucollect restart
 
 
+--------------------------------------
+Virtualbox machine deployment:
+--------------------------------------
+1) import the virtual machine into your virtualbox (created with Virtualbox 4.3.36_Ubuntu)
+2) start the virtual machine
+2) set network settings to network bridge so that the virtual machine can be accessed from your LAN
+3) login:
+login:    user
+password: user
 
+login:    root
+password: root
 
-
-
-
-
-
-
-
-
-
+4) run ifconfig (requires root)
+   to see what is the current ip of the machine so that you can write it into /etc/host of your routers
+5) run run_ucollect.sh from terminal
+   after some time the ucollect instances in routers will connect.
+   if you want them to connect sooner, log in via ssh and run /etc/init.d/ucollect restart
+   you can see the output of ucollect, including the received lines in the terminal.
+6) you may see the data inside the database when you run open_postgres_shell.sh
+   it may take some time before ucollect flushes it's cache and stores the received data into database
 
 
 
