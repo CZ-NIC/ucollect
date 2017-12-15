@@ -4,8 +4,6 @@ $  THIS IS DEPLOYMENT FOR DEVELOPMENT   $
 $            PURPOSE ONLY               $
 =========================================
 
-[TODO: TRANSLATE TO ENGLISH]
-
 -------------------------------------
 Modification of the client script:
 -------------------------------------
@@ -63,7 +61,10 @@ config uplink
 192.168.1.110 collectserver
 //this should be the ip address on which you run the ucollect server.
 
-9) /etc/init.d/ucollect restart
+9) touch /tmp/ludus_output
+   This is the file where you should write the data you want to send.
+   It's last line is sent periodically once per minute.
+10) /etc/init.d/ucollect restart
 
 
 --------------------------------------
@@ -80,7 +81,7 @@ login:    root
 password: root
 
 4) run ifconfig (requires root)
-   to see what is the current ip of the machine so that you can write it into /etc/host of your routers
+   to see what is the current ip of the machine so that you can write it into /etc/hosts of your routers
 5) run run_ucollect.sh from terminal
    after some time the ucollect instances in routers will connect.
    if you want them to connect sooner, log in via ssh and run /etc/init.d/ucollect restart
@@ -88,12 +89,18 @@ password: root
 6) you may see the data inside the database when you run open_postgres_shell.sh
    it may take some time before ucollect flushes it's cache and stores the received data into database
 
+7) the database tables can be listed by typing
+\d
+into the console (the listing is closed by pressing q)
 
+ludus tables begin with prefix ludus_
+the rest of their name should be in correspondence with the original name in the DB scheme.
 
 
 -------------------------------------
-Deployment of server:
+Deployment of server:   [DOES IT WORK LIKE THIS NOW?]
 -------------------------------------
+
 1) download the latest version of branch jbodnar/ludus from the ucollect repository
 2) copy ./cert.cert ./key.pem to ucollect/master/
 
