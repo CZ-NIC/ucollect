@@ -32,7 +32,7 @@ Deployment of client:
 ./.omnia-sdk/bin/mvebu-musl/packages/base/ucollect-sendline_1_mvebu.ipk
 ./.turris-sdk/bin/mpc85xx/packages/base/ucollect-sendline_1_mpc85xx.ipk
 
-3) upload the corresponding file to router. (Be careful to upload turris package to turris router and omnia package to omnia router)
+3) upload the corresponding package to router. (Be careful to upload turris package to turris router and omnia package to omnia router)
 4) 
 opkg update;
 opkg install ucollect-prog;
@@ -80,7 +80,7 @@ Virtualbox machine deployment:
 --------------------------------------
 1) import the virtual machine into your virtualbox (created with Virtualbox 4.3.36_Ubuntu)
 2) start the virtual machine
-2) set network settings to network bridge so that the virtual machine can be accessed from your LAN
+2) set virtualbox network settings to network bridge so that the virtual machine can be accessed from your LAN
 3) login:
 login:    user
 password: user
