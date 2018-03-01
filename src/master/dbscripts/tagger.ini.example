@@ -1,0 +1,16 @@
+[db]
+db=dynamic_firewall
+user=tagger
+passwd=sM0k3meAk1pp3R
+host=db_host.example.org
+port=5432
+
+[anomalies]
+client_treshold=4
+
+[blacklist]
+file=/home/tagger/ucollect/src/master/dbscripts/blacklist
+
+[keep_blocked_limits]
+routers = 5
+packets = 15
