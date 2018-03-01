@@ -3,4 +3,4 @@
 set -e
 cd /home/tagger/dist-fw-data/
 wget https://www.turris.cz/greylist-data/greylist-latest.csv -q -O - | tail -n+2 | cut -f1 -d, | sed -e 's/^/add GREYLIST /' >greylist
-/home/tagger/ucollect/src/master/dbscripts/tagger.pl /home/tagger/ucollect/src/master/dbscripts/db.ini -f greylist
+/home/tagger/ucollect/src/master/dbscripts/tagger.pl /home/tagger/tagger.ini -f greylist
