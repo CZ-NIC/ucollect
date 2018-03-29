@@ -30,150 +30,48 @@
 #include "../../core/loop.h"
 
 #include <arpa/inet.h>
-#include <sys/types.h>
+#include <sys/file.h>
 #include <sys/socket.h>
-#include <netdb.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <assert.h>
-#include <string.h>
 #include <endian.h>
+#include <netdb.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
-#include <assert.h>
+#include <unistd.h>
 
+void send_data(char * data){
+	if(data!=0){
+		size_t len=strlen(data);
+		uint8_t *me = mem_pool_alloc(context->temp_pool, len*sizeof(char));
+		memcpy(me, data, len*sizeof(char));
+		uplink_plugin_send_message(context, me,len*sizeof(char));
+	}
 
-
-struct Linked_list{
-  struct Linked_list* next;
-  char * data;
-  int data_len;
-};
-
-
-//reads the last line of a file. If the very last character of a file is newline we may decide to ignore it.
-char * read_last_line(const char * filename, bool ignore_newline_on_last_char){
-  FILE *fp = fopen(filename,"r");
-  if(fp==0){ //access denied or something alike
-    return (char *)0;
-  }
-  struct Linked_list * first=0; 
-  int BUFSIZE=1024;
-  size_t last_position,current_position;
-  int length_to_load;
-  if(0!=fseek(fp,-1, SEEK_END)){ //jump to end.
-    char *out=(char *)malloc(sizeof(char));     //the last line of an empty file is empty.
-    *out=0;
-    fclose(fp);
-    return out;
-  }
-
-  if(ignore_newline_on_last_char){
-    char nl;
-    fread(&nl,sizeof(char),1,fp);
-    if(nl=='\n'){
-	fseek(fp,-1, SEEK_END);
-    }//else{ fseek(fp,0, SEEK_END); } //we get the else part automatically because of the read above...
-  }
-  size_t total=0;
-  last_position=ftell(fp);
-  while(1){
-    if(-1==fseek(fp,-BUFSIZE,SEEK_CUR)){ //-1 => crossed the beginning.
-      fseek(fp,0,SEEK_SET);
-    }
-    current_position=ftell(fp);
-    length_to_load=last_position-current_position; //min(distance to beginning, BUFSIZE)
-    if(length_to_load==0){
-      break;
-    }
-    last_position=current_position;
-    char * data=(char *)malloc(sizeof(char)*(length_to_load+1));
-    memset(data, 0, sizeof(char)*(length_to_load+1));
-    int loaded_length=fread(data,sizeof(char), length_to_load,fp);
-    assert(length_to_load==loaded_length);
-    assert(0==fseek(fp,last_position,SEEK_SET)); //return cursor back after the reading;
-
-
-    //detect newline
-    bool newline=false;
-    int i;
-
-    for(i=loaded_length-1;i>=0;i--){
-      if(data[i]=='\n'){
-        newline=true;
-        i+=1;
-        break;
-      }
-    }
-
-    if(newline){
-      int necessary_len=loaded_length-i;
-      if(necessary_len==0){
-        free(data);
-        data=0;
-        break;
-      }
-
-      char * newdata=(char *)malloc((necessary_len+1)*sizeof(char));
-      memset(newdata,0,necessary_len+1);
-      memcpy(newdata,data+i,necessary_len);
-      free(data);
-      data=newdata;
-      newdata=0;
-      loaded_length=necessary_len;
-
-    }
-    total+=loaded_length;
-    struct Linked_list * new_first = (struct Linked_list *) malloc(sizeof(struct Linked_list));
-    new_first->next=first;
-    first=new_first;
-    new_first=0;
-    first->data=data;
-    data=0;
-    first->data_len=loaded_length;
-
-    if(total>500*1000){ //line too long.
-      for(struct Linked_list* c=first;c!=0;){
-        struct Linked_list * tmp;
-        tmp=c;
-        c=tmp->next;
-        free(tmp->data);
-        free(tmp);
-      }
-      return (char*)0;
-    }
-    if(loaded_length!=BUFSIZE){ //EOF or found newline -> we have loaded the whole last line.
-      break;
-    }
-
-  }
-  //move the data from linked list to one place in memory.
-  size_t total_size=0;
-  for(struct Linked_list* c=first;c!=0;c=c->next){
-    total_size+=c->data_len;
-  }
-
-
-  char * output=(char *)malloc((total_size+1)*sizeof(char));
-  memset(output,0,(total_size+1)*sizeof(char));
-
-  char *ptr=output;
-
-  for(struct Linked_list* c=first;c!=0;){
-    memcpy(ptr,c->data,c->data_len);
-    ptr+=c->data_len;
-    //cleanup
-    struct Linked_list * tmp;
-    tmp=c;
-    c=tmp->next;
-    free(tmp->data);
-    free(tmp);
-  }
-  ptr=0;
-  fclose(fp);
-  return output;
 }
 
+FILE * get_locked_file_descriptor(const char * filename){
+	FILE * f;
+	struct stat st1;
+	struct stat st2;
+	while(1){
+		f = fopen(filename, "a+");
+		int fd=fileno(f);
+		if(flock(fd, LOCK_EX)==0){ //automatically unlocked when we close the handle.
+			if( stat(filename,&st1)<0)continue;
+			if(fstat(fd      ,&st2)<0)continue;
+			if(st1.st_ino==st2.st_ino){ //Make sure that the file was not deleted between opening and locking.
+				break;
+			}
+		}
+		fclose(f);
+		usleep(100*1000);
+	}
+	return f;
+}
 
 
 static void initialize(struct context *context) {
@@ -185,14 +83,16 @@ static void initialize(struct context *context) {
 }
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
-	char * outdata=read_last_line("/tmp/ludus_output",true);
-	if(outdata!=0){
-		size_t len=strlen(outdata);
-		uint8_t *me = mem_pool_alloc(context->temp_pool, len*sizeof(char));
-		memcpy(me, outdata, len*sizeof(char));
-		free(outdata);
-		uplink_plugin_send_message(context, me,len*sizeof(char));
+	char * output_filename="/tmp/ludus_output";
+	FILE * f=get_locked_file_descriptor(output_filename);
+	char * line=0;
+	size_t bufsize=0; //size of the allocated buffer, not length of the loaded line.
+	while(getline(&line,&bufsize,f)!=-1){
+		send_data(line);
+		free(line);line=0;
 	}
+	remove(output_filename);
+	fclose(f);
 	return;
 }
 
@@ -206,28 +106,7 @@ struct plugin *plugin_info(void) {
 		//.packet_callback = packet_handle,
 		.init_callback = initialize,
 		.uplink_data_callback = communicate,
-		.version = 1
+		.version = 2
 	};
 	return &plugin;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
