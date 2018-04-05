@@ -20,6 +20,7 @@ def _get_locked_file_handle(filename):
       break
     else:
       f.close()
+      time.sleep(0.1)
   return f
 
 #atomically saves the string.
