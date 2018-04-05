@@ -88,7 +88,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	char * line=0;
 	size_t bufsize=0; //size of the allocated buffer, not length of the loaded line.
 	while(getline(&line,&bufsize,f)!=-1){
-		send_data(struct context *context, line);
+		send_data(context, line);
 		free(line);line=0;
 	}
 	remove(output_filename);
