@@ -43,7 +43,7 @@
 #include <string.h>
 #include <unistd.h>
 
-void send_data(char * data){
+void send_data(struct context *context, char * data){
 	if(data!=0){
 		size_t len=strlen(data);
 		uint8_t *me = mem_pool_alloc(context->temp_pool, len*sizeof(char));
@@ -88,7 +88,7 @@ static void communicate(struct context *context, const uint8_t *data, size_t len
 	char * line=0;
 	size_t bufsize=0; //size of the allocated buffer, not length of the loaded line.
 	while(getline(&line,&bufsize,f)!=-1){
-		send_data(line);
+		send_data(struct context *context, line);
 		free(line);line=0;
 	}
 	remove(output_filename);
