@@ -43,17 +43,24 @@
 #include <string.h>
 #include <unistd.h>
 
+void mydebug(char * str){
+  FILE *f_debug = fopen("/tmp/ludus_sendline_debug","a+");
+  fwrite(str, 1, strlen(str), f_debug);
+  fclose(f_debug);
+}
 void send_data(struct context *context, char * data){
+	mydebug("send_data()\n");
 	if(data!=0){
 		size_t len=strlen(data);
 		uint8_t *me = mem_pool_alloc(context->temp_pool, len*sizeof(char));
 		memcpy(me, data, len*sizeof(char));
 		uplink_plugin_send_message(context, me,len*sizeof(char));
 	}
-
+	mydebug("/send_data()\n");
 }
 
 FILE * get_locked_file_descriptor(const char * filename){
+	mydebug("get_locked_file_descriptor()\n");
 	FILE * f;
 	struct stat st1;
 	struct stat st2;
@@ -68,13 +75,17 @@ FILE * get_locked_file_descriptor(const char * filename){
 			}
 		}
 		fclose(f);
+		mydebug("get_locked_file_descriptor()_locking_failed\n");
 		usleep(100*1000);
 	}
+	mydebug("/get_locked_file_descriptor()\n");
 	return f;
 }
 
 
 static void initialize(struct context *context) {
+        mydebug("initialize()\n");
+	mydebug("/initialize()\n");
 /*	context->user_data = mem_pool_alloc(context->permanent_pool, sizeof *context->user_data);
 	// We would initialize with {} to zero everything, but iso C doesn't seem to allow that.
 	*context->user_data = (struct user_data) {
@@ -83,16 +94,22 @@ static void initialize(struct context *context) {
 }
 
 static void communicate(struct context *context, const uint8_t *data, size_t length) {
+        mydebug("communicate()\n");
 	char * output_filename="/tmp/ludus_output";
+	mydebug("communicate()_getting_fd\n");
 	FILE * f=get_locked_file_descriptor(output_filename);
+	mydebug("communicate()_got_fd\n");
 	char * line=0;
 	size_t bufsize=0; //size of the allocated buffer, not length of the loaded line.
 	while(getline(&line,&bufsize,f)!=-1){
+		mydebug("communicate()_sending_line\n");
 		send_data(context, line);
+		mydebug("communicate()_sent_line\n");
 		free(line);line=0;
 	}
 	remove(output_filename);
 	fclose(f);
+	mydebug("/communicate()\n");
 	return;
 }
 
