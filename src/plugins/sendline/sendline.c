@@ -123,7 +123,7 @@ struct plugin *plugin_info(void) {
 		//.packet_callback = packet_handle,
 		.init_callback = initialize,
 		.uplink_data_callback = communicate,
-		.version = 2
+		.version = 1
 	};
 	return &plugin;
 }
